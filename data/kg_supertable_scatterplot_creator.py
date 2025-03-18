@@ -20,7 +20,6 @@ graphing_columns = ["Period_days","T_0","MES_rowe","chi2W_rowe","chi2WO_rowe","B
 
 
 
-
 def make_scatterplots():
     
     df = pd.read_csv('thinned/all_thin.csv', index_col=0)
@@ -108,6 +107,8 @@ def make_scatterplots():
                 safe_y_column_name = y_column_name.replace("/", "_")
 
                 plt.savefig('plots/scatters/'+safe_x_column_name+'_vs_'+safe_y_column_name+'.png',dpi=120)
+                plt.close()
+            
             
             except Exception as e:
                 print(e)

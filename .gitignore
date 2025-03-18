@@ -8,4 +8,4 @@ data/subsampled_rows/*
 !data/subsampled_rows/.gitkeep
 !data/thinned/.gitkeep
 !data/plots/.gitkeep
-
+!results/.gitkeep

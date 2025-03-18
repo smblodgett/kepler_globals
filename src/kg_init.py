@@ -6,7 +6,7 @@ This file will have the user input their initial guess for where to start in the
 
 
 def kg_init_guess(runprops):
-    """This function will produce the initial guess used in multimoon.
+    """This function will produce the initial guess used in kepler_globals.
     
     Input: 
     
