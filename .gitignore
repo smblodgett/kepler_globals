@@ -1,0 +1,11 @@
+results/*
+.git-credentials
+*.ipynb
+*.ipynb_checkpoints
+data/thinned/*
+data/plots/*
+data/subsampled_rows/*
+!data/subsampled_rows/.gitkeep
+!data/thinned/.gitkeep
+!data/plots/.gitkeep
+
