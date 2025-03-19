@@ -1,0 +1,231 @@
+10^BZ*_rowe,sqrt(e) sin(omega)
+10^BZ*_rowe,i
+10^BZ*_rowe,M_pJ
+10^BZ*_rowe,R_p/R_s
+10^BZ*_rowe,M_s
+10^BZ*_rowe,R_s
+10^BZ*_rowe,c_1
+10^BZ*_rowe,c_2
+10^BZ*_rowe,chisq
+10^BZ*_rowe,chisq_rank
+10^BZ*_rowe,R_pE
+10^BZ*_rowe,M_pE
+10^BZ*_rowe,rho_p
+10^BZ*_rowe,rho_s
+10^BZ*_rowe,M_p/M_s
+10^BZ*_rowe,e
+10^BZ*_rowe,omega
+10^BZ*_rowe,true_anomaly
+10^BZ*_rowe,eccentric_anomaly
+10^BZ*_rowe,mean_anomaly
+10^BZ*_rowe,mean_longitude
+10^BZ*_rowe,a_AU
+10^BZ*_rowe,a_R_s
+10^BZ*_rowe,peri_AU
+10^BZ*_rowe,peri_R_s
+10^BZ*_rowe,apo_AU
+10^BZ*_rowe,apo_R_s
+10^BZ*_rowe,d_AU
+10^BZ*_rowe,d_R_s
+10^BZ*_rowe,b_trans
+10^BZ*_rowe,b_occ
+10^BZ*_rowe,p_trans
+10^BZ*_rowe,p_occ
+10^BZ*_rowe,T_total_hr
+10^BZ*_rowe,T_full_hr
+10^BZ*_rowe,K_RV
+10^BZ*_rowe,occurrence_rate_hsu
+10^BZ*_rowe,multiplicity
+10^BZ*_rowe,P/Pin
+10^BZ*_rowe,P/Pout
+10^BZ*_rowe,Tdur/Tdurin
+10^BZ*_rowe,Tdur/Tdurout
+10^BZ*_rowe,R/Rin
+10^BZ*_rowe,R/Rout
+10^BZ*_rowe,M/Min
+10^BZ*_rowe,M/Mout
+10^BZ*_rowe,rho/rhoin
+10^BZ*_rowe,rho/rhoout
+10^BZ*_rowe,i-iin
+10^BZ*_rowe,iout-i
+10^BZ*_rowe,xiin
+10^BZ*_rowe,xiout
+10^BZ*_rowe,distin_hillrad
+10^BZ*_rowe,distout_hillrad
+10^BZ*_rowe,distin_hillrad_e
+10^BZ*_rowe,distout_hillrad_e
+10^BZ*_rowe,e/ein
+10^BZ*_rowe,eout/e
+10^BZ*_rowe,omega-omegain
+10^BZ*_rowe,omegaout-omega
+10^BZ*_rowe,planet
+sqrt(e) cos(omega) + 1,i
+sqrt(e) cos(omega) + 1,M_pJ
+sqrt(e) cos(omega) + 1,R_p/R_s
+sqrt(e) cos(omega) + 1,M_s
+sqrt(e) cos(omega) + 1,R_s
+sqrt(e) cos(omega) + 1,c_1
+sqrt(e) cos(omega) + 1,c_2
+sqrt(e) cos(omega) + 1,chisq
+sqrt(e) cos(omega) + 1,chisq_rank
+sqrt(e) cos(omega) + 1,R_pE
+sqrt(e) cos(omega) + 1,M_pE
+sqrt(e) cos(omega) + 1,rho_p
+sqrt(e) cos(omega) + 1,rho_s
+sqrt(e) cos(omega) + 1,M_p/M_s
+sqrt(e) cos(omega) + 1,e
+sqrt(e) cos(omega) + 1,omega
+sqrt(e) cos(omega) + 1,true_anomaly
+sqrt(e) cos(omega) + 1,eccentric_anomaly
+sqrt(e) cos(omega) + 1,mean_anomaly
+sqrt(e) cos(omega) + 1,mean_longitude
+sqrt(e) cos(omega) + 1,a_AU
+sqrt(e) cos(omega) + 1,a_R_s
+sqrt(e) cos(omega) + 1,peri_AU
+sqrt(e) cos(omega) + 1,peri_R_s
+sqrt(e) cos(omega) + 1,apo_AU
+sqrt(e) cos(omega) + 1,apo_R_s
+sqrt(e) cos(omega) + 1,d_AU
+sqrt(e) cos(omega) + 1,d_R_s
+sqrt(e) cos(omega) + 1,b_trans
+sqrt(e) cos(omega) + 1,b_occ
+sqrt(e) cos(omega) + 1,p_trans
+sqrt(e) cos(omega) + 1,p_occ
+sqrt(e) cos(omega) + 1,T_total_hr
+sqrt(e) cos(omega) + 1,T_full_hr
+sqrt(e) cos(omega) + 1,K_RV
+sqrt(e) cos(omega) + 1,occurrence_rate_hsu
+sqrt(e) cos(omega) + 1,multiplicity
+sqrt(e) cos(omega) + 1,P/Pin
+sqrt(e) cos(omega) + 1,P/Pout
+sqrt(e) cos(omega) + 1,Tdur/Tdurin
+sqrt(e) cos(omega) + 1,Tdur/Tdurout
+sqrt(e) cos(omega) + 1,R/Rin
+sqrt(e) cos(omega) + 1,R/Rout
+sqrt(e) cos(omega) + 1,M/Min
+sqrt(e) cos(omega) + 1,M/Mout
+sqrt(e) cos(omega) + 1,rho/rhoin
+sqrt(e) cos(omega) + 1,rho/rhoout
+sqrt(e) cos(omega) + 1,i-iin
+sqrt(e) cos(omega) + 1,iout-i
+sqrt(e) cos(omega) + 1,xiin
+sqrt(e) cos(omega) + 1,xiout
+sqrt(e) cos(omega) + 1,distin_hillrad
+sqrt(e) cos(omega) + 1,distout_hillrad
+sqrt(e) cos(omega) + 1,distin_hillrad_e
+sqrt(e) cos(omega) + 1,distout_hillrad_e
+sqrt(e) cos(omega) + 1,e/ein
+sqrt(e) cos(omega) + 1,eout/e
+sqrt(e) cos(omega) + 1,omega-omegain
+sqrt(e) cos(omega) + 1,omegaout-omega
+sqrt(e) cos(omega) + 1,Period_days_rowe
+sqrt(e) cos(omega) + 1,T0_rowe
+sqrt(e) cos(omega) + 1,Rp/R*_rowe
+sqrt(e) cos(omega) + 1,b_rowe
+sqrt(e) cos(omega) + 1,rho*M_rowe
+sqrt(e) cos(omega) + 1,u1_rowe
+sqrt(e) cos(omega) + 1,u2_rowe
+sqrt(e) cos(omega) + 1,TDepth_rowe
+sqrt(e) cos(omega) + 1,TDur_rowe
+sqrt(e) cos(omega) + 1,ATDur_rowe
+sqrt(e) cos(omega) + 1,S/N_rowe
+sqrt(e) cos(omega) + 1,a/R*_rowe
+sqrt(e) cos(omega) + 1,Inc_rowe
+sqrt(e) cos(omega) + 1,Rp_rowe
+sqrt(e) cos(omega) + 1,S0_rowe
+sqrt(e) cos(omega) + 1,Kmag_rowe
+sqrt(e) cos(omega) + 1,rho*_rowe
+sqrt(e) cos(omega) + 1,Teff_rowe
+sqrt(e) cos(omega) + 1,R*_rowe
+sqrt(e) cos(omega) + 1,M*_rowe
+sqrt(e) cos(omega) + 1,log(g)*_rowe
+sqrt(e) cos(omega) + 1,Z*_rowe
+sqrt(e) cos(omega) + 1,BRp_rowe
+sqrt(e) cos(omega) + 1,BS0_rowe
+sqrt(e) cos(omega) + 1,planet
+sqrt(e) sin(omega) + 1,sqrt(e) cos(omega)
+sqrt(e) sin(omega) + 1,sqrt(e) sin(omega)
+sqrt(e) sin(omega) + 1,i
+sqrt(e) sin(omega) + 1,M_pJ
+sqrt(e) sin(omega) + 1,R_p/R_s
+sqrt(e) sin(omega) + 1,M_s
+sqrt(e) sin(omega) + 1,R_s
+sqrt(e) sin(omega) + 1,c_1
+sqrt(e) sin(omega) + 1,c_2
+sqrt(e) sin(omega) + 1,chisq
+sqrt(e) sin(omega) + 1,chisq_rank
+sqrt(e) sin(omega) + 1,R_pE
+sqrt(e) sin(omega) + 1,M_pE
+sqrt(e) sin(omega) + 1,rho_p
+sqrt(e) sin(omega) + 1,rho_s
+sqrt(e) sin(omega) + 1,M_p/M_s
+sqrt(e) sin(omega) + 1,e
+sqrt(e) sin(omega) + 1,omega
+sqrt(e) sin(omega) + 1,true_anomaly
+sqrt(e) sin(omega) + 1,eccentric_anomaly
+sqrt(e) sin(omega) + 1,mean_anomaly
+sqrt(e) sin(omega) + 1,mean_longitude
+sqrt(e) sin(omega) + 1,a_AU
+sqrt(e) sin(omega) + 1,a_R_s
+sqrt(e) sin(omega) + 1,peri_AU
+sqrt(e) sin(omega) + 1,peri_R_s
+sqrt(e) sin(omega) + 1,apo_AU
+sqrt(e) sin(omega) + 1,apo_R_s
+sqrt(e) sin(omega) + 1,d_AU
+sqrt(e) sin(omega) + 1,d_R_s
+sqrt(e) sin(omega) + 1,b_trans
+sqrt(e) sin(omega) + 1,b_occ
+sqrt(e) sin(omega) + 1,p_trans
+sqrt(e) sin(omega) + 1,p_occ
+sqrt(e) sin(omega) + 1,T_total_hr
+sqrt(e) sin(omega) + 1,T_full_hr
+sqrt(e) sin(omega) + 1,K_RV
+sqrt(e) sin(omega) + 1,occurrence_rate_hsu
+sqrt(e) sin(omega) + 1,multiplicity
+sqrt(e) sin(omega) + 1,P/Pin
+sqrt(e) sin(omega) + 1,P/Pout
+sqrt(e) sin(omega) + 1,Tdur/Tdurin
+sqrt(e) sin(omega) + 1,Tdur/Tdurout
+sqrt(e) sin(omega) + 1,R/Rin
+sqrt(e) sin(omega) + 1,R/Rout
+sqrt(e) sin(omega) + 1,M/Min
+sqrt(e) sin(omega) + 1,M/Mout
+sqrt(e) sin(omega) + 1,rho/rhoin
+sqrt(e) sin(omega) + 1,rho/rhoout
+sqrt(e) sin(omega) + 1,i-iin
+sqrt(e) sin(omega) + 1,iout-i
+sqrt(e) sin(omega) + 1,xiin
+sqrt(e) sin(omega) + 1,xiout
+sqrt(e) sin(omega) + 1,distin_hillrad
+sqrt(e) sin(omega) + 1,distout_hillrad
+sqrt(e) sin(omega) + 1,distin_hillrad_e
+sqrt(e) sin(omega) + 1,distout_hillrad_e
+sqrt(e) sin(omega) + 1,e/ein
+sqrt(e) sin(omega) + 1,eout/e
+sqrt(e) sin(omega) + 1,omega-omegain
+sqrt(e) sin(omega) + 1,omegaout-omega
+sqrt(e) sin(omega) + 1,Period_days_rowe
+sqrt(e) sin(omega) + 1,T0_rowe
+sqrt(e) sin(omega) + 1,Rp/R*_rowe
+sqrt(e) sin(omega) + 1,b_rowe
+sqrt(e) sin(omega) + 1,rho*M_rowe
+sqrt(e) sin(omega) + 1,u1_rowe
+sqrt(e) sin(omega) + 1,u2_rowe
+sqrt(e) sin(omega) + 1,TDepth_rowe
+sqrt(e) sin(omega) + 1,TDur_rowe
+sqrt(e) sin(omega) + 1,ATDur_rowe
+sqrt(e) sin(omega) + 1,S/N_rowe
+sqrt(e) sin(omega) + 1,a/R*_rowe
+sqrt(e) sin(omega) + 1,Inc_rowe
+sqrt(e) sin(omega) + 1,Rp_rowe
+sqrt(e) sin(omega) + 1,S0_rowe
+sqrt(e) sin(omega) + 1,Kmag_rowe
+sqrt(e) sin(omega) + 1,rho*_rowe
+sqrt(e) sin(omega) + 1,Teff_rowe
+sqrt(e) sin(omega) + 1,R*_rowe
+sqrt(e) sin(omega) + 1,M*_rowe
+sqrt(e) sin(omega) + 1,log(g)*_rowe
+sqrt(e) sin(omega) + 1,Z*_rowe
+sqrt(e) sin(omega) + 1,BRp_rowe
+sqrt(e) sin(omega) + 1,BS0_rowe
+sqrt(e) sin(omega) + 1,planet

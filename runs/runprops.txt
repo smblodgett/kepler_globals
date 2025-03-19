@@ -24,6 +24,7 @@
     # Input data files
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
+    "input_data_filename": "../data/thinned/all_thin.csv",  # PhoDyMM thinned posteriors (with calculated values)
 
     # Additional options
     "verbose" : false,			# Enables print statements within the code

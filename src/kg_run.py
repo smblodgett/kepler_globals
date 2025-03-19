@@ -14,6 +14,7 @@ import shutil
 import numpy as np
 
 from kg_griddefiner import *
+from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
 
 # object to read in runprops file
 class ReadJson:
@@ -51,9 +52,15 @@ nsteps = runprops.get("nsteps")
 nburnin = runprops.get("nburnin")
 make_plots = runprops.get("make_plots")
 output_filename = runprops.get("output_filename")
+input_data_filename = runprops.get("input_data_filename")
 
-voxel_grid = create_voxel_array(radius_grid_array,period_grid_array,mass_grid_array)
 
 
-for voxel in voxel_grid.flatten():
-    print(voxel)
+voxel_grid = RPM_Grid(radius_grid_array,period_grid_array,mass_grid_array)
+
+df = pd.read_csv(input_data_filename)
+
+voxel_grid.setup_dataframes(df.columns)
+voxel_grid.add_data(df)
+
+print(voxel_grid)
