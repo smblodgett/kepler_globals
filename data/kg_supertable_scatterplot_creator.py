@@ -39,7 +39,6 @@ def make_scatterplots():
                     continue
 
 
-
                 is_rowe_column = "rowe" in x_column_name or "rowe" in y_column_name
 
                 print("is rowe column here?", is_rowe_column)
@@ -51,21 +50,25 @@ def make_scatterplots():
                 x_column = df[x_column_name]
                 y_column = df[y_column_name]
 
+                x_display_column_name = x_column_name
+                y_display_column_name = y_column_name
+
                 if x_column_name == "sqrt(e) cos(omega)" or x_column_name == "sqrt(e) sin(omega)":
                     x_column += 1 
-                    x_column_name += " + 1"
+                    x_display_column_name += " + 1"
 
                 if y_column_name == "sqrt(e) cos(omega)" or y_column_name == "sqrt(e) sin(omega)":
                     y_column += 1 
-                    y_column_name += " + 1"
+                    y_display_column_name += " + 1"
 
                 if x_column_name == "Z*_rowe" or x_column_name == "BZ*_rowe":
                     x_column = 10 ** x_column 
-                    x_column_name = "10^"+x_column_name
+                    x_display_column_name = "10^"+x_column_name
 
                 if y_column_name == "Z*_rowe" or y_column_name == "BZ*_rowe":
                     y_column = 10 ** y_column 
-                    y_column_name = "10^"+y_column_name             
+                    y_display_column_name = "10^"+y_column_name             
+        
 
                 # Create a 2x2 subplot
                 fig, axes = plt.subplots(2, 2, figsize=(12, 9), dpi=300)
