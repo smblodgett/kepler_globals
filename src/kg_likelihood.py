@@ -1,6 +1,6 @@
 
 
 
-def likelihood():
+def likelihood(i):
     
     return 1

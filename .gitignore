@@ -9,3 +9,7 @@ data/subsampled_rows/*
 !data/thinned/.gitkeep
 !data/plots/.gitkeep
 !results/.gitkeep
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
