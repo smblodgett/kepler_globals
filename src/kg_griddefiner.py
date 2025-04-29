@@ -92,7 +92,7 @@ class RPM_Grid:
             
     
     
-    def find_voxel(self,voxel_id):
+    def find_voxel_by_id(self,voxel_id):
         for i in self.voxel_array:
             for j in i:
                 for k in j:
@@ -101,6 +101,23 @@ class RPM_Grid:
                         return k
                     
         print("unable to find voxel with given voxel id.")
+        
+    def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period):
+        num_points = 0
+        for i in self.voxel_array:
+            for j in i:
+                for k in j:
+                    if k.bottom_radius == low_radius and k.top_radius == high_radius and k.bottom_period == low_period and k.top_period == high_period:
+                        num_points += len(k.df)
+                        
+        return num_points
+    
+    def make_mass_divided_weights(self):
+        for i in self.voxel_array:
+            for j in i:
+                for k in j:
+                    voxel_number = k.num_data()
+                    k.df["mass_divided_weights"] = k.df['occurrence_rate_hsu'] * voxel_number / self.count_points_in_RP_column(k.top_radius,k.bottom_radius,k.top_period,k.bottom_period)
         
     def __str__(self):
         string_representation = ""

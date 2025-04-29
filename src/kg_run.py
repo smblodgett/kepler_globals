@@ -30,7 +30,7 @@ class ReadJson:
 def run_emcee(voxel_grid,voxel_id,runprops):
     
     # get specific voxel(s?)
-    voxel = voxel_grid.find_voxel(voxel_id)
+    voxel = voxel_grid.find_voxel_by_id(voxel_id)
     voxel.create_initial_guess()
     print(voxel_id)
     print(voxel,voxel.initial_guess)
@@ -43,18 +43,23 @@ def run_emcee(voxel_grid,voxel_id,runprops):
     backend = emcee.backends.HDFBackend(backend_filename)
     backend.reset(runprops["nwalkers"], runprops["ndim"])
     
+    actual_obs = voxel.df["mass_divided_weights"].iloc[0] * len(voxel.df) / 1000 # all values in voxel should have the same corrected hsu weights
+    #what is the expected...? how to get this? this is where I'm having the most trouble and I don't know exactly where hsu et al has this stored or how to get it at all
+    
     # create sampler
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-    kg_likelihood.likelihood, backend=backend)
+    kg_likelihood.likelihood, backend=backend, args=(actual_obs,))
     
-    print(np.sum(voxel.df['occurrence_rate_hsu']))
-    print(voxel.initial_guess)
-    print(np.max(np.abs([voxel.df['+sigma_hsu'],voxel.df['-sigma_hsu']])))
-    print(voxel.initial_guess * (1 + np.random.normal(0,np.max(np.abs([voxel.df['+sigma_hsu'],voxel.df['-sigma_hsu']])))))
+#     print(np.sum(voxel.df['occurrence_rate_hsu']))
+#     print(voxel.initial_guess)
+#     print(np.max(np.abs([voxel.df['+sigma_hsu'],voxel.df['-sigma_hsu']])))
+#     print(voxel.initial_guess * (1 + np.random.normal(0,np.max(np.abs([voxel.df['+sigma_hsu'],voxel.df['-sigma_hsu']])))))
     
-    p0 = np.array([[voxel.initial_guess * (1 + np.random.normal(0,np.max(np.abs([voxel.df['+sigma_hsu'],voxel.df['-sigma_hsu']]))))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev...
+    p0 = np.array([[voxel.initial_guess * (np.random.lognormal(0,np.max(np.abs([voxel.df['+sigma_hsu'],voxel.df['-sigma_hsu']]))))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev...
 
-
+# put things in units of planets
+# correct for the distribution of 
+    
     if runprops["verbose"]: print('sampler created. Starting the burn in.')
     
     if runprops['thin_run']:
@@ -91,6 +96,7 @@ def main(voxel_id):
 
     voxel_grid.setup_dataframes(df.columns)
     voxel_grid.add_data(df)
+    voxel_grid.make_mass_divided_weights()
 
     if runprops["verbose"] : print(voxel_grid)
         
@@ -100,7 +106,7 @@ def main(voxel_id):
 if __name__ == "__main__":
     
     if len(sys.argv) != 2:
-        print("invalid input. Enter the voxel id to run kepler_globals on.")
+        print("invalid input. Enter which voxel id you want to run kepler_globals on.")
         sys.exit()
         
     voxel_id = int(sys.argv[1])

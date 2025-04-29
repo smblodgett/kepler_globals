@@ -33,7 +33,7 @@ def get_heatmap_df(rpm_grid):
     for i in rpm_grid.voxel_array:
         for j in i:
             for k in j:
-                df_selected = k.df[['R_pE', 'Period_days', 'M_pE', 'occurrence_rate_hsu']]
+                df_selected = k.df[['R_pE', 'Period_days', 'M_pE', 'mass_divided_weights']]
                 heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
 
     return heatmap_df
@@ -52,11 +52,14 @@ def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, ve
         mass_filtered_df = histogram_df[(histogram_df["M_pE"] > lower_mass) & (histogram_df["M_pE"] <= upper_mass)]
         period_data = mass_filtered_df["Period_days"].values
         radius_data = mass_filtered_df["R_pE"].values
-        weights = mass_filtered_df["occurrence_rate_hsu"].values
+        weights = mass_filtered_df["mass_divided_weights"].values # I think I need to split this the other way too...
 
         hist, xedges, yedges = np.histogram2d(radius_data, period_data, 
                                               bins=[rpm_grid.radius_grid_array, rpm_grid.period_grid_array], 
                                               weights=weights)  
+        
+        hist /= 1000
+        
         vmax = max(vmax, np.nanmax(hist))
 
     for i in range(len(rpm_grid.mass_grid_array) - 1):
@@ -66,7 +69,7 @@ def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, ve
         mass_filtered_df = histogram_df[(histogram_df["M_pE"] > lower_mass) & (histogram_df["M_pE"] <= upper_mass)]
         period_data = mass_filtered_df["Period_days"].values
         radius_data = mass_filtered_df["R_pE"].values
-        weights = mass_filtered_df["occurrence_rate_hsu"].values
+        weights = mass_filtered_df["mass_divided_weights"].values 
 
         R_30_prior_upper = (((upper_mass)*MEG)/((4/3)*np.pi*30))**(1/3) / RECM
         R_30_prior_lower = (((lower_mass)*MEG)/((4/3)*np.pi*30))**(1/3) / RECM          
@@ -79,9 +82,11 @@ def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, ve
                                               bins=[rpm_grid.radius_grid_array, rpm_grid.period_grid_array], 
                                               weights=weights)
 
+        hist /= 1000
+        
         plt.figure(figsize=(8, 6), dpi=200)
 
-        ax = sns.heatmap(hist, annot=True, fmt=".1f", cbar=False, 
+        ax = sns.heatmap(hist, annot=True, fmt=".4f", cbar=False, 
                          cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
         # put a line to denote where it's hard to detect planets?
 
@@ -100,7 +105,7 @@ def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, ve
         plt.xlabel('Period [days]')
         plt.ylabel('Radius [$R_{Earth}$]')
 
-        plt.suptitle("$M_{Earth}$ Radius vs Period", fontsize=22)
+        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems With Given Radii vs Periods", fontsize=22)
         plt.title(f"M={lower_mass}-{upper_mass}")
 
         plt.savefig(os.path.join(heatmap_folder, f"M{lower_mass}-{upper_mass}_heatmap.png"), dpi=200)
@@ -129,11 +134,13 @@ def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
             radius_filtered_df = histogram_df[(histogram_df["R_pE"] > lower_radius) & (histogram_df["R_pE"] <= upper_radius)]
             period_data = radius_filtered_df["Period_days"].values
             mass_data = radius_filtered_df["M_pE"].values
-            weights = radius_filtered_df["occurrence_rate_hsu"].values
+            weights = radius_filtered_df["mass_divided_weights"].values
 
             hist, xedges, yedges = np.histogram2d(mass_data, period_data, 
                                                   bins=[rpm_grid.mass_grid_array, rpm_grid.period_grid_array], 
                                                   weights=weights)  
+            hist /= 1000
+            
             vmax = max(vmax, np.nanmax(hist))
 
         for i in range(len(rpm_grid.radius_grid_array) - 1):
@@ -143,7 +150,7 @@ def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
             radius_filtered_df = histogram_df[(histogram_df["R_pE"] > lower_radius) & (histogram_df["R_pE"] <= upper_radius)]
             period_data = radius_filtered_df["Period_days"].values
             mass_data = radius_filtered_df["M_pE"].values
-            weights = radius_filtered_df["occurrence_rate_hsu"].values
+            weights = radius_filtered_df["mass_divided_weights"].values
 
             M_30_prior_upper = ((4/3)*np.pi*30/MEG)*(upper_radius * RECM)**3
             M_30_prior_lower = ((4/3)*np.pi*30/MEG)*(lower_radius * RECM)**3         
@@ -155,11 +162,12 @@ def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
                                                   bins=[rpm_grid.mass_grid_array, rpm_grid.period_grid_array], 
                                                   weights=weights)
 
+            hist /= 1000
             # put a line denoting the density prior (don't forget the lower bound) 
 
             plt.figure(figsize=(8, 6), dpi=200)
 
-            ax = sns.heatmap(hist, annot=True, fmt=".1f", cbar=False, 
+            ax = sns.heatmap(hist, annot=True, fmt=".4f", cbar=False, 
                              cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
 
 
@@ -178,7 +186,7 @@ def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
             plt.xlabel('Period [days]')
             plt.ylabel('Mass [$M_{Earth}$]')
 
-            plt.suptitle("$R_{Earth}$ Mass vs Period", fontsize=22)
+            plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems With Given Mass vs Period", fontsize=22)
             plt.title(f"R={lower_radius}-{upper_radius}")
 
             plt.savefig(os.path.join(heatmap_folder, f"R{lower_radius}-{upper_radius}_heatmap.png"), dpi=200)
@@ -204,11 +212,12 @@ def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
             period_filtered_df = histogram_df[(histogram_df["Period_days"] > lower_period) & (histogram_df["Period_days"] <= upper_period)]
             radius_data = period_filtered_df["R_pE"].values
             mass_data = period_filtered_df["M_pE"].values
-            weights = period_filtered_df["occurrence_rate_hsu"].values
+            weights = period_filtered_df["mass_divided_weights"].values
 
             hist, xedges, yedges = np.histogram2d(radius_data, mass_data,
                                                   bins=[rpm_grid.radius_grid_array, rpm_grid.mass_grid_array], 
                                                   weights=weights)  
+            hist /= 1000
             vmax = max(vmax, np.nanmax(hist))
 
         for i in range(len(rpm_grid.period_grid_array) - 1):
@@ -218,15 +227,16 @@ def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
             period_filtered_df = histogram_df[(histogram_df["Period_days"] > lower_period) & (histogram_df["Period_days"] <= upper_period)]
             radius_data = period_filtered_df["R_pE"].values
             mass_data = period_filtered_df["M_pE"].values
-            weights = period_filtered_df["occurrence_rate_hsu"].values
+            weights = period_filtered_df["mass_divided_weights"].values
 
             hist, xedges, yedges = np.histogram2d(radius_data, mass_data,
                                                   bins=[rpm_grid.radius_grid_array, rpm_grid.mass_grid_array], 
                                                   weights=weights)
 
+            hist /= 1000
             plt.figure(figsize=(8, 6), dpi=200)
 
-            ax = sns.heatmap(hist, annot=True, fmt=".1f", cbar=False, 
+            ax = sns.heatmap(hist, annot=True, fmt=".4f", cbar=False, 
                              cmap=plt.cm.Spectral, vmin=0, vmax=vmax,annot_kws={"size": 5})
 
             ax.set_xticks(np.arange(len(yedges)))
@@ -241,7 +251,7 @@ def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
             plt.ylabel('Radius [$R_{Earth}$]')
             plt.xlabel('Mass [$M_{Earth}$]')
 
-            plt.suptitle("$P_{days}$ Mass vs Radius", fontsize=22)
+            plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems With Given Mass vs Radius", fontsize=22)
             plt.title(f"P={lower_period}-{upper_period}")
 
             plt.savefig(os.path.join(heatmap_folder, f"P{lower_period}-{upper_period}_heatmap.png"), dpi=200)
@@ -330,6 +340,7 @@ def main():
         df = pd.read_csv(input_data_filename)
         voxel_grid.setup_dataframes(df.columns)
         voxel_grid.add_data(df)
+        voxel_grid.make_mass_divided_weights()
         heatmap_plot(voxel_grid,'../results',make_gifs=make_gifs,verbose=verbose,fps=fps)
     
     

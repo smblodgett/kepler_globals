@@ -169,7 +169,7 @@ def calculate_params(df):
     df = occurrence_rate_params(df)
     return df
 
-
+#### should attach a flag for if the planet system is in the hsu et al paper
 # attaches the occurrence rate parameters from hsu et al. 
 def occurrence_rate_params(df):
     ocdf = pd.read_csv("occurrence_rates_hsu.csv")
@@ -186,7 +186,7 @@ def occurrence_rate_params(df):
         df.at[i,"occurrence_rate_hsu"] = ocdf.loc[mask]["occurrence"].iloc[0]
         df.at[i,"+sigma_hsu"] = ocdf.loc[mask]["+sigma"].iloc[0]
         df.at[i,"-sigma_hsu"] = ocdf.loc[mask]["-sigma"].iloc[0]
-    
+        
     return df
 
 
