@@ -1,6 +1,6 @@
 {
     # What kinds of plots should be made?
-    "plottype": "all",
+    "plottype": "all", # possible types: all, heatmap, heatmap_flat_density
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
@@ -9,9 +9,8 @@
     "results_folder":"../results",                          # where the results go 
 
     # Additional options
-    "verbose" : true,			# Enables print statements within the code
+    "verbose" : true,           # Enables print statements within the code
     "make_gifs" : true,         # creates gifs from the plots
     "fps" : 0.5,                # frames per second for gifs    
-
 
 }

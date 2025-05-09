@@ -11,5 +11,5 @@ def likelihood(params,observed):
         print(expected)
         print("gamma(expected+1)",gamma(expected+1))
     if expected < 0:
-        return 0
-    return expected * np.log(observed) - observed - np.log(gamma(expected+1))
+        return -np.inf
+    return expected * np.log(observed) - observed - np.log(gamma(expected+1)) # test that this is maxed when expected == observed

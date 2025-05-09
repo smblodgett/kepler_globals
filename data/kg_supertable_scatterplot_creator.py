@@ -1,7 +1,28 @@
+"""
+kg_supertable_scatterplot_creator.py
+====================================
+
+Creates a large set of scatterplots for quick analysis of the subsampled "supertable".
+
+Each scatterplot is stored in plots/scatters/ with each scatterplot being a comparison 
+between each column with each other column of the PhoDyMM output supertable created 
+by kg_subsampler. Requires that the output supertable is stored in thinned/.
+
+Usage
+-----
+Run from the command line:
+    python kg_supertable_scatterplot_creator.py
+
+Author
+------
+Steven Blodgett <blodgett.steven.m@gmail.com>
+Created on: 2025-03-24
+"""
+
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
 
 graphing_columns = ["Period_days","T_0","MES_rowe","chi2W_rowe","chi2WO_rowe","Brho*_rowe","BTeff_rowe","BR*_rowe","BM*_rowe", "Blog(g)*_rowe", "BZ*_rowe",
     "sqrt(e) cos(omega)","sqrt(e) sin(omega)","i",
@@ -18,10 +39,8 @@ graphing_columns = ["Period_days","T_0","MES_rowe","chi2W_rowe","chi2WO_rowe","B
 "Z*_rowe", "BRp_rowe", "BS0_rowe","planet",]
 
 
-
-
 def make_scatterplots():
-    
+    """Creates scatterplots comparing each column of the PhoDyMM output supertable with every other column and logging failed comparisons."""
     df = pd.read_csv('thinned/all_thin.csv', index_col=0)
 
     completed_comparisons = set()
@@ -88,13 +107,13 @@ def make_scatterplots():
                 axes[0, 1].set_xscale('linear')
                 axes[0, 1].set_yscale('linear')
 
-                # Log-log scale plots
-                axes[1, 0].scatter(x_column,y_column, color='indigo',s=marker_size,alpha=unweighted_alpha)  # Using index as x-values
+                # Log-log scale plots.
+                axes[1, 0].scatter(x_column,y_column, color='indigo',s=marker_size,alpha=unweighted_alpha)  # Using index as x-values.
                 axes[1, 0].set_title(x_column_name + ' vs ' + y_column_name + " loglog")
                 axes[1, 0].set_xscale('log')
                 axes[1, 0].set_yscale('log')
 
-                axes[1, 1].scatter(x_column,y_column, color='darkolivegreen',alpha=weighted_alpha,s=marker_size)  # 
+                axes[1, 1].scatter(x_column,y_column, color='darkolivegreen',alpha=weighted_alpha,s=marker_size)
                 axes[1, 1].set_title(x_column_name + ' vs ' + y_column_name + " loglog" + " occurrence weighted")
                 axes[1, 1].set_xscale('log')
                 axes[1, 1].set_yscale('log')

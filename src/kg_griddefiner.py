@@ -1,4 +1,22 @@
-# defines the grid dimensions for the grid analysis, outputs a list of the parameters for the grid, maybe makes an initial guess for each one?
+"""
+kg_griddefiner.py
+=================
+
+Contains several classes useful for creating a non-parametric grid model.
+
+Classes
+-------
+RPMVoxel
+  A representation of a certain part of the radius-period-mass space.
+RPMGrid
+  A collection of many RPMVoxels that span the width of the radius-period-mass space.
+
+Author
+------
+Steven Blodgett: <blodgett.steven.m@gmail.com>
+Created on: 2024-10-10
+"""
+
 
 import os
 import numpy as np
@@ -9,8 +27,51 @@ RECM=6.378*10**8  # earth radius in cm
 MEG=5.9721986*10**27 # earth mass in grams
 
 
-class RPM_Voxel:
+# defines one voxel class in the mass-radius-period grid. 
+class RPMVoxel:
+    """
+    Represents part of the radius-period-mass exoplanet occurrence space.
     
+    Parameters
+    ----------
+    bottom_radius : float
+      The lower limit radius of the voxel.
+    top_radius : float
+      The upper limit radius of the voxel.
+    bottom_period : float
+      The lower limit period of the voxel.
+    top_period : float
+      The upper limit period of the voxel.
+    bottom_mass : float
+      The lower limit mass of the voxel.
+    top_mass : float
+      The upper limit mass of the voxel.
+
+    Attributes
+    ----------
+    bottom_radius : float
+      The lower limit radius of the voxel.
+    top_radius : float
+      The upper limit radius of the voxel.
+    bottom_period : float
+      The lower limit period of the voxel.
+    top_period : float
+      The upper limit period of the voxel.
+    bottom_mass : float
+      The lower limit mass of the voxel.
+    top_mass : float
+      The upper limit mass of the voxel.
+    id_number : int
+      The id number assigned to a voxel (this is used to perform an inference run on 1 voxel).
+      As every voxel should be given a unique positive value, a default of -1 serves as a 
+      flag that the voxel was not instantiated correctly.
+    initial_guess: float
+      The initial guess for what value of the occurrence rate per star of that voxel should be.
+      Default is the nonsensical -1.0.
+    df : DataFrame
+      A dataframe to store the data of each posterior draw from the KMDC within the voxel's limits.
+    
+    """
     def __init__(self,bottom_radius,top_radius,bottom_period,top_period,bottom_mass,top_mass):
         
         self.bottom_radius = bottom_radius
@@ -20,34 +81,51 @@ class RPM_Voxel:
         self.bottom_mass = bottom_mass
         self.top_mass = top_mass
         self.id_number = -1
-        self.initial_guess = -1
+        self.initial_guess = -1.0
     
     def within(self,radius,period,mass):
+        """For a given value in radius-period-mass space, returns True if the voxel contains this value."""
         return radius >= self.bottom_radius and radius < self.top_radius and period >= self.bottom_period and period < self.top_period and mass >= self.bottom_mass and mass < self.top_mass 
     
     def setup_dataframe(self,columns):
+        """Instantiates the dataframe associated with the voxel, giving it the columns of the KMDC."""
         self.df = pd.DataFrame(columns=columns)
         
     def create_id(self,id_number):
+        """Updates the voxel's id number."""
         self.id_number = id_number
         
     def add_data(self, df_chunk):
+        """Adds posterior draw data to the voxel's dataframe."""
         self.df = pd.concat([self.df, df_chunk], ignore_index=True)
         
     def num_data(self):
+        """Returns the number of rows/posterior draws within the voxel."""
         return len(self.df)
     
     def create_initial_guess(self):
-        self.initial_guess = np.sum(self.df['occurrence_rate_hsu'])
+        """Creates an initial guess for the occurrence rate."""
+        self.initial_guess = np.sum(self.df['mass_divided_weights'])
     
     def __str__(self):
+        """Returns a string representation of the voxel."""
         return (f"RPM_Voxel(id: {self.id_number}, R: {self.bottom_radius} - {self.top_radius}, "
                 f"P: {self.bottom_period} - {self.top_period}, "
                 f"M: {self.bottom_mass} - {self.top_mass})"
                 f"number of data points: {self.num_data()}")
     
     
-class RPM_Grid:
+class RPMGrid:
+    """
+    Represents the full 3D grid of many voxels of radius-period-mass exoplanet occurrence space.
+    
+    Parameters
+    ----------
+    
+    Attributes
+    ----------
+    
+    """
 
     def __init__(self,radius_grid_array,period_grid_array,mass_grid_array):
         
@@ -60,7 +138,7 @@ class RPM_Grid:
         self.p_len = len(period_grid_array) - 1
         self.m_len = len(mass_grid_array) - 1
 
-        self.voxel_array = [[[RPM_Voxel(self.radius_grid_array[i],self.radius_grid_array[i+1],self.period_grid_array[j],self.period_grid_array[j+1],self.mass_grid_array[k],self.mass_grid_array[k+1]) for k in range(self.m_len)] for j in range(self.p_len)] for i in range(self.r_len)]
+        self.voxel_array = [[[RPMVoxel(self.radius_grid_array[i],self.radius_grid_array[i+1],self.period_grid_array[j],self.period_grid_array[j+1],self.mass_grid_array[k],self.mass_grid_array[k+1]) for k in range(self.m_len)] for j in range(self.p_len)] for i in range(self.r_len)]
         
         id_number=0
         for i in self.voxel_array:
@@ -102,6 +180,15 @@ class RPM_Grid:
                     
         print("unable to find voxel with given voxel id.")
         
+    def find_voxel_by_coordinates(self,radius,period,mass):
+        for i in self.voxel_array:
+            for j in i:
+                for k in j:
+                    if k.within(radius,period,mass):
+                        return k
+                    
+        print("unable to find voxel with given coordinates.")
+        
     def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period):
         num_points = 0
         for i in self.voxel_array:
@@ -117,9 +204,10 @@ class RPM_Grid:
             for j in i:
                 for k in j:
                     voxel_number = k.num_data()
-                    k.df["mass_divided_weights"] = k.df['occurrence_rate_hsu'] * voxel_number / self.count_points_in_RP_column(k.top_radius,k.bottom_radius,k.top_period,k.bottom_period)
+                    k.df["mass_divided_weights"] = k.df['occurrence_rate_hsu']  * voxel_number /        self.count_points_in_RP_column(k.top_radius,k.bottom_radius,k.top_period,k.bottom_period) # used to multiply by voxel_number
         
     def __str__(self):
+        """Returns a string representation of the entire grid."""
         string_representation = ""
         voxel_count = 0
         filled_voxel_count = 0
@@ -141,5 +229,5 @@ class RPM_Grid:
         string_representation += f"dimensions: {radius_count} Rbins x {period_count} Pbins x {mass_count} Mbins\n"
         return string_representation
 
-# for empty voxels, we need to put a slightly nonuniform prior on them so that it doesn't go crazy...it should just return the priors for these ones.
+##### for empty voxels, we need to put a slightly nonuniform prior on them so that it doesn't go crazy...it should just return the priors for these ones.
             

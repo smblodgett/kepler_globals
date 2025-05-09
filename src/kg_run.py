@@ -16,7 +16,6 @@ import emcee
 import kg_likelihood
 from kg_griddefiner import *
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
-from kg_plots import *
 
 # object to read in runprops file
 class ReadJson:
@@ -34,7 +33,7 @@ def run_emcee(voxel_grid,voxel_id,runprops):
     voxel.create_initial_guess()
     print(voxel_id)
     print(voxel,voxel.initial_guess)
-    assert type(voxel) == RPM_Voxel
+    assert type(voxel) == RPMVoxel
     
     # create backend
     backend_folder = runprops["results_folder"] + "/backend/"
@@ -90,12 +89,24 @@ def main(voxel_id):
     runprops = getData.outProps()
 
     # create voxel grid data structure, load it with the data
-    voxel_grid = RPM_Grid(radius_grid_array,period_grid_array,mass_grid_array)
+    voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
 
     df = pd.read_csv(runprops["input_data_filename"]) 
 
     voxel_grid.setup_dataframes(df.columns)
     voxel_grid.add_data(df)
+    print("column points in 0.5-0.75 radius, 4-8 days:",voxel_grid.count_points_in_RP_column(0.75,0.5,8.0,4.0))
+    print("points in 0.5-0.75 radius, 4-8 days, 0-.25 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.15))
+    print("points in 0.5-0.75 radius, 4-8 days, .25-.5 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.35))
+    print("points in 0.5-0.75 radius, 4-8 days, .5-.75 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.65))
+    print("points in 0.5-0.75 radius, 4-8 days, .75-1 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.85))
+    print("points in 0.5-0.75 radius, 4-8 days, 1-1.5 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,1.15))
+    print("points in 0.5-0.75 radius, 4-8 days, 1.5-2 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,1.75))
+    print("points in 0.5-0.75 radius, 4-8 days, 2-3 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,2.75))
+    print("points in 0.5-0.75 radius, 4-8 days, 3-4 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,3.75))
+    print("points in 0.5-0.75 radius, 4-8 days, 4-6 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,4.75))
+
+    input()
     voxel_grid.make_mass_divided_weights()
 
     if runprops["verbose"] : print(voxel_grid)
