@@ -46,7 +46,7 @@ class ReadJson:
         return self.data
 
     
-def heatmap_plot(rpm_grid,results_folder, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False):
+def heatmap_plot(rpm_grid,results_folder, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
     """
     Plots sequences of heatmaps from the base KMDC, iterating on mass, radius, and period.
     
@@ -73,9 +73,9 @@ def heatmap_plot(rpm_grid,results_folder, make_gifs=True, verbose=False, fps=0.5
         heatmap_df = get_uniform_density_prior_df(rpm_grid)
     else:
         heatmap_df = get_heatmap_df(rpm_grid)
-    make_mass_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density)
-    make_radius_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density)
-    make_period_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density)
+    make_mass_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
+    make_radius_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
+    make_period_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
 
     
 def get_heatmap_df(rpm_grid):
@@ -101,7 +101,7 @@ def get_uniform_density_prior_df(rpm_grid):
                 heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
     
     
-    M_30_priors = ((4/3)*np.pi*0.03/MEG)*(heatmap_df["R_pE"] * RECM)**3
+    M_30_priors = ((4/3)*np.pi*30/MEG)*(heatmap_df["R_pE"] * RECM)**3
 
     M_001_priors = ((4/3)*np.pi*0.01/MEG)*(heatmap_df["R_pE"] * RECM)**3 ### check upper limit and lower limit of contours
     
@@ -109,12 +109,15 @@ def get_uniform_density_prior_df(rpm_grid):
     return heatmap_df
     
 
-def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, verbose=False, fps=0.5, is_flat_density=False):
+def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
     """Make heatmaps iterating through mass."""
     if not is_flat_density: heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal","mass")
     if is_flat_density:  heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","flat_density","mass")
     os.makedirs(heatmap_folder, exist_ok=True)
-
+    
+    cumulative_hist_slices = []
+    xedges = None
+    yedges = None
     vmax = 0
     for i in range(len(rpm_grid.mass_grid_array) - 1): # Figure out what the max value of the histogram is going to be.
         lower_mass = rpm_grid.mass_grid_array[i]
@@ -131,6 +134,8 @@ def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, ve
                                               weights=weights)  
         
         hist /= 1000
+        
+        cumulative_hist_slices.append(hist)
         
         vmax = max(vmax, np.nanmax(hist))
 
@@ -186,7 +191,41 @@ def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, ve
         if verbose: 
             print(f"made M{lower_mass}-{upper_mass}_heatmap.png")
         plt.close()
+        
+    if make_cumulative:
+        base_hist = cumulative_hist_slices[0] - cumulative_hist_slices[0]
+        for hist in cumulative_hist_slices:
+            base_hist += hist
+        
+        vmax = np.max(base_hist)
+        plt.figure(figsize=(8, 6), dpi=200)
 
+        ax = sns.heatmap(base_hist, annot=True, fmt=".4f", cbar=False, 
+                         cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
+        
+        ax.set_xticks(np.arange(len(yedges)))
+        ax.set_xticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in yedges], 
+                            fontsize=5)
+
+        ax.set_yticks(np.arange(len(xedges)))
+        ax.set_yticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in xedges],rotation=90, fontsize=5)
+
+        ax.invert_yaxis()
+
+        plt.xlabel('Period [days]')
+        plt.ylabel('Radius [$R_{Earth}$]')
+
+        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
+        if is_flat_density: plt.title(f"Flat Density, Cumulative Mass")
+        if not is_flat_density: plt.title(f"Cumulative Mass")
+
+        if not is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_mass_heatmap.png"), dpi=200)
+        if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_mass_flat_density_heatmap.png"), dpi=200)
+            
+        if verbose:
+            print(f"made cumulative_mass_heatmap.png")
+        plt.close()
+            
     if make_gifs:
         if not is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","normal"), exist_ok=True)
         if is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","flat_density"), exist_ok=True)
@@ -195,12 +234,15 @@ def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, ve
         make_gif_from_pngs(heatmap_folder, output_gif_path, fps=fps)
 
 
-def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False):
+def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
     """Make heatmaps iterating through radius."""
     if not is_flat_density: heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal","radius")
     if is_flat_density: heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","flat_density","radius")
     os.makedirs(heatmap_folder, exist_ok=True)
 
+    cumulative_hist_slices = []
+    xedges = None
+    yedges = None
     vmax = 0
     for i in range(len(rpm_grid.radius_grid_array) - 1): # Figure out what the max value of the histogram is going to be.
         lower_radius = rpm_grid.radius_grid_array[i]
@@ -216,6 +258,8 @@ def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
                                               bins=[rpm_grid.mass_grid_array, rpm_grid.period_grid_array], 
                                               weights=weights)  
         hist /= 1000
+        
+        cumulative_hist_slices.append(hist)
 
         vmax = max(vmax, np.nanmax(hist))
 
@@ -271,6 +315,40 @@ def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
             print(f"made R{lower_radius}-{upper_radius}_heatmap.png")
         plt.close()
 
+    if make_cumulative:
+        base_hist = cumulative_hist_slices[0] - cumulative_hist_slices[0]
+        for hist in cumulative_hist_slices:
+            base_hist += hist
+        
+        vmax = np.max(base_hist)
+        plt.figure(figsize=(8, 6), dpi=200)
+
+        ax = sns.heatmap(base_hist, annot=True, fmt=".4f", cbar=False, 
+                         cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
+        
+        ax.set_xticks(np.arange(len(yedges)))
+        ax.set_xticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in yedges], 
+                            fontsize=5)
+
+        ax.set_yticks(np.arange(len(xedges)))
+        ax.set_yticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in xedges],rotation=90, fontsize=5)
+
+        ax.invert_yaxis()
+
+        plt.xlabel('Period [days]')
+        plt.ylabel('Mass [$M_{Earth}$]')
+
+        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
+        if is_flat_density: plt.title(f"Flat Density, Cumulative Radius")
+        if not is_flat_density: plt.title(f"Cumulative Radius")
+
+        if not is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_radius_heatmap.png"), dpi=200)
+        if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_radius_flat_density_heatmap.png"), dpi=200)
+            
+        if verbose:
+            print(f"made cumulative_radius_heatmap.png")
+        plt.close()
+        
     if make_gifs:
         if not is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","normal"), exist_ok=True)
         if is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","flat_density"), exist_ok=True)
@@ -279,12 +357,15 @@ def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
         make_gif_from_pngs(heatmap_folder, output_gif_path, fps=fps)      
 
 
-def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False):
+def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
     """Make heatmaps iterating through period"""
     if not is_flat_density: heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal","period")
     if is_flat_density: heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","flat_density","period")
     os.makedirs(heatmap_folder, exist_ok=True)
 
+    cumulative_hist_slices = []
+    xedges = None
+    yedges = None
     vmax = 0
     for i in range(len(rpm_grid.period_grid_array) - 1): # Figure out what the max value of the histogram is going to be.
         lower_period = rpm_grid.period_grid_array[i]
@@ -298,6 +379,9 @@ def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
                                               bins=[rpm_grid.radius_grid_array, rpm_grid.mass_grid_array], 
                                               weights=weights)  
         hist /= 1000
+        
+        cumulative_hist_slices.append(hist)
+        
         vmax = max(vmax, np.nanmax(hist))
 
     for i in range(len(rpm_grid.period_grid_array) - 1):
@@ -331,7 +415,7 @@ def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
         plt.ylabel('Radius [$R_{Earth}$]')
         plt.xlabel('Mass [$M_{Earth}$]')
 
-        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems With Given Mass vs Radius", fontsize=15)
+        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
         if not is_flat_density: plt.title(f"P={lower_period}-{upper_period}")
         if is_flat_density: plt.title(f"Flat Density, P={lower_period}-{upper_period}")
 
@@ -339,6 +423,40 @@ def make_period_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True
         if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"P{lower_period}-{upper_period}_flat_density_heatmap.png"), dpi=200)
         if verbose: 
             print(f"made P{lower_period}-{upper_period}_heatmap.png")
+        plt.close()
+        
+    if make_cumulative:
+        base_hist = cumulative_hist_slices[0] - cumulative_hist_slices[0]
+        for hist in cumulative_hist_slices:
+            base_hist += hist
+        
+        vmax = np.max(base_hist)
+        plt.figure(figsize=(8, 6), dpi=200)
+
+        ax = sns.heatmap(base_hist, annot=True, fmt=".4f", cbar=False, 
+                         cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
+        
+        ax.set_xticks(np.arange(len(yedges)))
+        ax.set_xticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in yedges], 
+                            fontsize=5)
+
+        ax.set_yticks(np.arange(len(xedges)))
+        ax.set_yticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in xedges],rotation=90, fontsize=5)
+
+        ax.invert_yaxis()
+
+        plt.ylabel('Radius [$R_{Earth}$]')
+        plt.xlabel('Mass [$M_{Earth}$]')
+
+        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
+        if is_flat_density: plt.title(f"Flat Density, Cumulative Period")
+        if not is_flat_density: plt.title(f"Cumulative Radius")
+
+        if not is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_period_heatmap.png"), dpi=200)
+        if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_period_flat_density_heatmap.png"), dpi=200)
+            
+        if verbose:
+            print(f"made cumulative_period_heatmap.png")
         plt.close()
 
     if make_gifs:
@@ -373,9 +491,13 @@ def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True):
     file_numbers_dict = {} # Make dict with all the right png files.
     for file in png_files:
         m = re.search('\d+\.\d+',file)
-        value = float(m.group(0))
-        file_numbers_dict[value] = file
+        if m:
+            value = float(m.group(0))
+            file_numbers_dict[value] = file
+        else:
+            file_numbers_dict[9e99] = file
     
+    print(sorted(file_numbers_dict))
     images = []
     for key in sorted(file_numbers_dict): # Sort them, then create a gif out of it.
         image_path = os.path.join(input_dir, file_numbers_dict[key])
@@ -383,8 +505,14 @@ def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True):
         images.append(image)
         
     os.makedirs(os.path.dirname(output_gif_path), exist_ok=True)
+    
+    durations = np.ones(len(images))*1000/fps
+    
+    durations[-1] = 4 * 1000/fps
+    
+    durations = durations.astype(int).tolist()
 
-    images[0].save(output_gif_path, save_all=True, append_images=images[1:], optimize=True, duration=1000/fps, loop=0)
+    images[0].save(output_gif_path, save_all=True, append_images=images[1:], optimize=True, duration=durations, loop=0)
 
     if verbose: print(f"GIF saved to {output_gif_path}")
         
@@ -419,6 +547,7 @@ def main():
     results_folder = plotprops.get("results_folder")
     make_gifs = plotprops.get("make_gifs")
     fps = plotprops.get("fps")
+    make_cumulative_hist = plotprops.get("make_cumulative_hist")
     print(plottype, type(plottype))
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
@@ -432,10 +561,10 @@ def main():
     
     # Actually make the plots.
     if plot_all or plottype == "heatmap":
-        heatmap_plot(voxel_grid,'../results',make_gifs=make_gifs,verbose=verbose,fps=fps)
+        heatmap_plot(voxel_grid,'../results',make_gifs=make_gifs,verbose=verbose,fps=fps,make_cumulative=make_cumulative_hist)
         
     if plot_all or plottype == "heatmap_flat_density":
-        heatmap_plot(voxel_grid,'../results',make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=True)
+        heatmap_plot(voxel_grid,'../results',make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=True,make_cumulative=make_cumulative_hist)
     
     
 if __name__ == "__main__":

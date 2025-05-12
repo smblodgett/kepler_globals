@@ -11,6 +11,7 @@
     # Additional options
     "verbose" : true,           # Enables print statements within the code
     "make_gifs" : true,         # creates gifs from the plots
-    "fps" : 0.5,                # frames per second for gifs    
+    "fps" : 0.3,                # frames per second for gifs    
+    "make_cumulative_hist" : true # whether heatmap plots should include a cumulative histogram at the end
 
 }
