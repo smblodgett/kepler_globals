@@ -1,17 +1,20 @@
 {
     # What kinds of plots should be made?
-    "plottype": "all", # possible types: all, heatmap, heatmap_flat_density
+    "plottype": "corner", # possible types: all, heatmap, heatmap_flat_density, trace, corner
+
+    # Voxel id (for specific voxel plots)
+    "voxel_id" : 2200,
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
     "input_data_filename": "../data/thinned/all_thin.csv",  # PhoDyMM thinned posteriors (with calculated values)
     "results_folder":"../results",                          # where the results go 
-
+    
     # Additional options
-    "verbose" : true,           # Enables print statements within the code
-    "make_gifs" : true,         # creates gifs from the plots
-    "fps" : 0.3,                # frames per second for gifs    
+    "verbose" : true,             # Enables print statements within the code
+    "make_gifs" : true,           # creates gifs from the plots
+    "fps" : 0.3,                  # frames per second for gifs    
     "make_cumulative_hist" : true # whether heatmap plots should include a cumulative histogram at the end
 
 }

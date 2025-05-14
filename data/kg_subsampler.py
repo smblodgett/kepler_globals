@@ -9,7 +9,7 @@ which have been randomly subsampled by the kg_random_row_selector
 script and creates a dataframe, one per system, then calculates or 
 appends a variety of extra parameters, including orbital elements, 
 occurrence rates, system comparisons, and the entire table of 
-Lissauer et al. Finally, it appends the dataframe into a large 
+Lissauer et al. 2024. Finally, it appends the dataframe into a large 
 combined csv with all planets, thinned/all_thin.csv.
 
 Usage
@@ -35,6 +35,7 @@ import numpy as np
 import os
 import re
 import sys
+from tqdm import tqdm
 
 
 RAW_PATH = '/hdd2/backup/danielkj/PhoDyMM_results_final/completed_systems/'   # pathway to directory with raw PhoDyMM output posterior data
@@ -112,17 +113,18 @@ def process_dataframe(df,koi):
     with pd.option_context('mode.chained_assignment', None):
         final_system_df = system_params(final_df) # Add system-wide value and comparison columns.
         final_system_df = rowe_table_attach(koi,final_system_df) # Add table from Lissauer et al.
+        final_system_df = is_in_hsu(final_system_df)
         final_system_df = final_system_df.drop("Unnamed: 0", axis=1) # Get rid of read-in column.
         return final_system_df
 
 
 def column_rename(df):
-    """Rename the columns of the df to be more legible.""""
+    """Rename the columns of the df to be more legible."""
     num_columns = len(df.columns)
     for n, column in enumerate(df.columns):
         if num_columns-7 <= n:
             if n%9 == 0:
-                print(column)
+#                 print(column)
                 assert(column=='M$_s$')
                 df.rename(columns={column: 'M_s'}, inplace=True) # star's mass (in solar masses)
             elif n%9 == 1:
@@ -167,8 +169,8 @@ def calculate_params(df):
     df['rho_p'] = df['M_pE'] * MEG / ((4/3) * np.pi * (df['R_pE']*RECM)**3) # planetary density (g/cm^3)
     df['rho_s'] = (df['M_s']*MSKG*1000) / ((4/3) * np.pi * (df['R_s']*RSCM)**3) # stellar density (g/cm^3)
     df['M_p/M_s'] = df['M_pE'] / (df['M_s']/METOMS) # mass of planet / mass of star
-    
-  ## orbital angles
+  
+ ## orbital angles
     df['Omega'] = df['Omega'] % 360
     df['e'] = df['sqrt(e) cos(omega)']**2 + df['sqrt(e) sin(omega)']**2 # eccentricity
     df['omega'] = (np.arctan2(df['sqrt(e) sin(omega)'], df['sqrt(e) cos(omega)']) * 180/np.pi) % 360 # argument of periapse (degrees)
@@ -186,21 +188,20 @@ def calculate_params(df):
     df['apo_R_s'] = (df['apo_AU']/RSAU) / df['R_s'] # apoastron in stellar radii
     df['d_AU'] = df['a_AU']*(1 - df['e']**2) / (1 + (df['e']*np.cos(df['true_anomaly']*np.pi/180))) # star-planet separation at transit in AU
     df['d_R_s'] = (df['d_AU']/RSAU) / df['R_s'] # star-planet separation at transit in stellar radii
-
-  ## impact, probability, and duration parameters
+ 
+ ## impact, probability, and duration parameters
     df['b_trans'] = (df['a_R_s'] * np.cos(df['i']*np.pi/180)) * ((1-df['e']**2)/(1+df['e']*np.sin(df['omega']*np.pi/180)))  # transit impact parameter
     df['b_occ'] = (df['a_R_s'] * np.cos(df['i']*np.pi/180)) * ((1-df['e']**2)/(1-df['e']*np.sin(df['omega']*np.pi/180))) # occultation impact parameter
     df['p_trans'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1+df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # transit probability
     df['p_occ'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1-df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # occultation probability
     df['T_total_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt((1+ df['R_p/R_s'])**2 - df['b_trans']**2)/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # total duration of transit (t4 - t1)
-    df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt((1-df['R_p/R_s'])**2 - df['b_trans']**2)/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
+    df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt(np.maximum(0,(1-df['R_p/R_s'])**2 - df['b_trans']**2))/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
     df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
     
     df = occurrence_rate_params(df) # The Hsu et al occurrence rate parameters.
     return df
 
 
-##### should attach a flag for if the planet system is in the hsu et al paper...?
 def occurrence_rate_params(df):
     """Attaches the occurrence rate parameters to a system df from Hsu et al 2018."""
     ocdf = pd.read_csv("occurrence_rates_hsu.csv")
@@ -224,7 +225,7 @@ def occurrence_rate_params(df):
 
 def rowe_table_attach(koi,df):
     """Attaches Jason Rowe's table to a system df (from Lissauer et al 2024)."""
-    rowe_df = pd.read_csv("rowe_table_final.csv")
+    rowe_df = pd.read_csv("rowe_table_final.csv", low_memory=False)
         
     num_new_cols = len(rowe_df.columns)
 
@@ -250,20 +251,24 @@ def rowe_table_attach(koi,df):
                 file.write("koi: " + koi +" planet: "+ str(planet) +"\n")
                 continue
 
-        print("row_rowe_match.loc[mask, 'KIC':'e_BZ*'].values:", row_rowe_match.loc[mask, "KIC":"e_BZ*_rowe"].values)
+#         print("row_rowe_match.loc[mask, 'KIC':'e_BZ*'].values:", row_rowe_match.loc[mask, "KIC":"e_BZ*_rowe"].values)
 
         df.loc[df["planet"] == planet, "KIC":"e_BZ*_rowe"] = row_rowe_match.loc[mask].loc[:,"KIC":"e_BZ*_rowe"].values
-        
     return df
     
+def is_in_hsu(df):
+    """Creates a column which marks whether a system is in the Hsu et al. catalog or not."""
+    hsu_star_df = pd.read_csv("hsu_stellar_catalog_output.csv")
+    df["hsu_flag"] = df["KIC"].isin(hsu_star_df['kepid']).astype(int)
+    return df
 
 
 def system_params(df):
-    """Calculate parameters related to each planet's ordering in its system and append to its df."""
+    """Calculates parameters related to each planet's ordering in its system and appends them to its df."""
     multiplicity = df['planet'].nunique()
     df['multiplicity'] = multiplicity  # number of planets per system
     
-    # Preset all comparisons to -1 (which, unchanged, will flag that the comparison is invalid, i.e. innermost planet / its inner planet).
+    # Preset all comparisons to -1 (which, unchanged, will flag that the comparison is invalid, i.e., innermost planet / its inner planet).
     df['P/Pin'] = -1.0
     df['P/Pout'] = -1.0
     df['Tdur/Tdurin'] = -1.0
@@ -351,7 +356,7 @@ def make_df_from_subsample(subsampled_rows,koi):
     
 def read_in_rows_write(breakpoints=False):
     """Tries to read in an output file from PhoDyMM; if anything errors for processing that file, this logs it."""
-    for file in (os.listdir(SUBSAMPLED_PATH)):
+    for file in tqdm(os.listdir(SUBSAMPLED_PATH)):
         koi = find_koi(file)
 
         try:

@@ -21,7 +21,9 @@ Steven Blodgett <blodgett.steven.m@gmail.com>
 Created on 2025-04-02
 """
 
-
+import corner
+import emcee
+import h5py
 import os
 import sys
 import commentjson as json
@@ -518,9 +520,78 @@ def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True):
         
         
  ### some kind of best fit plot        
- ### residuals (best fit - data)       
+ ### residuals (best fit - data)
+
     
- ### add a plot that sums along all the voxels in a column and displays it at the end as like a summed up heatmap thing 
+def trace_plot(voxel_id,results_folder):
+    trace_plot_folder = os.path.join(results_folder, "plots", "traces","basic_grid")
+    os.makedirs(trace_plot_folder, exist_ok=True)
+    sampler_backend_folder = results_folder + "/backend"
+    
+    filename = find_h5_file(voxel_id,sampler_backend_folder)
+    file_path = os.path.join(sampler_backend_folder, filename)
+
+    reader = emcee.backends.HDFBackend(file_path)
+
+    samples = reader.get_chain()
+    print("Chain shape:", samples.shape)
+    n_steps, n_walkers, n_dim = samples.shape
+    samples = np.array(samples)
+    
+    plt.figure(figsize=(10,5),dpi=150)
+    for walker_data in samples.transpose(1,0,2):
+        walker_data = np.squeeze(walker_data)
+        plt.plot(np.linspace(0,n_steps,n_steps), walker_data)
+    
+    plt.xlabel("Step Number")
+    plt.ylabel("Parameter value")
+    plt.suptitle("Trace Plot",fontsize=17)
+    plt.title(f"voxel: {voxel_id}")
+    plt.savefig(trace_plot_folder+f"/{voxel_id}_trace.png", dpi=150)
+    
+    
+def find_h5_file(voxel_id,sampler_backend_folder):
+    voxel_id = str(voxel_id)
+    h5_path = ""
+    h5_files = [f for f in os.listdir(sampler_backend_folder) if f.endswith('.h5')]
+    for file in h5_files:
+        m = re.search("_"+voxel_id+"_",file)
+        if m:
+            h5_path = file
+            break
+    if not h5_path:
+        return
+    return h5_path
+
+
+def corner_plot(voxel_id, results_folder):
+    corner_plot_folder = os.path.join(results_folder, "plots", "corners","basic_grid")
+    os.makedirs(corner_plot_folder, exist_ok=True)
+    sampler_backend_folder = results_folder + "/backend"
+    
+    filename = find_h5_file(voxel_id,sampler_backend_folder)
+    file_path = os.path.join(sampler_backend_folder, filename)
+
+    reader = emcee.backends.HDFBackend(file_path)
+
+    samples = reader.get_chain()
+    print("Chain shape:", samples.shape)
+    n_steps, n_walkers, n_dim = samples.shape
+    samples = np.array(samples)
+    
+    corner_plot = corner.corner(samples.reshape(-1,1),labels=["$\mathcal{M}_{MRP}$"])
+    
+    corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
+
+# chain_data = np.array(chains['chain'])  # shape: (nsteps, nwalkers, ndim)
+
+# for walker_chain in chain_data.transpose(1, 0, 2):  # loop over walkers
+#     plt.plot(walker_chain.squeeze())  # squeeze in case ndim == 1
+
+# plt.xlabel("Step")
+# plt.ylabel("Parameter value")
+# plt.title("Walker chains")
+# plt.show()
         
         
 def main():
@@ -548,23 +619,34 @@ def main():
     make_gifs = plotprops.get("make_gifs")
     fps = plotprops.get("fps")
     make_cumulative_hist = plotprops.get("make_cumulative_hist")
-    print(plottype, type(plottype))
+    voxel_id = plotprops.get("voxel_id")
+    print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
 
-    df = pd.read_csv(input_data_filename)
-    voxel_grid.setup_dataframes(df.columns)
-    voxel_grid.add_data(df)
-    voxel_grid.make_mass_divided_weights()
-    
+    if plottype in ["heatmap","heatmap_flat_density"]:
+        df = pd.read_csv(input_data_filename)
+        voxel_grid.setup_dataframes(df.columns)
+        voxel_grid.add_data(df)
+        voxel_grid.make_mass_divided_weights()
+
     plot_all = plottype == "all"
     
     # Actually make the plots.
     if plot_all or plottype == "heatmap":
-        heatmap_plot(voxel_grid,'../results',make_gifs=make_gifs,verbose=verbose,fps=fps,make_cumulative=make_cumulative_hist)
+        heatmap_plot(voxel_grid,results_folder,make_gifs=make_gifs,verbose=verbose,fps=fps,make_cumulative=make_cumulative_hist)
         
     if plot_all or plottype == "heatmap_flat_density":
-        heatmap_plot(voxel_grid,'../results',make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=True,make_cumulative=make_cumulative_hist)
+        heatmap_plot(voxel_grid,results_folder,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=True,make_cumulative=make_cumulative_hist)
+        
+    if plottype == "trace":
+        
+        trace_plot(voxel_id,results_folder)
+        
+    if plottype == "corner":
+        
+        corner_plot(voxel_id, results_folder)
+        
     
     
 if __name__ == "__main__":

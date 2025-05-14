@@ -27,7 +27,6 @@ RECM=6.378*10**8  # earth radius in cm
 MEG=5.9721986*10**27 # earth mass in grams
 
 
-# defines one voxel class in the mass-radius-period grid. 
 class RPMVoxel:
     """
     Represents part of the radius-period-mass exoplanet occurrence space.
@@ -105,7 +104,7 @@ class RPMVoxel:
     
     def create_initial_guess(self):
         """Creates an initial guess for the occurrence rate."""
-        self.initial_guess = np.sum(self.df['mass_divided_weights'])
+        self.initial_guess = np.sum(self.df['mass_divided_weights']) 
     
     def __str__(self):
         """Returns a string representation of the voxel."""
