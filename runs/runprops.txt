@@ -5,8 +5,7 @@
     "time": "now",
     "user": "autogenerate",
     "RunGoal" : "Kepler Occurrence Rate Fitting",
-    "transform": true,
-
+    "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
 
     # Run properties/parameters
     "nwalkers" : 20,           # number of walkers in emcee ensemble
@@ -25,6 +24,7 @@
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
     "input_data_filename": "../data/thinned/all_thin.csv",  # PhoDyMM thinned posteriors (with calculated values)
+    "voxel_data_folder": "../data/thinned/voxel_data",      # location of cached voxel dataframes (for faster runs)
     "results_folder":"../results",                          # where the results go 
 
     # Additional options

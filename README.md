@@ -8,4 +8,7 @@ Then, it calculates non-parameterized 3D histogram weights using emcee (Foreman-
 
 ---
 
+
+---
+
 Developed by Steven Blodgett and Darin Ragozzine, Brigham Young University. For more information, contact blodgett.steven.m@gmail.com or darin_ragozzine@byu.edu.

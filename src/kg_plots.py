@@ -579,7 +579,8 @@ def corner_plot(voxel_id, results_folder):
     n_steps, n_walkers, n_dim = samples.shape
     samples = np.array(samples)
     
-    corner_plot = corner.corner(samples.reshape(-1,1),labels=["$\mathcal{M}_{MRP}$"])
+    corner_plot = corner.corner(samples.reshape(-1,1),labels=["$\mathcal{R}_{MRP}$"])
+    plt.title(f"voxel: {voxel_id}")
     
     corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
 

@@ -1,6 +1,6 @@
 {
     # What kinds of plots should be made?
-    "plottype": "corner", # possible types: all, heatmap, heatmap_flat_density, trace, corner
+    "plottype": "trace", # possible types: all, heatmap, heatmap_flat_density, trace, corner
 
     # Voxel id (for specific voxel plots)
     "voxel_id" : 2200,

@@ -102,6 +102,16 @@ class RPMVoxel:
         """Returns the number of rows/posterior draws within the voxel."""
         return len(self.df)
     
+    def cache_data(self,cache_path):
+        self.df.to_csv(cache_path+f"/voxel_{self.id_number}.csv") ## could indicate with... _R{self.bottom_radius}-{self.top_radius}_P{self.bottom_period}-{self.top_period}_M{self.bottom_mass}-{self.top_mass} ??
+        
+    def get_cached_data(self,cache_path):
+        self.df = pd.read_csv(cache_path+f"/voxel_{self.id_number}.csv",index_col=0)
+
+    def get_cached_data_count(self,cache_path):
+        with open(cache_path+f"/voxel_{self.id_number}.csv", 'r', encoding='utf-8') as f:
+          return sum(1 for _ in f) - 1  # subtract header
+    
     def create_initial_guess(self):
         """Creates an initial guess for the occurrence rate."""
         self.initial_guess = np.sum(self.df['mass_divided_weights']) 
@@ -140,11 +150,15 @@ class RPMGrid:
         self.voxel_array = [[[RPMVoxel(self.radius_grid_array[i],self.radius_grid_array[i+1],self.period_grid_array[j],self.period_grid_array[j+1],self.mass_grid_array[k],self.mass_grid_array[k+1]) for k in range(self.m_len)] for j in range(self.p_len)] for i in range(self.r_len)]
         
         id_number=0
+        self.id_array=np.array([[[]]])
         for i in self.voxel_array:
             for j in i:
+                k_idx=0
                 for k in j:
                     k.create_id(id_number)
+                    self.id_array[i,j,k_idx] = id_number  #### this needs to be fixed: look at type of i,j for quick find by id
                     id_number+=1
+                    k_idx+=1
         
 
     def setup_dataframes(self,columns):
@@ -167,17 +181,33 @@ class RPMGrid:
             voxel = self.voxel_array[r_idx][p_idx][m_idx]
             voxel.add_data(group.drop(['r_idx', 'p_idx', 'm_idx'], axis=1))
             
-    
-    
-    def find_voxel_by_id(self,voxel_id):
+            
+    def cache_dataframes(self,cache_path="../data/thinned/voxel_data"):
         for i in self.voxel_array:
             for j in i:
                 for k in j:
-                    print(type(k),k)
-                    if k.id_number == voxel_id:
-                        return k
+                    k.cache_data(cache_path)
+    
+    
+    def find_voxel_by_id(self,voxel_id):
+        location = np.argwhere(self.id_array == voxel_id)
+        if location.size == 0:
+            print("Unable to find voxel with given voxel id.")
+            return None
+
+        # location[0] gets the first match
+        # tuple(location[0]) makes it usable as an index
+        return self.voxel_array[tuple(location[0])]
+        # # for i in self.voxel_array:
+        # #     for j in i:
+        # #         for k in j:
+        # #             if k.id_number == voxel_id:
+        # #                 return k
                     
-        print("unable to find voxel with given voxel id.")
+        # # print("unable to find voxel with given voxel id.")
+
+        # location = np.argwhere(self.id_array == voxel_id)
+        # return self.voxel_array[np.array[tuple(location.T)]]
         
     def find_voxel_by_coordinates(self,radius,period,mass):
         for i in self.voxel_array:
@@ -188,22 +218,27 @@ class RPMGrid:
                     
         print("unable to find voxel with given coordinates.")
         
-    def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period):
+    def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period,cache_path,is_cached=True):
         num_points = 0
         for i in self.voxel_array:
             for j in i:
                 for k in j:
                     if k.bottom_radius == low_radius and k.top_radius == high_radius and k.bottom_period == low_period and k.top_period == high_period:
-                        num_points += len(k.df)
+                        if is_cached: 
+                            length_voxel = k.get_cached_data_count(cache_path)
+                        else:
+                            length_voxel = len(k.df)
+                        num_points += length_voxel
                         
         return num_points
     
-    def make_mass_divided_weights(self):
+    def make_mass_divided_weights(self,voxel_id,cache_path,is_cached=True):
         for i in self.voxel_array:
             for j in i:
                 for k in j:
-                    voxel_number = k.num_data()
-                    k.df["mass_divided_weights"] = k.df['occurrence_rate_hsu']  * voxel_number /        self.count_points_in_RP_column(k.top_radius,k.bottom_radius,k.top_period,k.bottom_period) # used to multiply by voxel_number
+                    if k.id_number == voxel_id:
+                      voxel_number_of_posterior_draws = k.num_data()
+                      k.df["mass_divided_weights"] = k.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / self.count_points_in_RP_column(k.top_radius,k.bottom_radius,k.top_period,k.bottom_period,cache_path,is_cached) # used to multiply by voxel_number
         
     def __str__(self):
         """Returns a string representation of the entire grid."""

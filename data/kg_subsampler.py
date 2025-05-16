@@ -143,9 +143,9 @@ def column_rename(df):
         elif n%9 == 2:
             df.rename(columns={column: f'T_0'}, inplace=True) # time of transit 0 (days in the BKJD system)
         elif n%9 == 3:
-            df.rename(columns={column: f'sqrt(e) cos(omega)'}, inplace=True)
+            df.rename(columns={column: f'sqrt(e)_cos(omega)'}, inplace=True)
         elif n%9 == 4:
-            df.rename(columns={column: f'sqrt(e) sin(omega)'}, inplace=True)          
+            df.rename(columns={column: f'sqrt(e)_sin(omega)'}, inplace=True)          
         elif n%9 == 5:
             df.rename(columns={column: f'i'}, inplace=True) # inclination (degrees)
         elif n%9 == 6:
@@ -172,8 +172,8 @@ def calculate_params(df):
   
  ## orbital angles
     df['Omega'] = df['Omega'] % 360
-    df['e'] = df['sqrt(e) cos(omega)']**2 + df['sqrt(e) sin(omega)']**2 # eccentricity
-    df['omega'] = (np.arctan2(df['sqrt(e) sin(omega)'], df['sqrt(e) cos(omega)']) * 180/np.pi) % 360 # argument of periapse (degrees)
+    df['e'] = df['sqrt(e)_cos(omega)']**2 + df['sqrt(e)_sin(omega)']**2 # eccentricity
+    df['omega'] = (np.arctan2(df['sqrt(e)_sin(omega)'], df['sqrt(e)_cos(omega)']) * 180/np.pi) % 360 # argument of periapse (degrees)
     df['true_anomaly'] = (90 - df['omega']) % 360
     df['eccentric_anomaly'] = ((180 / np.pi) * np.arctan2((np.sqrt(1-df['e']**2)*np.sin(df['true_anomaly']*np.pi/180)),(df['e']+np.cos(df['true_anomaly']*np.pi/180)))) % 360
     df['mean_anomaly'] = ((180 / np.pi) * ((np.pi / 180 ) * df['eccentric_anomaly']) - (df['e']*np.sin(df['eccentric_anomaly']*np.pi/180))) % 360 # M, the mean anomaly (19 degrees for KOI 500.01)
@@ -206,8 +206,8 @@ def occurrence_rate_params(df):
     """Attaches the occurrence rate parameters to a system df from Hsu et al 2018."""
     ocdf = pd.read_csv("occurrence_rates_hsu.csv")
     df["occurrence_rate_hsu"] = 0.0
-    df["+sigma_hsu"] = 0.0
-    df["-sigma_hsu"] = 0.0
+    df["E_or_hsu"] = 0.0
+    df["e_or_hsu"] = 0.0
     
     # Attach the occurrence rate parameter to each row of the df.
     for i in df.index:
@@ -217,8 +217,8 @@ def occurrence_rate_params(df):
                 (ocdf["period_upper"] > df.at[i,"Period_days"]))
                 
         df.at[i,"occurrence_rate_hsu"] = ocdf.loc[mask]["occurrence"].iloc[0]
-        df.at[i,"+sigma_hsu"] = ocdf.loc[mask]["+sigma"].iloc[0]
-        df.at[i,"-sigma_hsu"] = ocdf.loc[mask]["-sigma"].iloc[0]
+        df.at[i,"E_or_hsu"] = ocdf.loc[mask]["+sigma"].iloc[0]
+        df.at[i,"e_or_hsu"] = ocdf.loc[mask]["-sigma"].iloc[0]
         
     return df
 
@@ -251,7 +251,6 @@ def rowe_table_attach(koi,df):
                 file.write("koi: " + koi +" planet: "+ str(planet) +"\n")
                 continue
 
-#         print("row_rowe_match.loc[mask, 'KIC':'e_BZ*'].values:", row_rowe_match.loc[mask, "KIC":"e_BZ*_rowe"].values)
 
         df.loc[df["planet"] == planet, "KIC":"e_BZ*_rowe"] = row_rowe_match.loc[mask].loc[:,"KIC":"e_BZ*_rowe"].values
     return df
@@ -383,8 +382,8 @@ def single_df_write(subsampled_rows,koi):
     """"Creates a dataframe from one PhoDyMM output file, processes it, and then writes it to all_thin.csv ."""
     df = make_df_from_subsample(subsampled_rows,koi)
     df = process_dataframe(df,koi)       
-    write_header = not os.path.exists('thinned/all_thin.csv')
-    df.to_csv('thinned/all_thin.csv', mode='a',header=write_header)
+    write_header = not os.path.exists('thinned/KMDC.csv')
+    df.to_csv('thinned/KMDC.csv', mode='a',header=write_header)
 
 
 if __name__ == "__main__":

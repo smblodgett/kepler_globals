@@ -35,44 +35,44 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",hsu
     
     # Get DR25 catalog.
     dr_df = pd.read_csv(dr_path)
-    
+    # Get Hsu stellar catalog.
     hsu_star_df = pd.read_csv(hsu_star_path)
-    
+    # Mark the DR25 catalog with those that are in the Hsu stellar catalog.
     dr_df["in_hsu"] = dr_df["kepid"].isin(hsu_star_df["kepid"]).astype(int)
     
-    # Get specific voxel to run model on. 
+    # Get the specific voxel to run the model on. 
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
-#     voxel.create_initial_guess()
-    print(voxel_id)
-    print(voxel,voxel.initial_guess)
     assert type(voxel) == RPMVoxel
     
-    # create backend
+    # Create the emcee backend.
     backend_folder = runprops["results_folder"] + "/backend/"
     os.makedirs(backend_folder, exist_ok=True)
     backend_filename = backend_folder + "voxel_" + str(voxel_id) + "_chain.h5"
     backend = emcee.backends.HDFBackend(backend_filename)
     backend.reset(runprops["nwalkers"], runprops["ndim"])
-    
+    # Only use planets that are in the DR25 and in Hsu's stellar catalog. 
     phodymm_dr_df = voxel.df[voxel.df["Status_rowe"].str[2]=='P']
+    phodymm_dr_df = phodymm_dr_df[phodymm_dr_df["hsu_flag"]==1]
+    # The actual number of PhoDyMM observed planets (the number of posterior draws/rows in the voxel's dataframe).
+    actual_phodymm_observed = len(phodymm_dr_df) / 1000 
     
-    actual_obs = len(phodymm_dr_df) / 1000 
-    
-    # Create the emcee sampler.
-    sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-    kg_likelihood.likelihood, backend=backend, args=(actual_obs,))
-    
-
+    # Calculate the number of planets that the Hsu model says are in the RP pixel.
     observed_planets_num = 0 
     for index, row in dr_df[dr_df["in_hsu"] == 1].iterrows():
         if row["koi_prad"] < voxel.top_radius and row["koi_prad"] > voxel.bottom_radius and row["koi_period"] < voxel.top_period and row["koi_period"] > voxel.bottom_period:
             observed_planets_num += 1
-    
+    # Calculate the observation probability, aka the fraction of planets of this pixel that are actually observed based off of the given Hsu occurrence rates. 
     observation_probability = observed_planets_num / (voxel.df["occurrence_rate_hsu"].iloc[0] * N_HSU_STARS)
-    
-    expected = N_HSU_STARS * voxel.df["mass_divided_weights"].iloc[0] * observation_probability
-    
-    p0 = np.array([[expected * (np.random.lognormal(0,np.max(np.abs([voxel.df['+sigma_hsu']/10,voxel.df['-sigma_hsu']/10]))))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be
+    # Find how many planets we should actually expect to observe based off of the Hsu model.
+    R_mrp = voxel.df["mass_divided_weights"].iloc[0] # this is Rmrp
+
+    # Create the emcee sampler.
+    sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
+    kg_likelihood.likelihood, backend=backend, args=(actual_phodymm_observed,N_HSU_STARS,observation_probability))
+
+
+    ### pass Rmrp into the likelihood function, not Mmrp
+    p0 = np.array([[R_mrp + (np.random.normal(0,R_mrp/10))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
 
 # put things in units of planets
 # correct for the distribution of 
@@ -106,31 +106,32 @@ def main(voxel_id):
     getData = ReadJson(runprops_filename)
     runprops = getData.outProps()
 
-    # Create voxel grid data structure, load it with the data.
+    # Create voxel grid data structure.
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
+    
+    use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
 
-    df = pd.read_csv(runprops["input_data_filename"]) 
+    if runprops["verbose"]: print("use_cache is ",use_cache)
+    
+    # If the voxels don't have their data cached, then read in everything.
+    if not use_cache:
+        df = pd.read_csv(runprops["input_data_filename"],index_col=0) 
+        if runprops["verbose"]: print("read in the catalog without caching")
+    # Otherwise, you can just read in 1 voxel that has its data cached.    
+    else:
+        df = pd.read_csv(runprops["voxel_data_folder"]+"/voxel_"+str(voxel_id)+".csv",index_col=0)
+        if runprops["verbose"]: print("read in cached df")
 
+    # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
     voxel_grid.setup_dataframes(df.columns)
     voxel_grid.add_data(df)
-    
-#     print("column points in 0.5-0.75 radius, 4-8 days:",voxel_grid.count_points_in_RP_column(0.75,0.5,8.0,4.0))
-#     print("points in 0.5-0.75 radius, 4-8 days, 0-.25 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.15))
-#     print("points in 0.5-0.75 radius, 4-8 days, .25-.5 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.35))
-#     print("points in 0.5-0.75 radius, 4-8 days, .5-.75 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.65))
-#     print("points in 0.5-0.75 radius, 4-8 days, .75-1 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,0.85))
-#     print("points in 0.5-0.75 radius, 4-8 days, 1-1.5 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,1.15))
-#     print("points in 0.5-0.75 radius, 4-8 days, 1.5-2 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,1.75))
-#     print("points in 0.5-0.75 radius, 4-8 days, 2-3 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,2.75))
-#     print("points in 0.5-0.75 radius, 4-8 days, 3-4 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,3.75))
-#     print("points in 0.5-0.75 radius, 4-8 days, 4-6 M:",voxel_grid.find_voxel_by_coordinates(0.55,5,4.75))
+    if not use_cache:
+        os.makedirs(runprops["voxel_data_folder"],exist_ok=True)
+        voxel_grid.cache_dataframes(runprops["voxel_data_folder"])
 
-#     input()
-
-    voxel_grid.make_mass_divided_weights()
-
-    if runprops["verbose"] : print(voxel_grid)
-        
+    # Partition the Hsu et al. weights by mass.
+    voxel_grid.make_mass_divided_weights(voxel_id,runprops["voxel_data_folder"],use_cache)
+            
     run_emcee(voxel_grid,voxel_id,runprops)
     
     
