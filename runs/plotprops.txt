@@ -1,9 +1,9 @@
 {
     # What kinds of plots should be made?
-    "plottype": "trace", # possible types: all, heatmap, heatmap_flat_density, trace, corner
+    "plottype": "corner", # possible types: all, heatmap, heatmap_flat_density, trace, corner
 
     # Voxel id (for specific voxel plots)
-    "voxel_id" : 2200,
+    "voxel_id" : 0,
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",

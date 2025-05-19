@@ -21,7 +21,6 @@ Created on: 2024-10-10
 import os
 import numpy as np
 import pandas as pd
-from collections import defaultdict
 
 
 RECM=6.378*10**8  # earth radius in cm
@@ -81,7 +80,6 @@ class RPMVoxel:
         self.bottom_mass = bottom_mass
         self.top_mass = top_mass
         self.id_number = -1
-        self.implausible = False
     
     def within(self,radius,period,mass):
         """For a given value in radius-period-mass space, returns True if the voxel contains this value."""
@@ -115,8 +113,9 @@ class RPMVoxel:
         
     def is_implausible(self):
         def density(radius, mass):
-            return (mass * MEG) / ((4/3)*np.pi*(RECM*radius)**3)
-        self.implausible = density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01           
+            assert radius >= 0
+            return (mass * MEG) / ((4/3)*np.pi*(RECM*radius)**3) if radius > 0 else np.inf
+        return density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01           
     
     def __str__(self):
         """Returns a string representation of the voxel."""
@@ -266,8 +265,40 @@ class RPMGrid:
               voxel_number_of_posterior_draws = voxel.num_data()
               voxel.df["mass_divided_weights"] = voxel.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / self.count_points_in_RP_column(voxel.top_radius,voxel.bottom_radius,voxel.top_period,voxel.bottom_period,cache_path,is_cached) # used to multiply by voxel_number
         
-    def get_occurrence_rate(self):
-        pass
+    def get_occurrence_rate(self,voxel_id):
+        voxel = self.find_voxel_by_id(voxel_id)
+        if len(voxel.df) != 0:
+            return voxel.df["occurrence_rate_hsu"].iloc[0]
+        else:
+            occurrence_rate_df = pd.read_csv("../data/occurrence_rates_hsu.csv")
+            mask = ((occurrence_rate_df["radius_lower"] == voxel.bottom_radius) &
+                    (occurrence_rate_df["radius_upper"] == voxel.top_radius) &
+                    (occurrence_rate_df["period_lower"] == voxel.bottom_period) &
+                    (occurrence_rate_df["period_upper"] == voxel.top_period)
+                    )
+            return occurrence_rate_df.loc[mask].iloc[0]["occurrence"]
+        
+        #     for lookup_voxel in self.voxel_array.flat:
+        #         if lookup_voxel.bottom_radius == voxel.bottom_radius and lookup_voxel.top_radius == voxel.top_radius and lookup_voxel.bottom_period == voxel.bottom_period and lookup_voxel.top_period == voxel.top_period:
+        #             print("bottom radius: ",voxel.bottom_radius)
+        #             print("top radius: ",voxel.top_radius)
+        #             print("bottom period: ",voxel.bottom_period)
+        #             print("top period: ",voxel.top_period)
+
+        #             luv_id = lookup_voxel.id_number
+        #             print("HHHEEERREEEE" + f" with {luv_id}")
+
+        #             lines = 0
+        #             with open(f"../data/thinned/voxel_data/voxel_{luv_id}.csv", 'rb') as f:
+        #                 print("hshsfhsdfhsadfhasdhsfhsdfhhdssdhsdfh")
+        #                 lines = sum(1 for line in f) - 1
+
+        #             if lines > 0:
+        #                 print(f"voxel {luv_id} had lines!!!!!")
+        #                 return lookup_voxel.df["occurrence_rate_hsu"].iloc[0]
+                    
+        # print("Unable to get occurrence rate.")
+
 
     def __str__(self):
         """Returns a string representation of the entire grid."""

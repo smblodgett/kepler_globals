@@ -23,6 +23,7 @@
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
+    "log_filename": "../runs/grid_model_log.txt", 
     "input_data_filename": "../data/thinned/all_thin.csv",  # PhoDyMM thinned posteriors (with calculated values)
     "voxel_data_folder": "../data/thinned/voxel_data",      # location of cached voxel dataframes (for faster runs)
     "results_folder":"../results",                          # where the results go 

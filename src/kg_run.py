@@ -62,6 +62,20 @@ def number_of_singles_in_voxel(voxel, expanded_dr_df):
 
 def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
     
+    # Get the specific voxel to run the model on. 
+    voxel = voxel_grid.find_voxel_by_id(voxel_id)
+    assert type(voxel) == RPMVoxel
+    print(voxel)
+    timer(runprops["timer"],"voxel find")
+
+    # If the voxel is completely outside of the density prior, just skip it.
+    if voxel.is_implausible():
+        if not runprops["suppress_warnings"]:
+            print("This voxel is outside of the density priors. emcee will not be run on it.")
+            with open(runprops["log_filename"], "a") as file:
+                file.write("Voxel outside density priors for: "+str(voxel_id)+"\n")
+        quit()
+
     # Get DR25 catalog.
     dr_df = pd.read_csv(dr_path)
     # Get processed singles dataframe. 
@@ -73,17 +87,6 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
     
     timer(runprops["timer"],"other readin")
 
-    # Get the specific voxel to run the model on. 
-    voxel = voxel_grid.find_voxel_by_id(voxel_id)
-    assert type(voxel) == RPMVoxel
-
-    timer(runprops["timer"],"voxel find")
-
-    # If the voxel is completely outside of the density prior, just skip it.
-    if voxel.implausible:
-        if not runprops["suppress_warnings"]:
-            print("This voxel is outside of the density priors. emcee will not be run on it.")
-        quit()
     
     # Create the emcee backend.
     backend_folder = runprops["results_folder"] + "/backend/"
@@ -102,12 +105,30 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
     for index, row in dr_df[dr_df["in_hsu"] == 1].iterrows():
         if row["koi_prad"] < voxel.top_radius and row["koi_prad"] > voxel.bottom_radius and row["koi_period"] < voxel.top_period and row["koi_period"] > voxel.bottom_period:
             observed_planets_num += 1
+    
     # Calculate the observation probability, aka the fraction of planets of this pixel that are actually observed based off of the given Hsu occurrence rates. 
-    hsu_occurrence_rate = voxel_grid.get_occurrence_rate()
+    hsu_occurrence_rate = voxel_grid.get_occurrence_rate(voxel_id)
 
-    observation_probability = observed_planets_num / (voxel.df["occurrence_rate_hsu"].iloc[0] * N_HSU_STARS)
+    observation_probability = observed_planets_num / (hsu_occurrence_rate * N_HSU_STARS)
+    if observation_probability == 0:
+        with open(runprops["log_filename"], "a") as file:
+            file.write("observation probability = 0 for: "+str(voxel_id)+"\n")
+        if not runprops["suppress_warnings"]: 
+            print("Observation probability = 0. Not running emcee.") # what about observation probability?
+        quit()
+
     # Find how many planets we should actually expect to observe based off of the Hsu model.
-    R_mrp = voxel.df["mass_divided_weights"].iloc[0] # this is Rmrp
+    if len(voxel.df) != 0: 
+        R_mrp_initial_guess = voxel.df["mass_divided_weights"].iloc[0] # this is Rmrp
+    else:
+        R_mrp_initial_guess = 0.0
+
+    if R_mrp_initial_guess == 0 and actual_phodymm_observed == 0: # seems like if BOTH have nothing, we should just...not run emcee on it
+        with open(runprops["log_filename"], "a") as file:
+                file.write("R_mrp and D_mrp = 0 for: "+str(voxel_id)+"\n")
+        if not runprops["suppress_warnings"]: 
+            print("Both the R_mrp and actual_PhoDyMM values = 0. Not running emcee.") # what about observation probability?
+        quit()
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
@@ -116,7 +137,11 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
     timer(runprops["timer"],"emcee setup")
 
     ### pass Rmrp into the likelihood function, not Mmrp
-    p0 = np.array([[R_mrp + (np.random.normal(0,R_mrp/10))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
+    if R_mrp_initial_guess == 0:
+        p0 = np.array([[R_mrp_initial_guess + (np.random.normal(0,0.01))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
+    else:
+        p0 = np.array([[R_mrp_initial_guess + (np.random.normal(0,R_mrp_initial_guess/10))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
+
 
 # correct for the distribution of 
     
@@ -126,7 +151,9 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
         state = sampler.run_mcmc(p0, runprops["nsteps"], progress = True, store = True, thin=runprops["nthinning"])
     else:
         state = sampler.run_mcmc(p0, runprops["nsteps"], progress = True, store = True)
-        
+
+    with open(runprops["log_filename"], "a") as file:
+        file.write("success: "+str(voxel_id)+"\n")
     timer(runprops["timer"],"emcee run")
     
 
@@ -193,12 +220,17 @@ def main(voxel_id):
     voxel_grid.make_mass_divided_weights(voxel_id,runprops["voxel_data_folder"],use_cache)
 
     timer(runprops["timer"],"weight partition")
-            
-    run_emcee(voxel_grid,voxel_id,runprops)
 
-    timer(runprops["timer"],"",mode="final")
-    
-    
+    try:        
+        run_emcee(voxel_grid,voxel_id,runprops)
+    except Exception as e:
+        print("Error occurred..." + str(e))
+        with open(runprops["log_filename"], "a") as file:
+            file.write(str(e)+": "+str(voxel_id)+"\n")
+    finally:
+        timer(runprops["timer"],"",mode="final")
+
+
 if __name__ == "__main__":
     old_time = time.time()
     start_time = old_time

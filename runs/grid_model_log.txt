@@ -1,0 +1,978 @@
+observation probability = 0 for: 0
+observation probability = 0 for: 1
+observation probability = 0 for: 2
+Voxel outside density priors for: 3
+Voxel outside density priors for: 4
+Voxel outside density priors for: 5
+Voxel outside density priors for: 6
+Voxel outside density priors for: 7
+Voxel outside density priors for: 8
+Voxel outside density priors for: 9
+Voxel outside density priors for: 10
+Voxel outside density priors for: 11
+Voxel outside density priors for: 12
+Voxel outside density priors for: 13
+Voxel outside density priors for: 14
+Voxel outside density priors for: 15
+Voxel outside density priors for: 16
+Voxel outside density priors for: 17
+Voxel outside density priors for: 18
+success: 19
+success: 20
+success: 21
+Voxel outside density priors for: 22
+Voxel outside density priors for: 23
+Voxel outside density priors for: 24
+Voxel outside density priors for: 25
+Voxel outside density priors for: 26
+Voxel outside density priors for: 27
+Voxel outside density priors for: 28
+Voxel outside density priors for: 29
+Voxel outside density priors for: 30
+Voxel outside density priors for: 31
+Voxel outside density priors for: 32
+Voxel outside density priors for: 33
+Voxel outside density priors for: 34
+Voxel outside density priors for: 35
+Voxel outside density priors for: 36
+Voxel outside density priors for: 37
+observation probability = 0 for: 38
+observation probability = 0 for: 39
+observation probability = 0 for: 40
+Voxel outside density priors for: 41
+Voxel outside density priors for: 42
+Voxel outside density priors for: 43
+Voxel outside density priors for: 44
+Voxel outside density priors for: 45
+Voxel outside density priors for: 46
+Voxel outside density priors for: 47
+Voxel outside density priors for: 48
+Voxel outside density priors for: 49
+Voxel outside density priors for: 50
+Voxel outside density priors for: 51
+Voxel outside density priors for: 52
+Voxel outside density priors for: 53
+Voxel outside density priors for: 54
+Voxel outside density priors for: 55
+Voxel outside density priors for: 56
+success: 57
+success: 58
+success: 59
+Voxel outside density priors for: 60
+Voxel outside density priors for: 61
+Voxel outside density priors for: 62
+Voxel outside density priors for: 63
+Voxel outside density priors for: 64
+Voxel outside density priors for: 65
+Voxel outside density priors for: 66
+Voxel outside density priors for: 67
+Voxel outside density priors for: 68
+Voxel outside density priors for: 69
+Voxel outside density priors for: 70
+Voxel outside density priors for: 71
+Voxel outside density priors for: 72
+Voxel outside density priors for: 73
+Voxel outside density priors for: 74
+Voxel outside density priors for: 75
+success: 76
+success: 77
+success: 78
+Voxel outside density priors for: 79
+Voxel outside density priors for: 80
+Voxel outside density priors for: 81
+Voxel outside density priors for: 82
+Voxel outside density priors for: 83
+Voxel outside density priors for: 84
+Voxel outside density priors for: 85
+Voxel outside density priors for: 86
+Voxel outside density priors for: 87
+Voxel outside density priors for: 88
+Voxel outside density priors for: 89
+Voxel outside density priors for: 90
+Voxel outside density priors for: 91
+Voxel outside density priors for: 92
+Voxel outside density priors for: 93
+Voxel outside density priors for: 94
+observation probability = 0 for: 95
+observation probability = 0 for: 96
+observation probability = 0 for: 97
+Voxel outside density priors for: 98
+Voxel outside density priors for: 99
+Voxel outside density priors for: 100
+Voxel outside density priors for: 101
+Voxel outside density priors for: 102
+Voxel outside density priors for: 103
+Voxel outside density priors for: 104
+Voxel outside density priors for: 105
+Voxel outside density priors for: 106
+Voxel outside density priors for: 107
+Voxel outside density priors for: 108
+Voxel outside density priors for: 109
+Voxel outside density priors for: 110
+Voxel outside density priors for: 111
+Voxel outside density priors for: 112
+Voxel outside density priors for: 113
+observation probability = 0 for: 114
+observation probability = 0 for: 115
+observation probability = 0 for: 116
+Voxel outside density priors for: 117
+Voxel outside density priors for: 118
+Voxel outside density priors for: 119
+Voxel outside density priors for: 120
+Voxel outside density priors for: 121
+Voxel outside density priors for: 122
+Voxel outside density priors for: 123
+Voxel outside density priors for: 124
+Voxel outside density priors for: 125
+Voxel outside density priors for: 126
+Voxel outside density priors for: 127
+Voxel outside density priors for: 128
+Voxel outside density priors for: 129
+Voxel outside density priors for: 130
+Voxel outside density priors for: 131
+Voxel outside density priors for: 132
+observation probability = 0 for: 133
+observation probability = 0 for: 134
+observation probability = 0 for: 135
+Voxel outside density priors for: 136
+Voxel outside density priors for: 137
+Voxel outside density priors for: 138
+Voxel outside density priors for: 139
+Voxel outside density priors for: 140
+Voxel outside density priors for: 141
+Voxel outside density priors for: 142
+Voxel outside density priors for: 143
+Voxel outside density priors for: 144
+Voxel outside density priors for: 145
+Voxel outside density priors for: 146
+Voxel outside density priors for: 147
+Voxel outside density priors for: 148
+Voxel outside density priors for: 149
+Voxel outside density priors for: 150
+Voxel outside density priors for: 151
+observation probability = 0 for: 152
+observation probability = 0 for: 153
+observation probability = 0 for: 154
+Voxel outside density priors for: 155
+Voxel outside density priors for: 156
+Voxel outside density priors for: 157
+Voxel outside density priors for: 158
+Voxel outside density priors for: 159
+Voxel outside density priors for: 160
+Voxel outside density priors for: 161
+Voxel outside density priors for: 162
+Voxel outside density priors for: 163
+Voxel outside density priors for: 164
+Voxel outside density priors for: 165
+Voxel outside density priors for: 166
+Voxel outside density priors for: 167
+Voxel outside density priors for: 168
+Voxel outside density priors for: 169
+Voxel outside density priors for: 170
+observation probability = 0 for: 171
+observation probability = 0 for: 172
+observation probability = 0 for: 173
+Voxel outside density priors for: 174
+Voxel outside density priors for: 175
+Voxel outside density priors for: 176
+Voxel outside density priors for: 177
+Voxel outside density priors for: 178
+Voxel outside density priors for: 179
+Voxel outside density priors for: 180
+Voxel outside density priors for: 181
+Voxel outside density priors for: 182
+Voxel outside density priors for: 183
+Voxel outside density priors for: 184
+Voxel outside density priors for: 185
+Voxel outside density priors for: 186
+Voxel outside density priors for: 187
+Voxel outside density priors for: 188
+Voxel outside density priors for: 189
+observation probability = 0 for: 190
+observation probability = 0 for: 191
+observation probability = 0 for: 192
+Voxel outside density priors for: 193
+Voxel outside density priors for: 194
+Voxel outside density priors for: 195
+Voxel outside density priors for: 196
+Voxel outside density priors for: 197
+Voxel outside density priors for: 198
+Voxel outside density priors for: 199
+Voxel outside density priors for: 200
+Voxel outside density priors for: 201
+Voxel outside density priors for: 202
+Voxel outside density priors for: 203
+Voxel outside density priors for: 204
+Voxel outside density priors for: 205
+Voxel outside density priors for: 206
+Voxel outside density priors for: 207
+Voxel outside density priors for: 208
+observation probability = 0 for: 209
+observation probability = 0 for: 210
+observation probability = 0 for: 211
+Voxel outside density priors for: 212
+Voxel outside density priors for: 213
+Voxel outside density priors for: 214
+Voxel outside density priors for: 215
+Voxel outside density priors for: 216
+Voxel outside density priors for: 217
+Voxel outside density priors for: 218
+Voxel outside density priors for: 219
+Voxel outside density priors for: 220
+Voxel outside density priors for: 221
+Voxel outside density priors for: 222
+Voxel outside density priors for: 223
+Voxel outside density priors for: 224
+Voxel outside density priors for: 225
+Voxel outside density priors for: 226
+Voxel outside density priors for: 227
+observation probability = 0 for: 228
+observation probability = 0 for: 229
+observation probability = 0 for: 230
+observation probability = 0 for: 231
+observation probability = 0 for: 232
+observation probability = 0 for: 233
+observation probability = 0 for: 234
+Voxel outside density priors for: 235
+Voxel outside density priors for: 236
+Voxel outside density priors for: 237
+Voxel outside density priors for: 238
+Voxel outside density priors for: 239
+Voxel outside density priors for: 240
+Voxel outside density priors for: 241
+Voxel outside density priors for: 242
+Voxel outside density priors for: 243
+Voxel outside density priors for: 244
+Voxel outside density priors for: 245
+Voxel outside density priors for: 246
+success: 247
+success: 248
+success: 249
+success: 250
+success: 251
+success: 252
+success: 253
+Voxel outside density priors for: 254
+Voxel outside density priors for: 255
+Voxel outside density priors for: 256
+Voxel outside density priors for: 257
+Voxel outside density priors for: 258
+Voxel outside density priors for: 259
+Voxel outside density priors for: 260
+Voxel outside density priors for: 261
+Voxel outside density priors for: 262
+Voxel outside density priors for: 263
+Voxel outside density priors for: 264
+Voxel outside density priors for: 265
+success: 266
+success: 267
+success: 268
+success: 269
+success: 270
+success: 271
+success: 272
+Voxel outside density priors for: 273
+Voxel outside density priors for: 274
+Voxel outside density priors for: 275
+Voxel outside density priors for: 276
+Voxel outside density priors for: 277
+Voxel outside density priors for: 278
+Voxel outside density priors for: 279
+Voxel outside density priors for: 280
+Voxel outside density priors for: 281
+Voxel outside density priors for: 282
+Voxel outside density priors for: 283
+Voxel outside density priors for: 284
+success: 285
+success: 286
+success: 287
+success: 288
+success: 289
+success: 290
+success: 291
+Voxel outside density priors for: 292
+Voxel outside density priors for: 293
+Voxel outside density priors for: 294
+Voxel outside density priors for: 295
+Voxel outside density priors for: 296
+Voxel outside density priors for: 297
+Voxel outside density priors for: 298
+Voxel outside density priors for: 299
+Voxel outside density priors for: 300
+Voxel outside density priors for: 301
+Voxel outside density priors for: 302
+Voxel outside density priors for: 303
+success: 304
+success: 305
+success: 306
+name 'voxel' is not defined: 307
+name 'voxel' is not defined: 308
+success: 309
+success: 310
+Voxel outside density priors for: 311
+Voxel outside density priors for: 312
+Voxel outside density priors for: 313
+Voxel outside density priors for: 314
+Voxel outside density priors for: 315
+Voxel outside density priors for: 316
+Voxel outside density priors for: 317
+Voxel outside density priors for: 318
+Voxel outside density priors for: 319
+Voxel outside density priors for: 320
+Voxel outside density priors for: 321
+Voxel outside density priors for: 322
+success: 323
+success: 324
+success: 325
+success: 326
+success: 327
+success: 328
+success: 329
+Voxel outside density priors for: 330
+Voxel outside density priors for: 331
+Voxel outside density priors for: 332
+Voxel outside density priors for: 333
+Voxel outside density priors for: 334
+Voxel outside density priors for: 335
+Voxel outside density priors for: 336
+Voxel outside density priors for: 337
+Voxel outside density priors for: 338
+Voxel outside density priors for: 339
+Voxel outside density priors for: 340
+Voxel outside density priors for: 341
+success: 342
+success: 343
+success: 344
+success: 345
+success: 346
+success: 347
+success: 348
+Voxel outside density priors for: 349
+Voxel outside density priors for: 350
+Voxel outside density priors for: 351
+Voxel outside density priors for: 352
+Voxel outside density priors for: 353
+Voxel outside density priors for: 354
+Voxel outside density priors for: 355
+Voxel outside density priors for: 356
+Voxel outside density priors for: 357
+Voxel outside density priors for: 358
+Voxel outside density priors for: 359
+Voxel outside density priors for: 360
+observation probability = 0 for: 361
+observation probability = 0 for: 362
+observation probability = 0 for: 363
+observation probability = 0 for: 364
+observation probability = 0 for: 365
+observation probability = 0 for: 366
+observation probability = 0 for: 367
+Voxel outside density priors for: 368
+Voxel outside density priors for: 369
+Voxel outside density priors for: 370
+Voxel outside density priors for: 371
+Voxel outside density priors for: 372
+Voxel outside density priors for: 373
+Voxel outside density priors for: 374
+Voxel outside density priors for: 375
+Voxel outside density priors for: 376
+Voxel outside density priors for: 377
+Voxel outside density priors for: 378
+Voxel outside density priors for: 379
+observation probability = 0 for: 380
+observation probability = 0 for: 381
+observation probability = 0 for: 382
+observation probability = 0 for: 383
+observation probability = 0 for: 384
+observation probability = 0 for: 385
+observation probability = 0 for: 386
+Voxel outside density priors for: 387
+Voxel outside density priors for: 388
+Voxel outside density priors for: 389
+Voxel outside density priors for: 390
+Voxel outside density priors for: 391
+Voxel outside density priors for: 392
+Voxel outside density priors for: 393
+Voxel outside density priors for: 394
+Voxel outside density priors for: 395
+Voxel outside density priors for: 396
+Voxel outside density priors for: 397
+Voxel outside density priors for: 398
+observation probability = 0 for: 399
+observation probability = 0 for: 400
+observation probability = 0 for: 401
+observation probability = 0 for: 402
+observation probability = 0 for: 403
+observation probability = 0 for: 404
+observation probability = 0 for: 405
+Voxel outside density priors for: 406
+Voxel outside density priors for: 407
+Voxel outside density priors for: 408
+Voxel outside density priors for: 409
+Voxel outside density priors for: 410
+Voxel outside density priors for: 411
+Voxel outside density priors for: 412
+Voxel outside density priors for: 413
+Voxel outside density priors for: 414
+Voxel outside density priors for: 415
+Voxel outside density priors for: 416
+Voxel outside density priors for: 417
+observation probability = 0 for: 418
+observation probability = 0 for: 419
+observation probability = 0 for: 420
+observation probability = 0 for: 421
+observation probability = 0 for: 422
+observation probability = 0 for: 423
+observation probability = 0 for: 424
+Voxel outside density priors for: 425
+Voxel outside density priors for: 426
+Voxel outside density priors for: 427
+Voxel outside density priors for: 428
+Voxel outside density priors for: 429
+Voxel outside density priors for: 430
+Voxel outside density priors for: 431
+Voxel outside density priors for: 432
+Voxel outside density priors for: 433
+Voxel outside density priors for: 434
+Voxel outside density priors for: 435
+Voxel outside density priors for: 436
+observation probability = 0 for: 437
+observation probability = 0 for: 438
+observation probability = 0 for: 439
+observation probability = 0 for: 440
+observation probability = 0 for: 441
+observation probability = 0 for: 442
+observation probability = 0 for: 443
+Voxel outside density priors for: 444
+Voxel outside density priors for: 445
+Voxel outside density priors for: 446
+Voxel outside density priors for: 447
+Voxel outside density priors for: 448
+Voxel outside density priors for: 449
+Voxel outside density priors for: 450
+Voxel outside density priors for: 451
+Voxel outside density priors for: 452
+Voxel outside density priors for: 453
+Voxel outside density priors for: 454
+Voxel outside density priors for: 455
+success: 456
+success: 457
+success: 458
+success: 459
+success: 460
+success: 461
+success: 462
+success: 463
+success: 464
+Voxel outside density priors for: 465
+Voxel outside density priors for: 466
+Voxel outside density priors for: 467
+Voxel outside density priors for: 468
+Voxel outside density priors for: 469
+Voxel outside density priors for: 470
+Voxel outside density priors for: 471
+Voxel outside density priors for: 472
+Voxel outside density priors for: 473
+Voxel outside density priors for: 474
+success: 475
+success: 476
+success: 477
+success: 478
+success: 479
+success: 480
+success: 481
+success: 482
+success: 483
+Voxel outside density priors for: 484
+Voxel outside density priors for: 485
+Voxel outside density priors for: 486
+Voxel outside density priors for: 487
+Voxel outside density priors for: 488
+Voxel outside density priors for: 489
+Voxel outside density priors for: 490
+Voxel outside density priors for: 491
+Voxel outside density priors for: 492
+Voxel outside density priors for: 493
+success: 494
+success: 495
+success: 496
+success: 497
+success: 498
+success: 499
+success: 500
+success: 501
+success: 502
+Voxel outside density priors for: 503
+Voxel outside density priors for: 504
+Voxel outside density priors for: 505
+Voxel outside density priors for: 506
+Voxel outside density priors for: 507
+Voxel outside density priors for: 508
+Voxel outside density priors for: 509
+Voxel outside density priors for: 510
+Voxel outside density priors for: 511
+Voxel outside density priors for: 512
+success: 513
+success: 514
+success: 515
+success: 516
+success: 517
+success: 518
+success: 519
+success: 520
+success: 521
+Voxel outside density priors for: 522
+Voxel outside density priors for: 523
+Voxel outside density priors for: 524
+Voxel outside density priors for: 525
+Voxel outside density priors for: 526
+Voxel outside density priors for: 527
+Voxel outside density priors for: 528
+Voxel outside density priors for: 529
+Voxel outside density priors for: 530
+Voxel outside density priors for: 531
+success: 532
+success: 533
+success: 534
+success: 535
+success: 536
+success: 537
+success: 538
+success: 539
+success: 540
+Voxel outside density priors for: 541
+Voxel outside density priors for: 542
+Voxel outside density priors for: 543
+Voxel outside density priors for: 544
+Voxel outside density priors for: 545
+Voxel outside density priors for: 546
+Voxel outside density priors for: 547
+Voxel outside density priors for: 548
+Voxel outside density priors for: 549
+Voxel outside density priors for: 550
+success: 551
+success: 552
+success: 553
+success: 554
+success: 555
+success: 556
+success: 557
+success: 558
+success: 559
+Voxel outside density priors for: 560
+Voxel outside density priors for: 561
+Voxel outside density priors for: 562
+Voxel outside density priors for: 563
+Voxel outside density priors for: 564
+Voxel outside density priors for: 565
+Voxel outside density priors for: 566
+Voxel outside density priors for: 567
+Voxel outside density priors for: 568
+Voxel outside density priors for: 569
+success: 570
+success: 571
+success: 572
+success: 573
+success: 574
+success: 575
+success: 576
+success: 577
+success: 578
+Voxel outside density priors for: 579
+Voxel outside density priors for: 580
+Voxel outside density priors for: 581
+Voxel outside density priors for: 582
+Voxel outside density priors for: 583
+Voxel outside density priors for: 584
+Voxel outside density priors for: 585
+Voxel outside density priors for: 586
+Voxel outside density priors for: 587
+Voxel outside density priors for: 588
+success: 589
+success: 590
+success: 591
+success: 592
+success: 593
+success: 594
+success: 595
+success: 596
+success: 597
+Voxel outside density priors for: 598
+Voxel outside density priors for: 599
+Voxel outside density priors for: 600
+Voxel outside density priors for: 601
+Voxel outside density priors for: 602
+Voxel outside density priors for: 603
+Voxel outside density priors for: 604
+Voxel outside density priors for: 605
+Voxel outside density priors for: 606
+Voxel outside density priors for: 607
+observation probability = 0 for: 608
+observation probability = 0 for: 609
+observation probability = 0 for: 610
+observation probability = 0 for: 611
+observation probability = 0 for: 612
+observation probability = 0 for: 613
+observation probability = 0 for: 614
+observation probability = 0 for: 615
+observation probability = 0 for: 616
+Voxel outside density priors for: 617
+Voxel outside density priors for: 618
+Voxel outside density priors for: 619
+Voxel outside density priors for: 620
+Voxel outside density priors for: 621
+Voxel outside density priors for: 622
+Voxel outside density priors for: 623
+Voxel outside density priors for: 624
+Voxel outside density priors for: 625
+Voxel outside density priors for: 626
+observation probability = 0 for: 627
+observation probability = 0 for: 628
+observation probability = 0 for: 629
+observation probability = 0 for: 630
+observation probability = 0 for: 631
+observation probability = 0 for: 632
+observation probability = 0 for: 633
+observation probability = 0 for: 634
+observation probability = 0 for: 635
+Voxel outside density priors for: 636
+Voxel outside density priors for: 637
+Voxel outside density priors for: 638
+Voxel outside density priors for: 639
+Voxel outside density priors for: 640
+Voxel outside density priors for: 641
+Voxel outside density priors for: 642
+Voxel outside density priors for: 643
+Voxel outside density priors for: 644
+Voxel outside density priors for: 645
+observation probability = 0 for: 646
+observation probability = 0 for: 647
+observation probability = 0 for: 648
+observation probability = 0 for: 649
+observation probability = 0 for: 650
+observation probability = 0 for: 651
+observation probability = 0 for: 652
+observation probability = 0 for: 653
+observation probability = 0 for: 654
+Voxel outside density priors for: 655
+Voxel outside density priors for: 656
+Voxel outside density priors for: 657
+Voxel outside density priors for: 658
+Voxel outside density priors for: 659
+Voxel outside density priors for: 660
+Voxel outside density priors for: 661
+Voxel outside density priors for: 662
+Voxel outside density priors for: 663
+Voxel outside density priors for: 664
+observation probability = 0 for: 665
+observation probability = 0 for: 666
+observation probability = 0 for: 667
+observation probability = 0 for: 668
+observation probability = 0 for: 669
+observation probability = 0 for: 670
+observation probability = 0 for: 671
+observation probability = 0 for: 672
+observation probability = 0 for: 673
+Voxel outside density priors for: 674
+Voxel outside density priors for: 675
+Voxel outside density priors for: 676
+Voxel outside density priors for: 677
+Voxel outside density priors for: 678
+Voxel outside density priors for: 679
+Voxel outside density priors for: 680
+Voxel outside density priors for: 681
+Voxel outside density priors for: 682
+Voxel outside density priors for: 683
+observation probability = 0 for: 684
+observation probability = 0 for: 685
+observation probability = 0 for: 686
+observation probability = 0 for: 687
+observation probability = 0 for: 688
+observation probability = 0 for: 689
+observation probability = 0 for: 690
+observation probability = 0 for: 691
+observation probability = 0 for: 692
+observation probability = 0 for: 693
+observation probability = 0 for: 694
+Voxel outside density priors for: 695
+Voxel outside density priors for: 696
+Voxel outside density priors for: 697
+Voxel outside density priors for: 698
+Voxel outside density priors for: 699
+Voxel outside density priors for: 700
+Voxel outside density priors for: 701
+Voxel outside density priors for: 702
+success: 703
+success: 704
+success: 705
+success: 706
+success: 707
+success: 708
+success: 709
+success: 710
+success: 711
+success: 712
+success: 713
+Voxel outside density priors for: 714
+Voxel outside density priors for: 715
+Voxel outside density priors for: 716
+Voxel outside density priors for: 717
+Voxel outside density priors for: 718
+Voxel outside density priors for: 719
+Voxel outside density priors for: 720
+Voxel outside density priors for: 721
+success: 722
+success: 723
+success: 724
+success: 725
+success: 726
+success: 727
+success: 728
+success: 729
+success: 730
+success: 731
+success: 732
+Voxel outside density priors for: 733
+Voxel outside density priors for: 734
+Voxel outside density priors for: 735
+Voxel outside density priors for: 736
+Voxel outside density priors for: 737
+Voxel outside density priors for: 738
+Voxel outside density priors for: 739
+Voxel outside density priors for: 740
+success: 741
+success: 742
+success: 743
+success: 744
+success: 745
+success: 746
+success: 747
+success: 748
+success: 749
+success: 750
+success: 751
+Voxel outside density priors for: 752
+Voxel outside density priors for: 753
+Voxel outside density priors for: 754
+Voxel outside density priors for: 755
+Voxel outside density priors for: 756
+Voxel outside density priors for: 757
+Voxel outside density priors for: 758
+Voxel outside density priors for: 759
+success: 760
+success: 761
+success: 762
+success: 763
+success: 764
+success: 765
+success: 766
+success: 767
+success: 768
+success: 769
+success: 770
+Voxel outside density priors for: 771
+Voxel outside density priors for: 772
+Voxel outside density priors for: 773
+Voxel outside density priors for: 774
+Voxel outside density priors for: 775
+Voxel outside density priors for: 776
+Voxel outside density priors for: 777
+Voxel outside density priors for: 778
+success: 779
+success: 780
+success: 781
+success: 782
+success: 783
+success: 784
+success: 785
+success: 786
+success: 787
+success: 788
+success: 789
+Voxel outside density priors for: 790
+Voxel outside density priors for: 791
+Voxel outside density priors for: 792
+Voxel outside density priors for: 793
+Voxel outside density priors for: 794
+Voxel outside density priors for: 795
+Voxel outside density priors for: 796
+Voxel outside density priors for: 797
+success: 798
+success: 799
+success: 800
+success: 801
+success: 802
+success: 803
+success: 804
+success: 805
+success: 806
+success: 807
+success: 808
+Voxel outside density priors for: 809
+Voxel outside density priors for: 810
+Voxel outside density priors for: 811
+Voxel outside density priors for: 812
+Voxel outside density priors for: 813
+Voxel outside density priors for: 814
+Voxel outside density priors for: 815
+Voxel outside density priors for: 816
+success: 817
+success: 818
+success: 819
+success: 820
+success: 821
+success: 822
+success: 823
+success: 824
+success: 825
+success: 826
+success: 827
+Voxel outside density priors for: 828
+Voxel outside density priors for: 829
+Voxel outside density priors for: 830
+Voxel outside density priors for: 831
+Voxel outside density priors for: 832
+Voxel outside density priors for: 833
+Voxel outside density priors for: 834
+Voxel outside density priors for: 835
+success: 836
+success: 837
+success: 838
+success: 839
+success: 840
+success: 841
+success: 842
+success: 843
+success: 844
+success: 845
+success: 846
+Voxel outside density priors for: 847
+Voxel outside density priors for: 848
+Voxel outside density priors for: 849
+Voxel outside density priors for: 850
+Voxel outside density priors for: 851
+Voxel outside density priors for: 852
+Voxel outside density priors for: 853
+Voxel outside density priors for: 854
+observation probability = 0 for: 855
+observation probability = 0 for: 856
+observation probability = 0 for: 857
+observation probability = 0 for: 858
+observation probability = 0 for: 859
+observation probability = 0 for: 860
+observation probability = 0 for: 861
+observation probability = 0 for: 862
+observation probability = 0 for: 863
+observation probability = 0 for: 864
+observation probability = 0 for: 865
+Voxel outside density priors for: 866
+Voxel outside density priors for: 867
+Voxel outside density priors for: 868
+Voxel outside density priors for: 869
+Voxel outside density priors for: 870
+Voxel outside density priors for: 871
+Voxel outside density priors for: 872
+Voxel outside density priors for: 873
+success: 874
+success: 875
+success: 876
+success: 877
+success: 878
+success: 879
+success: 880
+success: 881
+success: 882
+success: 883
+success: 884
+Voxel outside density priors for: 885
+Voxel outside density priors for: 886
+Voxel outside density priors for: 887
+Voxel outside density priors for: 888
+Voxel outside density priors for: 889
+Voxel outside density priors for: 890
+Voxel outside density priors for: 891
+Voxel outside density priors for: 892
+observation probability = 0 for: 893
+observation probability = 0 for: 894
+observation probability = 0 for: 895
+observation probability = 0 for: 896
+observation probability = 0 for: 897
+observation probability = 0 for: 898
+observation probability = 0 for: 899
+observation probability = 0 for: 900
+observation probability = 0 for: 901
+observation probability = 0 for: 902
+observation probability = 0 for: 903
+Voxel outside density priors for: 904
+Voxel outside density priors for: 905
+Voxel outside density priors for: 906
+Voxel outside density priors for: 907
+Voxel outside density priors for: 908
+Voxel outside density priors for: 909
+Voxel outside density priors for: 910
+Voxel outside density priors for: 911
+observation probability = 0 for: 912
+observation probability = 0 for: 913
+observation probability = 0 for: 914
+observation probability = 0 for: 915
+observation probability = 0 for: 916
+observation probability = 0 for: 917
+observation probability = 0 for: 918
+observation probability = 0 for: 919
+observation probability = 0 for: 920
+observation probability = 0 for: 921
+observation probability = 0 for: 922
+observation probability = 0 for: 923
+observation probability = 0 for: 924
+Voxel outside density priors for: 925
+Voxel outside density priors for: 926
+Voxel outside density priors for: 927
+Voxel outside density priors for: 928
+Voxel outside density priors for: 929
+Voxel outside density priors for: 930
+success: 931
+success: 932
+success: 933
+success: 934
+success: 935
+success: 936
+success: 937
+success: 938
+success: 939
+success: 940
+success: 941
+success: 942
+success: 943
+Voxel outside density priors for: 944
+Voxel outside density priors for: 945
+Voxel outside density priors for: 946
+Voxel outside density priors for: 947
+Voxel outside density priors for: 948
+Voxel outside density priors for: 949
+success: 950
+success: 951
+success: 952
+success: 953
+success: 954
+success: 955
+success: 956
+success: 957
+success: 958
+success: 959
+success: 960
+success: 961
+success: 962
+Voxel outside density priors for: 963
+Voxel outside density priors for: 964
+Voxel outside density priors for: 965
+Voxel outside density priors for: 966
+Voxel outside density priors for: 967
+Voxel outside density priors for: 968
+success: 969
+success: 970
+success: 971
+success: 972
+success: 973
+success: 974
+success: 975
+success: 976
+success: 977

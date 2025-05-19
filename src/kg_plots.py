@@ -84,11 +84,9 @@ def get_heatmap_df(rpm_grid):
     """Create a dataframe for the heatmap of only the relevant values."""
     heatmap_df = pd.DataFrame()
 
-    for i in rpm_grid.voxel_array:
-        for j in i:
-            for k in j:
-                df_selected = k.df[['R_pE', 'Period_days', 'M_pE', 'mass_divided_weights']]
-                heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
+    for voxel in rpm_grid.voxel_array.flat:
+        df_selected = voxel.df[['R_pE', 'Period_days', 'M_pE', 'mass_divided_weights']]
+        heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
 
     return heatmap_df
 
@@ -607,7 +605,7 @@ def main():
     elif 'results' in cwd:
         plotprops_filename = "plotprops.txt"
     else:
-        print('you are not starting from a proper directory. you should run kg_run.py from a src, runs, or a results directory.')
+        print('you are not starting from a proper directory. you should run kg_plots.py from a src, runs, or a results directory.')
         sys.exit()
         
     # Get plotprops loaded in.
