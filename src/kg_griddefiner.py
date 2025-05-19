@@ -21,6 +21,7 @@ Created on: 2024-10-10
 import os
 import numpy as np
 import pandas as pd
+from collections import defaultdict
 
 
 RECM=6.378*10**8  # earth radius in cm
@@ -80,7 +81,7 @@ class RPMVoxel:
         self.bottom_mass = bottom_mass
         self.top_mass = top_mass
         self.id_number = -1
-        self.initial_guess = -1.0
+        self.implausible = False
     
     def within(self,radius,period,mass):
         """For a given value in radius-period-mass space, returns True if the voxel contains this value."""
@@ -111,10 +112,11 @@ class RPMVoxel:
     def get_cached_data_count(self,cache_path):
         with open(cache_path+f"/voxel_{self.id_number}.csv", 'r', encoding='utf-8') as f:
           return sum(1 for _ in f) - 1  # subtract header
-    
-    def create_initial_guess(self):
-        """Creates an initial guess for the occurrence rate."""
-        self.initial_guess = np.sum(self.df['mass_divided_weights']) 
+        
+    def is_implausible(self):
+        def density(radius, mass):
+            return (mass * MEG) / ((4/3)*np.pi*(RECM*radius)**3)
+        self.implausible = density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01           
     
     def __str__(self):
         """Returns a string representation of the voxel."""
@@ -148,45 +150,86 @@ class RPMGrid:
         self.m_len = len(mass_grid_array) - 1
 
         self.voxel_array = [[[RPMVoxel(self.radius_grid_array[i],self.radius_grid_array[i+1],self.period_grid_array[j],self.period_grid_array[j+1],self.mass_grid_array[k],self.mass_grid_array[k+1]) for k in range(self.m_len)] for j in range(self.p_len)] for i in range(self.r_len)]
-        
+        self.voxel_array = np.array(self.voxel_array,dtype=object)
         id_number=0
-        self.id_array=np.array([[[]]])
-        for i in self.voxel_array:
-            for j in i:
-                k_idx=0
-                for k in j:
-                    k.create_id(id_number)
-                    self.id_array[i,j,k_idx] = id_number  #### this needs to be fixed: look at type of i,j for quick find by id
-                    id_number+=1
-                    k_idx+=1
+        self.id_array=np.empty((self.r_len,self.p_len,self.m_len))
+
+        it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
+        for id_number in range(self.r_len * self.p_len * self.m_len):
+            i, j, k = it.multi_index  # Gives current (i, j, k) position
+            self.voxel_array[i, j, k].create_id(id_number)
+            it[0] = id_number  # Write to id_array
+            it.iternext()
+
+        # i_idx = 0
+        # for i in self.voxel_array:
+        #     j_idx = 0
+        #     for j in i:
+        #         k_idx=0
+        #         for k in j:
+        #             k.create_id(id_number)
+        #             self.id_array[i_idx,j_idx,k_idx] = id_number  #### this needs to be fixed: look at type of i,j for quick find by id
+        #             id_number+=1
+        #             k_idx+=1
+        #         j_idx+=1
+        #     i_idx+=1
         
 
-    def setup_dataframes(self,columns):
-        for i in self.voxel_array:
-            for j in i:
-                for k in j:
-                    k.setup_dataframe(columns)
+    def setup_dataframes(self,columns,voxel_id,is_cached):
+        if is_cached:
+            self.find_voxel_by_id(voxel_id).setup_dataframe(columns)
+        else:
+            for voxel in self.voxel_array.flat:
+                voxel.setup_dataframe(columns)
                         
     def add_data(self,df):
-        df['r_idx'] = pd.cut(df['R_pE'], bins=self.radius_grid_array, labels=False, include_lowest=True, right=False)
-        df['p_idx'] = pd.cut(df['Period_days'], bins=self.period_grid_array, labels=False, include_lowest=True, right=False)
-        df['m_idx'] = pd.cut(df['M_pE'], bins=self.mass_grid_array, labels=False, include_lowest=True, right=False)
+        
+        r_idx = np.searchsorted(self.radius_grid_array, df['R_pE'].values, side='right') - 1
+        p_idx = np.searchsorted(self.period_grid_array, df['Period_days'].values, side='right') - 1
+        m_idx = np.searchsorted(self.mass_grid_array, df['M_pE'].values, side='right') - 1
 
-        # Drop rows outside of grid (NaNs)
-        df_clean = df.dropna(subset=['r_idx', 'p_idx', 'm_idx']).copy()
-        df_clean[['r_idx', 'p_idx', 'm_idx']] = df_clean[['r_idx', 'p_idx', 'm_idx']].astype(int)
+        # Filter valid entries
+        valid_mask = (
+            (r_idx >= 0) & (r_idx < self.r_len) &
+            (p_idx >= 0) & (p_idx < self.p_len) &
+            (m_idx >= 0) & (m_idx < self.m_len)
+        )
+        df_valid = df.loc[valid_mask].copy()
+        df_valid['r_idx'] = r_idx[valid_mask]
+        df_valid['p_idx'] = p_idx[valid_mask]
+        df_valid['m_idx'] = m_idx[valid_mask]
 
-        # Group rows by voxel indices
-        for (r_idx, p_idx, m_idx), group in df_clean.groupby(['r_idx', 'p_idx', 'm_idx']):
-            voxel = self.voxel_array[r_idx][p_idx][m_idx]
-            voxel.add_data(group.drop(['r_idx', 'p_idx', 'm_idx'], axis=1))
+        # Sort to improve memory access pattern (optional, measurable on big data)
+        df_valid.sort_values(['r_idx', 'p_idx', 'm_idx'], inplace=True)
+
+        # Grouping via numpy keys instead of tuple hashing (faster)
+        index_array = df_valid[['r_idx', 'p_idx', 'm_idx']].values
+        voxel_keys, inverse = np.unique(index_array, axis=0, return_inverse=True)
+
+        # Slice records into voxel groups without Python dicts
+        for voxel_id, (r, p, m) in enumerate(voxel_keys):
+            group_mask = (inverse == voxel_id)
+            df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx'])
+            self.voxel_array[r, p, m].add_data(df_chunk)
+
+
+        # df['r_idx'] = pd.cut(df['R_pE'], bins=self.radius_grid_array, labels=False, include_lowest=True, right=False)
+        # df['p_idx'] = pd.cut(df['Period_days'], bins=self.period_grid_array, labels=False, include_lowest=True, right=False)
+        # df['m_idx'] = pd.cut(df['M_pE'], bins=self.mass_grid_array, labels=False, include_lowest=True, right=False)
+
+        # # Drop rows outside of grid (NaNs)
+        # df_clean = df.dropna(subset=['r_idx', 'p_idx', 'm_idx']).copy()
+        # df_clean[['r_idx', 'p_idx', 'm_idx']] = df_clean[['r_idx', 'p_idx', 'm_idx']].astype(int)
+
+        # # Group rows by voxel indices
+        # for (r_idx, p_idx, m_idx), group in df_clean.groupby(['r_idx', 'p_idx', 'm_idx']):
+        #     voxel = self.voxel_array[r_idx,p_idx,m_idx]
+        #     voxel.add_data(group.drop(['r_idx', 'p_idx', 'm_idx'], axis=1))
             
             
     def cache_dataframes(self,cache_path="../data/thinned/voxel_data"):
-        for i in self.voxel_array:
-            for j in i:
-                for k in j:
-                    k.cache_data(cache_path)
+        for voxel in self.voxel_array.flat:
+            voxel.cache_data(cache_path)
     
     
     def find_voxel_by_id(self,voxel_id):
@@ -194,52 +237,38 @@ class RPMGrid:
         if location.size == 0:
             print("Unable to find voxel with given voxel id.")
             return None
-
-        # location[0] gets the first match
-        # tuple(location[0]) makes it usable as an index
-        return self.voxel_array[tuple(location[0])]
-        # # for i in self.voxel_array:
-        # #     for j in i:
-        # #         for k in j:
-        # #             if k.id_number == voxel_id:
-        # #                 return k
-                    
-        # # print("unable to find voxel with given voxel id.")
-
-        # location = np.argwhere(self.id_array == voxel_id)
-        # return self.voxel_array[np.array[tuple(location.T)]]
+        i, j, k = location[0]
+        return self.voxel_array[i][j][k]
         
+
     def find_voxel_by_coordinates(self,radius,period,mass):
-        for i in self.voxel_array:
-            for j in i:
-                for k in j:
-                    if k.within(radius,period,mass):
-                        return k
+        for voxel in self.voxel_array.flat:
+            if voxel.within(radius,period,mass):
+                return voxel
                     
         print("unable to find voxel with given coordinates.")
         
     def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period,cache_path,is_cached=True):
         num_points = 0
-        for i in self.voxel_array:
-            for j in i:
-                for k in j:
-                    if k.bottom_radius == low_radius and k.top_radius == high_radius and k.bottom_period == low_period and k.top_period == high_period:
-                        if is_cached: 
-                            length_voxel = k.get_cached_data_count(cache_path)
-                        else:
-                            length_voxel = len(k.df)
-                        num_points += length_voxel
+        for voxel in self.voxel_array.flat:
+            if voxel.bottom_radius == low_radius and voxel.top_radius == high_radius and voxel.bottom_period == low_period and voxel.top_period == high_period:
+                if is_cached: 
+                    length_voxel = voxel.get_cached_data_count(cache_path)
+                else:
+                    length_voxel = len(voxel.df)
+                num_points += length_voxel
                         
         return num_points
     
     def make_mass_divided_weights(self,voxel_id,cache_path,is_cached=True):
-        for i in self.voxel_array:
-            for j in i:
-                for k in j:
-                    if k.id_number == voxel_id:
-                      voxel_number_of_posterior_draws = k.num_data()
-                      k.df["mass_divided_weights"] = k.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / self.count_points_in_RP_column(k.top_radius,k.bottom_radius,k.top_period,k.bottom_period,cache_path,is_cached) # used to multiply by voxel_number
+        for voxel in self.voxel_array.flat:
+            if voxel.id_number == voxel_id:
+              voxel_number_of_posterior_draws = voxel.num_data()
+              voxel.df["mass_divided_weights"] = voxel.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / self.count_points_in_RP_column(voxel.top_radius,voxel.bottom_radius,voxel.top_period,voxel.bottom_period,cache_path,is_cached) # used to multiply by voxel_number
         
+    def get_occurrence_rate(self):
+        pass
+
     def __str__(self):
         """Returns a string representation of the entire grid."""
         string_representation = ""
