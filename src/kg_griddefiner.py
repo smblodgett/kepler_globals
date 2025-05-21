@@ -19,6 +19,8 @@ Created on: 2024-10-10
 
 
 import os
+import h5py
+import emcee
 import numpy as np
 import pandas as pd
 
@@ -99,7 +101,7 @@ class RPMVoxel:
         
     def num_data(self):
         """Returns the number of rows/posterior draws within the voxel."""
-        return len(self.df)
+        return len(self.df) if hasattr(self,"df") else 0
     
     def cache_data(self,cache_path):
         self.df.to_csv(cache_path+f"/voxel_{self.id_number}.csv") ## could indicate with... _R{self.bottom_radius}-{self.top_radius}_P{self.bottom_period}-{self.top_period}_M{self.bottom_mass}-{self.top_mass} ??
@@ -115,7 +117,30 @@ class RPMVoxel:
         def density(radius, mass):
             assert radius >= 0
             return (mass * MEG) / ((4/3)*np.pi*(RECM*radius)**3) if radius > 0 else np.inf
-        return density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01           
+        return density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01 
+
+    def get_Rmrp(self,backend_path="../results/backend"):
+        # print(self)
+        h5_file = f"/voxel_{self.id_number}_chain.h5"
+        if not os.path.exists(backend_path+h5_file):
+            return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
+        
+        size_bytes = os.path.getsize(backend_path+h5_file)
+        size_mb = size_bytes / (1024 ** 2)
+        if size_mb < 1: ### figure out a better way to check if it's empty???
+            return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
+        
+        reader = emcee.backends.HDFBackend(backend_path + h5_file)
+        samples = np.array(reader.get_chain())
+        # print("samples.shape, samples",samples.shape,samples)
+        better_samples = samples.reshape(-1,1)
+        # print("better samples",better_samples)
+        # input()
+        mean = np.mean(better_samples)
+        lower = np.percentile(better_samples, 15.87)
+        upper = np.percentile(better_samples, 84.13)
+        # print("mean, lower, and upper: ",mean, lower, upper)
+        return mean, lower, upper, self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
     
     def __str__(self):
         """Returns a string representation of the voxel."""
@@ -278,6 +303,20 @@ class RPMGrid:
                     )
             return occurrence_rate_df.loc[mask].iloc[0]["occurrence"]
         
+    def get_Rmrps(self):
+        
+        self.Rmrp_array = np.empty((self.r_len, self.p_len, self.m_len, 9))
+
+        for i in range(self.r_len):
+            for j in range(self.p_len):
+                for k in range(self.m_len):
+                    self.Rmrp_array[i, j, k] = self.voxel_array[i, j, k].get_Rmrp()
+        
+        # print(self.Rmrp_array.reshape(-1,9))
+        return self.Rmrp_array.reshape(-1,9)       
+                
+
+        
         #     for lookup_voxel in self.voxel_array.flat:
         #         if lookup_voxel.bottom_radius == voxel.bottom_radius and lookup_voxel.top_radius == voxel.top_radius and lookup_voxel.bottom_period == voxel.bottom_period and lookup_voxel.top_period == voxel.top_period:
         #             print("bottom radius: ",voxel.bottom_radius)
@@ -324,4 +363,3 @@ class RPMGrid:
         return string_representation
 
 ##### for empty voxels, we need to put a slightly nonuniform prior on them so that it doesn't go crazy...it should just return the priors for these ones.
-            

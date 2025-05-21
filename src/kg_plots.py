@@ -30,7 +30,7 @@ import commentjson as json
 import re
 import seaborn as sns
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, BoundaryNorm
 from PIL import Image
 
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
@@ -48,7 +48,7 @@ class ReadJson:
         return self.data
 
     
-def heatmap_plot(rpm_grid,results_folder, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
+def heatmap_plot(rpm_grid,results_folder,mode="mass", make_gifs=True, verbose=False, fps=0.5):
     """
     Plots sequences of heatmaps from the base KMDC, iterating on mass, radius, and period.
     
@@ -71,167 +71,306 @@ def heatmap_plot(rpm_grid,results_folder, make_gifs=True, verbose=False, fps=0.5
     -------
     None
     """
-    if is_flat_density:
-        heatmap_df = get_uniform_density_prior_df(rpm_grid)
-    else:
-        heatmap_df = get_heatmap_df(rpm_grid)
-    make_mass_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
-    make_radius_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
-    make_period_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
+    make_histograms(rpm_grid,results_folder,mode=mode,make_gifs=make_gifs,verbose=verbose,fps=fps)
 
-    
-def get_heatmap_df(rpm_grid):
-    """Create a dataframe for the heatmap of only the relevant values."""
-    heatmap_df = pd.DataFrame()
 
-    for voxel in rpm_grid.voxel_array.flat:
-        df_selected = voxel.df[['R_pE', 'Period_days', 'M_pE', 'mass_divided_weights']]
-        heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
+def make_histograms(rpm_grid, results_folder, mode="mass",make_gifs=True, verbose=False, fps=0.5):
 
-    return heatmap_df
+    assert mode == "mass" or mode == "period" or mode == "radius", "heatmaps iterate over mass, period, or radius"
+    
+    if mode == "mass":
+        x_array = radius_grid_array
+        y_array = period_grid_array
+        z_array = mass_grid_array
+        search_dict = {"z":7,"z_next":8,"x":3,"y":5}
+    elif mode == "period":
+        x_array = mass_grid_array
+        y_array = radius_grid_array
+        z_array = period_grid_array
+        search_dict = {"z":5,"z_next":6,"x":7,"y":3}
+    elif mode == "radius":
+        x_array = mass_grid_array
+        y_array = period_grid_array
+        z_array = radius_grid_array
+        search_dict = {"z":3,"z_next":4,"x":7,"y":5}
 
-def get_uniform_density_prior_df(rpm_grid):
-    """Create a dataframe for the heatmap of the flat density prior."""
-    heatmap_df = pd.DataFrame()
-    
-    for i in rpm_grid.voxel_array:
-        for j in i:
-            for k in j:
-                df_selected = k.df[['R_pE', 'Period_days', 'M_pE', 'mass_divided_weights']]
-                heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
-    
-    
-    M_30_priors = ((4/3)*np.pi*30/MEG)*(heatmap_df["R_pE"] * RECM)**3
 
-    M_001_priors = ((4/3)*np.pi*0.01/MEG)*(heatmap_df["R_pE"] * RECM)**3 ### check upper limit and lower limit of contours
-    
-    heatmap_df["M_pE"] = np.random.uniform(M_001_priors,M_30_priors,len(heatmap_df["M_pE"]))
-    return heatmap_df
-    
-
-def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
-    """Make heatmaps iterating through mass."""
-    if not is_flat_density: heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal","mass")
-    if is_flat_density:  heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","flat_density","mass")
+    heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal",mode)
     os.makedirs(heatmap_folder, exist_ok=True)
-    
-    cumulative_hist_slices = []
-    xedges = None
-    yedges = None
-    vmax = 0
-    for i in range(len(rpm_grid.mass_grid_array) - 1): # Figure out what the max value of the histogram is going to be.
-        lower_mass = rpm_grid.mass_grid_array[i]
-        upper_mass = rpm_grid.mass_grid_array[i + 1]
 
+    Rmrps = rpm_grid.get_Rmrps()
 
-        mass_filtered_df = histogram_df[(histogram_df["M_pE"] > lower_mass) & (histogram_df["M_pE"] <= upper_mass)]
-        period_data = mass_filtered_df["Period_days"].values
-        radius_data = mass_filtered_df["R_pE"].values
-        weights = mass_filtered_df["mass_divided_weights"].values # I think I need to split this the other way too...
+    all_means = Rmrps[:,0]
+    vmax = np.max(all_means)
+    # print(means)
+    # print(np.max(means))
 
-        hist, xedges, yedges = np.histogram2d(radius_data, period_data, 
-                                              bins=[rpm_grid.radius_grid_array, rpm_grid.period_grid_array], 
-                                              weights=weights)  
+    cumul_mean = np.zeros((len(x_array)-1,len(y_array)-1))
+    cumul_lower = np.zeros((len(x_array)-1,len(y_array)-1))
+    cumul_upper = np.zeros((len(x_array)-1,len(y_array)-1))
+    is_cumul_mode = False
+    for i, z in enumerate(z_array):
         
-        hist /= 1000
+        if i == len(z_array)-1:
+            is_cumul_mode = True
+        if not is_cumul_mode: 
+            next_z = z_array[i+1]
+
+            mean = np.empty((len(x_array)-1,len(y_array)-1))
+            lower = np.empty((len(x_array)-1,len(y_array)-1))
+            upper = np.empty((len(x_array)-1,len(y_array)-1))
+            annot = np.empty((len(x_array)-1, len(y_array)-1), dtype=object)
+            
+
+            for voxel in Rmrps:
+                
+                if voxel[search_dict["z"]] == z and voxel[search_dict["z_next"]] == next_z:
+                    
+                    x_idx = np.searchsorted(x_array, voxel[search_dict["x"]],side='right')-1
+                    y_idx = np.searchsorted(y_array, voxel[search_dict["y"]],side='right')-1
+                    
+                    mean[x_idx,y_idx] = voxel[0]
+                    lower[x_idx,y_idx] = voxel[1]
+                    upper[x_idx,y_idx] = voxel[2]
+                    if voxel[0] == 0:
+                        annot[x_idx,y_idx] = f"{voxel[0]:.1f}$^{{+{voxel[2]:.1f}}}_{{-{voxel[1]:.1f}}}$"
+                    elif voxel[0] < 1e-3:
+                        annot[x_idx,y_idx] = f"{voxel[0]:.2e}$^{{+{voxel[2]:.1e}}}_{{-{voxel[1]:.1e}}}$"
+                    else:
+                        annot[x_idx,y_idx] = f"{voxel[0]:.3f}$^{{+{voxel[2]:.4f}}}_{{-{voxel[1]:.4f}}}$"
+
+        if is_cumul_mode:
+            mean = cumul_mean
+            lower = cumul_lower
+            upper = cumul_upper
+            # print(mean)
+            for row_idx, row in enumerate(mean):
+                for col_idx, voxel_mean in enumerate(row):
+                    if voxel_mean == 0:
+                        annot[row_idx,col_idx] = f"{voxel_mean:.1f}$^{{+{upper[row_idx,col_idx]:.1f}}}_{{-{lower[row_idx,col_idx]:.1f}}}$"
+                    elif voxel_mean < 1e-3:
+                        annot[row_idx,col_idx] = f"{voxel_mean:.2e}$^{{+{upper[row_idx,col_idx]:.1e}}}_{{-{lower[row_idx,col_idx]:.1e}}}$"
+                    else:
+                        annot[row_idx,col_idx] = f"{voxel_mean:.3f}$^{{+{upper[row_idx,col_idx]:.4f}}}_{{-{lower[row_idx,col_idx]:.4f}}}$"
+
         
-        cumulative_hist_slices.append(hist)
-        
-        vmax = max(vmax, np.nanmax(hist))
+        cubehelix_blue = sns.cubehelix_palette(start=2, rot=0.2, light=0.5,dark=0.1,n_colors=20,gamma=1.2)
 
-    for i in range(len(rpm_grid.mass_grid_array) - 1):
-        lower_mass = rpm_grid.mass_grid_array[i]
-        upper_mass = rpm_grid.mass_grid_array[i + 1]
-
-        mass_filtered_df = histogram_df[(histogram_df["M_pE"] > lower_mass) & (histogram_df["M_pE"] <= upper_mass)]
-        period_data = mass_filtered_df["Period_days"].values
-        radius_data = mass_filtered_df["R_pE"].values
-        weights = mass_filtered_df["mass_divided_weights"].values 
-
-        R_30_prior_upper = (((upper_mass)*MEG)/((4/3)*np.pi*30))**(1/3) / RECM
-        R_30_prior_lower = (((lower_mass)*MEG)/((4/3)*np.pi*30))**(1/3) / RECM          
+        colors = [(0.6,0.6,0.6)] + cubehelix_blue
+        cmap = ListedColormap(colors)
 
 
-        R_001_prior_upper = (((upper_mass)*MEG)/((4/3)*np.pi*0.01))**(1/3) / RECM
-        R_001_prior_lower = (((lower_mass)*MEG)/((4/3)*np.pi*0.01))**(1/3) / RECM
+        boundaries = [0] + list(np.linspace(np.nextafter(0,1), vmax,len(colors)))
+        norm = BoundaryNorm(boundaries,len(colors))
 
-        hist, xedges, yedges = np.histogram2d(radius_data, period_data, 
-                                              bins=[rpm_grid.radius_grid_array, rpm_grid.period_grid_array], 
-                                              weights=weights)
+        plt.figure(figsize=(10, 8),dpi=150)
+        ax = sns.heatmap(mean, annot=annot, fmt='', cmap=cmap, norm=norm,#vmin=0.0, vmax=vmax,
+                        cbar=False,annot_kws={"size":5.5})
 
-        hist /= 1000
-        
-        plt.figure(figsize=(8, 6), dpi=200)
 
-        ax = sns.heatmap(hist, annot=True, fmt=".4f", cbar=False, 
-                         cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
-        #### put a line to denote where it's hard to detect planets?
+        xedges = np.array(x_array)
+        yedges = np.array(y_array)
 
-        for prior_line in [R_30_prior_upper,R_30_prior_lower,R_001_prior_upper,R_001_prior_lower]:
-            heatmap_prior_lines(ax,rpm_grid.period_grid_array,rpm_grid.radius_grid_array,prior_line)
+        xtick_positions = np.arange(len(xedges))
+        xtick_labels = [f"{x:.2f}" if x < 1e5 else f"{x:.2e}" for x in xedges]
+        ax.set_xticks(xtick_positions)
+        ax.set_xticklabels(xtick_labels, rotation=45, fontsize=5)
 
-        ax.set_xticks(np.arange(len(yedges)))
-        ax.set_xticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in yedges], 
-                            fontsize=5)
+        # Y-axis: radius bin edges
+        ytick_positions = np.arange(len(yedges))
+        ytick_labels = [f"{y:.2f}" if y < 1e5 else f"{y:.2e}" for y in yedges]
+        ax.set_yticks(ytick_positions)
+        ax.set_yticklabels(ytick_labels, rotation=0, fontsize=5)
 
-        ax.set_yticks(np.arange(len(xedges)))
-        ax.set_yticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in xedges],rotation=90, fontsize=5)
-
+        # Flip y-axis so smaller radii are on bottom
         ax.invert_yaxis()
 
-        plt.xlabel('Period [days]')
-        plt.ylabel('Radius [$R_{Earth}$]')
+        plt.xlabel("Period [days]")
+        plt.ylabel("Radius [$R_{Earth}$]")
+        plt.suptitle("$\mathcal{R}_{MRP}$ Heatmap")
+        if not is_cumul_mode:
+            plt.title(f"M{z}-{next_z}")
+        else: 
+            plt.title(f"M (cumulative)")
+        plt.tight_layout()
+        if not is_cumul_mode: 
+            plt.savefig(os.path.join(heatmap_folder, f"M{z}-{next_z}_heatmap.png"), dpi=200)
+        else:
+            plt.savefig(os.path.join(heatmap_folder, f"cumulative_mass_heatmap.png"), dpi=200)
 
-        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
-        if is_flat_density: plt.title(f"Flat Density, M={lower_mass}-{upper_mass}")
-        if not is_flat_density: plt.title(f"M={lower_mass}-{upper_mass}")
+        if not is_cumul_mode: 
+            cumul_mean += mean
+            cumul_lower += lower
+            cumul_upper += upper 
 
-        if not is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"M{lower_mass}-{upper_mass}_heatmap.png"), dpi=200)
-        if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"M{lower_mass}-{upper_mass}_flat_density_heatmap.png"), dpi=200)
-        if verbose: 
-            print(f"made M{lower_mass}-{upper_mass}_heatmap.png")
-        plt.close()
-        
-    if make_cumulative:
-        base_hist = cumulative_hist_slices[0] - cumulative_hist_slices[0]
-        for hist in cumulative_hist_slices:
-            base_hist += hist
-        
-        vmax = np.max(base_hist)
-        plt.figure(figsize=(8, 6), dpi=200)
-
-        ax = sns.heatmap(base_hist, annot=True, fmt=".4f", cbar=False, 
-                         cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
-        
-        ax.set_xticks(np.arange(len(yedges)))
-        ax.set_xticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in yedges], 
-                            fontsize=5)
-
-        ax.set_yticks(np.arange(len(xedges)))
-        ax.set_yticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in xedges],rotation=90, fontsize=5)
-
-        ax.invert_yaxis()
-
-        plt.xlabel('Period [days]')
-        plt.ylabel('Radius [$R_{Earth}$]')
-
-        plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
-        if is_flat_density: plt.title(f"Flat Density, Cumulative Mass")
-        if not is_flat_density: plt.title(f"Cumulative Mass")
-
-        if not is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_mass_heatmap.png"), dpi=200)
-        if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_mass_flat_density_heatmap.png"), dpi=200)
-            
-        if verbose:
-            print(f"made cumulative_mass_heatmap.png")
-        plt.close()
-            
     if make_gifs:
-        if not is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","normal"), exist_ok=True)
-        if is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","flat_density"), exist_ok=True)
-        if not is_flat_density: output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps","normal", "mass_heatmap_animation.gif")
-        if is_flat_density: output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps","flat_density", "mass_flat_density_heatmap_animation.gif")
+        os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","normal"), exist_ok=True)
+        output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps","normal", "mass_heatmap_animation.gif")
         make_gif_from_pngs(heatmap_folder, output_gif_path, fps=fps)
+
+    # if is_flat_density:
+    #     heatmap_df = get_uniform_density_prior_df(rpm_grid)
+    # heatmap_df = get_heatmap_df(rpm_grid)
+    # make_mass_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
+    # make_radius_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
+    # make_period_histograms(rpm_grid,results_folder,heatmap_df,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=is_flat_density,make_cumulative=make_cumulative)
+    #R_mrp_array = 
+
+    
+# def get_heatmap_df(rpm_grid):
+#     """Create a dataframe for the heatmap of only the relevant values."""
+#     heatmap_df = pd.DataFrame()
+
+#     for voxel in rpm_grid.voxel_array.flat:
+#         df_selected = voxel.df[['R_pE', 'Period_days', 'M_pE', 'mass_divided_weights']]
+#         heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
+
+#     return heatmap_df
+
+# def get_uniform_density_prior_df(rpm_grid):
+#     """Create a dataframe for the heatmap of the flat density prior."""
+#     heatmap_df = pd.DataFrame()
+    
+#     for i in rpm_grid.voxel_array:
+#         for j in i:
+#             for k in j:
+#                 df_selected = k.df[['R_pE', 'Period_days', 'M_pE', 'mass_divided_weights']]
+#                 heatmap_df = pd.concat([heatmap_df, df_selected], ignore_index=True)
+    
+    
+#     M_30_priors = ((4/3)*np.pi*30/MEG)*(heatmap_df["R_pE"] * RECM)**3
+
+#     M_001_priors = ((4/3)*np.pi*0.01/MEG)*(heatmap_df["R_pE"] * RECM)**3 ### check upper limit and lower limit of contours
+    
+#     heatmap_df["M_pE"] = np.random.uniform(M_001_priors,M_30_priors,len(heatmap_df["M_pE"]))
+#     return heatmap_df
+    
+
+
+
+# def make_mass_histograms(rpm_grid,results_folder,histogram_df,make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
+#     """Make heatmaps iterating through mass."""
+#     if not is_flat_density: heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal","mass")
+#     if is_flat_density:  heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","flat_density","mass")
+#     os.makedirs(heatmap_folder, exist_ok=True)
+    
+#     cumulative_hist_slices = []
+#     xedges = None
+#     yedges = None
+#     vmax = 0
+#     for i in range(len(rpm_grid.mass_grid_array) - 1): # Figure out what the max value of the histogram is going to be.
+#         lower_mass = rpm_grid.mass_grid_array[i]
+#         upper_mass = rpm_grid.mass_grid_array[i + 1]
+
+
+#         mass_filtered_df = histogram_df[(histogram_df["M_pE"] > lower_mass) & (histogram_df["M_pE"] <= upper_mass)]
+#         period_data = mass_filtered_df["Period_days"].values
+#         radius_data = mass_filtered_df["R_pE"].values
+#         weights = mass_filtered_df["mass_divided_weights"].values # I think I need to split this the other way too...
+
+#         hist, xedges, yedges = np.histogram2d(radius_data, period_data, 
+#                                               bins=[rpm_grid.radius_grid_array, rpm_grid.period_grid_array], 
+#                                               weights=weights)  
+        
+#         hist /= 1000
+        
+#         cumulative_hist_slices.append(hist)
+        
+#         vmax = max(vmax, np.nanmax(hist))
+
+#     for i in range(len(rpm_grid.mass_grid_array) - 1):
+#         lower_mass = rpm_grid.mass_grid_array[i]
+#         upper_mass = rpm_grid.mass_grid_array[i + 1]
+
+#         mass_filtered_df = histogram_df[(histogram_df["M_pE"] > lower_mass) & (histogram_df["M_pE"] <= upper_mass)]
+#         period_data = mass_filtered_df["Period_days"].values
+#         radius_data = mass_filtered_df["R_pE"].values
+#         weights = mass_filtered_df["mass_divided_weights"].values 
+
+#         R_30_prior_upper = (((upper_mass)*MEG)/((4/3)*np.pi*30))**(1/3) / RECM
+#         R_30_prior_lower = (((lower_mass)*MEG)/((4/3)*np.pi*30))**(1/3) / RECM          
+
+
+#         R_001_prior_upper = (((upper_mass)*MEG)/((4/3)*np.pi*0.01))**(1/3) / RECM
+#         R_001_prior_lower = (((lower_mass)*MEG)/((4/3)*np.pi*0.01))**(1/3) / RECM
+
+#         hist, xedges, yedges = np.histogram2d(radius_data, period_data, 
+#                                               bins=[rpm_grid.radius_grid_array, rpm_grid.period_grid_array], 
+#                                               weights=weights)
+
+#         hist /= 1000
+        
+#         plt.figure(figsize=(8, 6), dpi=200)
+
+#         ax = sns.heatmap(hist, annot=True, fmt=".4f", cbar=False, 
+#                          cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
+#         #### put a line to denote where it's hard to detect planets?
+
+#         for prior_line in [R_30_prior_upper,R_30_prior_lower,R_001_prior_upper,R_001_prior_lower]:
+#             heatmap_prior_lines(ax,rpm_grid.period_grid_array,rpm_grid.radius_grid_array,prior_line)
+
+#         ax.set_xticks(np.arange(len(yedges)))
+#         ax.set_xticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in yedges], 
+#                             fontsize=5)
+
+#         ax.set_yticks(np.arange(len(xedges)))
+#         ax.set_yticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in xedges],rotation=90, fontsize=5)
+
+#         ax.invert_yaxis()
+
+#         plt.xlabel('Period [days]')
+#         plt.ylabel('Radius [$R_{Earth}$]')
+
+#         plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
+#         if is_flat_density: plt.title(f"Flat Density, M={lower_mass}-{upper_mass}")
+#         if not is_flat_density: plt.title(f"M={lower_mass}-{upper_mass}")
+
+#         if not is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"M{lower_mass}-{upper_mass}_heatmap.png"), dpi=200)
+#         if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"M{lower_mass}-{upper_mass}_flat_density_heatmap.png"), dpi=200)
+#         if verbose: 
+#             print(f"made M{lower_mass}-{upper_mass}_heatmap.png")
+#         plt.close()
+        
+#     if make_cumulative:
+#         base_hist = cumulative_hist_slices[0] - cumulative_hist_slices[0]
+#         for hist in cumulative_hist_slices:
+#             base_hist += hist
+        
+#         vmax = np.max(base_hist)
+#         plt.figure(figsize=(8, 6), dpi=200)
+
+#         ax = sns.heatmap(base_hist, annot=True, fmt=".4f", cbar=False, 
+#                          cmap=plt.cm.Spectral, vmin=0, vmax=vmax, annot_kws={"size": 5})
+        
+#         ax.set_xticks(np.arange(len(yedges)))
+#         ax.set_xticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in yedges], 
+#                             fontsize=5)
+
+#         ax.set_yticks(np.arange(len(xedges)))
+#         ax.set_yticklabels([f"{edge:.2f}" if edge < 1e5 else f"{edge:.2e}" for edge in xedges],rotation=90, fontsize=5)
+
+#         ax.invert_yaxis()
+
+#         plt.xlabel('Period [days]')
+#         plt.ylabel('Radius [$R_{Earth}$]')
+
+#         plt.suptitle("Occurrence-Weighted Fraction of PhoDyMM Kepler Systems", fontsize=15)
+#         if is_flat_density: plt.title(f"Flat Density, Cumulative Mass")
+#         if not is_flat_density: plt.title(f"Cumulative Mass")
+
+#         if not is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_mass_heatmap.png"), dpi=200)
+#         if is_flat_density: plt.savefig(os.path.join(heatmap_folder, f"cumulative_mass_flat_density_heatmap.png"), dpi=200)
+            
+#         if verbose:
+#             print(f"made cumulative_mass_heatmap.png")
+#         plt.close()
+            
+#     if make_gifs:
+#         if not is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","normal"), exist_ok=True)
+#         if is_flat_density: os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","flat_density"), exist_ok=True)
+#         if not is_flat_density: output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps","normal", "mass_heatmap_animation.gif")
+#         if is_flat_density: output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps","flat_density", "mass_flat_density_heatmap_animation.gif")
+#         make_gif_from_pngs(heatmap_folder, output_gif_path, fps=fps)
 
 
 def make_radius_histograms(rpm_grid,results_folder, histogram_df, make_gifs=True, verbose=False, fps=0.5, is_flat_density=False,make_cumulative=True):
@@ -623,17 +762,11 @@ def main():
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
 
-    if plottype in ["heatmap","heatmap_flat_density"]:
-        df = pd.read_csv(input_data_filename)
-        voxel_grid.setup_dataframes(df.columns)
-        voxel_grid.add_data(df)
-        voxel_grid.make_mass_divided_weights()
-
     plot_all = plottype == "all"
     
     # Actually make the plots.
     if plot_all or plottype == "heatmap":
-        heatmap_plot(voxel_grid,results_folder,make_gifs=make_gifs,verbose=verbose,fps=fps,make_cumulative=make_cumulative_hist)
+        heatmap_plot(voxel_grid,results_folder,make_gifs=make_gifs,verbose=verbose,fps=fps)
         
     if plot_all or plottype == "heatmap_flat_density":
         heatmap_plot(voxel_grid,results_folder,make_gifs=make_gifs,verbose=verbose,fps=fps,is_flat_density=True,make_cumulative=make_cumulative_hist)

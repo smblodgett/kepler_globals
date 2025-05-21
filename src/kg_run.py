@@ -92,12 +92,14 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
     backend_folder = runprops["results_folder"] + "/backend/"
     os.makedirs(backend_folder, exist_ok=True)
     backend_filename = backend_folder + "voxel_" + str(voxel_id) + "_chain.h5"
+    if os.path.exists(backend_filename):
+        os.remove(backend_filename)
     backend = emcee.backends.HDFBackend(backend_filename)
     backend.reset(runprops["nwalkers"], runprops["ndim"])
     # Only use planets that are in the DR25 and in Hsu's stellar catalog. 
     phodymm_dr_df = voxel.df[voxel.df["Status_rowe"].str[2]=='P']
     phodymm_dr_df = phodymm_dr_df[phodymm_dr_df["hsu_flag"]==1]
-    # The actual number of PhoDyMM observed planets (the number of posterior draws/rows in the voxel's dataframe).
+    # The actual number of PhoDyMM observed planets (the number of posterior draws/rows in the voxel's dataframe) plus the number of singles, divided by 1000 (to turn posterior draws into planets)
     actual_phodymm_observed = (len(phodymm_dr_df) + number_of_singles_in_voxel(voxel,expanded_dr_singles_df)) / 1000  
     
     # Calculate the number of planets that the Hsu model says are in the RP pixel.
@@ -119,7 +121,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
     # Find how many planets we should actually expect to observe based off of the Hsu model.
     if len(voxel.df) != 0: 
-        R_mrp_initial_guess = voxel.df["mass_divided_weights"].iloc[0] # this is Rmrp
+        R_mrp_initial_guess = voxel.df["mass_divided_weights"].iloc[0] # this is Rmrp's initial guess
     else:
         R_mrp_initial_guess = 0.0
 
@@ -138,7 +140,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
     ### pass Rmrp into the likelihood function, not Mmrp
     if R_mrp_initial_guess == 0:
-        p0 = np.array([[R_mrp_initial_guess + (np.random.normal(0,0.01))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
+        p0 = np.array([[R_mrp_initial_guess + (np.random.normal(1e-5,1e-7))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
     else:
         p0 = np.array([[R_mrp_initial_guess + (np.random.normal(0,R_mrp_initial_guess/10))] for _ in range(runprops["nwalkers"])]) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
 
