@@ -1,9 +1,14 @@
 #!/bin/bash
 start=$SECONDS
+rm ../runs/grid_model_log.txt
 
 for i in $(seq 0 3419); do
-    python kg_run.py "$i"
+    python kg_run.py "$i" && \
+    python kg_plots.py "$i" trace && \
+    python kg_plots.py "$i" corner
 done
+
+python kg_plots.py 0 heatmap
 
 duration=$((SECONDS-start))
 let "hours=duration/3600"

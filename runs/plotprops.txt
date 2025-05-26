@@ -1,9 +1,6 @@
 {
     # What kinds of plots should be made?
-    "plottype": "heatmap", # possible types: all, heatmap, heatmap_flat_density, trace, corner
-
-    # Voxel id (for specific voxel plots)
-    "voxel_id" : 0,
+    "plottype": "corner", # possible types: all, heatmap, trace, corner
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
@@ -15,6 +12,6 @@
     "verbose" : true,             # Enables print statements within the code
     "make_gifs" : true,           # creates gifs from the plots
     "fps" : 0.3,                  # frames per second for gifs    
-    "make_cumulative_hist" : true # whether heatmap plots should include a cumulative histogram at the end
+    "heatmap_plot_type" : "all"   # type of heatmap plot to create (should probably be set to all unless debugging)
 
 }

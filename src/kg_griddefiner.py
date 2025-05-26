@@ -74,14 +74,13 @@ class RPMVoxel:
     
     """
     def __init__(self,bottom_radius,top_radius,bottom_period,top_period,bottom_mass,top_mass):
-        
         self.bottom_radius = bottom_radius
         self.top_radius = top_radius
         self.bottom_period = bottom_period
         self.top_period = top_period
         self.bottom_mass = bottom_mass
         self.top_mass = top_mass
-        self.id_number = -1
+        self.id_number = -1 # Set to -1 as a flag that the voxel has been initialized but not assigned an id value within a full grid. 
     
     def within(self,radius,period,mass):
         """For a given value in radius-period-mass space, returns True if the voxel contains this value."""
@@ -104,25 +103,50 @@ class RPMVoxel:
         return len(self.df) if hasattr(self,"df") else 0
     
     def cache_data(self,cache_path):
-        self.df.to_csv(cache_path+f"/voxel_{self.id_number}.csv") ## could indicate with... _R{self.bottom_radius}-{self.top_radius}_P{self.bottom_period}-{self.top_period}_M{self.bottom_mass}-{self.top_mass} ??
+        """Saves the dataframe of a voxel to a csv identified with the voxel's id number."""
+        self.df.to_csv(cache_path+f"/voxel_{self.id_number}.csv")
         
     def get_cached_data(self,cache_path):
+        """Loads the data that was cached into the voxel's dataframe."""
         self.df = pd.read_csv(cache_path+f"/voxel_{self.id_number}.csv",index_col=0)
 
     def get_cached_data_count(self,cache_path):
+        """Reads the line count from saved csv for a voxel (minus 1), indicating the number of posterior draws for that voxel"""
         with open(cache_path+f"/voxel_{self.id_number}.csv", 'r', encoding='utf-8') as f:
           return sum(1 for _ in f) - 1  # subtract header
         
     def is_implausible(self):
-        def density(radius, mass):
+        """Returns true if a voxel is implausible, i.e., outside of the 0.01-30 g/cm3 density priors which mark the physical limits of planetary composition."""
+        def density(radius, mass): # Returns density in g/cm3 given a radius in Earth radii and mass in Earth masses.
             assert radius >= 0
             return (mass * MEG) / ((4/3)*np.pi*(RECM*radius)**3) if radius > 0 else np.inf
         return density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01 
 
     def get_Rmrp(self,backend_path="../results/backend"):
-        # print(self)
+        """
+        Calculates several statistical metrics from the emcee run on a voxel's occurrence rate.
+
+        Parameters
+        ----------
+        backend_path : str, optional
+          The pathway to the emcee backend (results from running the emcee model). Default='../results/backend'
+        
+        Returns
+        -------
+        mean : float
+          The mean value of Rmrp from the emcee model. If no backend file is found, 
+          or the file was created but unfilled, the returned mean = 0.0
+        lower : float
+          The -2σ location of Rmrp. Equals 0.0 if no backend file is found, or 
+          the file contains no data.
+        upper : float
+          The 2σ locatoin of Rmrp.Equals 0.0 if no backend file is found, or 
+          the file contains no data.
+        The voxel's boundaries are returned for scripting convenience in MRPGrid.
+        """
         h5_file = f"/voxel_{self.id_number}_chain.h5"
         if not os.path.exists(backend_path+h5_file):
+            print(f"Warning! No backend file was found for {self.id_number}!")
             return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
         
         size_bytes = os.path.getsize(backend_path+h5_file)
@@ -132,14 +156,10 @@ class RPMVoxel:
         
         reader = emcee.backends.HDFBackend(backend_path + h5_file)
         samples = np.array(reader.get_chain())
-        # print("samples.shape, samples",samples.shape,samples)
         better_samples = samples.reshape(-1,1)
-        # print("better samples",better_samples)
-        # input()
         mean = np.mean(better_samples)
         lower = np.percentile(better_samples, 15.87)
         upper = np.percentile(better_samples, 84.13)
-        # print("mean, lower, and upper: ",mean, lower, upper)
         return mean, lower, upper, self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
     
     def __str__(self):
@@ -156,10 +176,31 @@ class RPMGrid:
     
     Parameters
     ----------
+    radius_grid_array : list(float)
+      A list of the radii values denoting the voxel boundaries of the grid.
+    period_grid_array : list(float)
+      A list of the period values denoting the voxel boundaries of the grid.
+    mass_grid_array : list(float)
+      A list of the mass values denoting the voxel boundaries of the grid.
     
     Attributes
     ----------
-    
+    radius_grid_array : list(float)
+      A list of the radii values denoting the voxel boundaries of the grid.
+    period_grid_array : list(float)
+      A list of the period values denoting the voxel boundaries of the grid.
+    mass_grid_array : list(float)
+      A list of the mass values denoting the voxel boundaries of the grid.
+    r_len : int
+      The number of radius bins.
+    p_len : int
+      The number of period bins.
+    m_len : int
+      The number of mass bins.
+    voxel_array : ndarray(RPMVoxel)
+      A 3D NumPy array of shape (r_len,p_len,m_len) containing RPMVoxels.
+    id_array : ndarray
+      A 3D NumPy array of shape (r_len,p_len,m_len) that tracks the ids of the voxels in voxel_array.
     """
 
     def __init__(self,radius_grid_array,period_grid_array,mass_grid_array):
@@ -184,19 +225,6 @@ class RPMGrid:
             self.voxel_array[i, j, k].create_id(id_number)
             it[0] = id_number  # Write to id_array
             it.iternext()
-
-        # i_idx = 0
-        # for i in self.voxel_array:
-        #     j_idx = 0
-        #     for j in i:
-        #         k_idx=0
-        #         for k in j:
-        #             k.create_id(id_number)
-        #             self.id_array[i_idx,j_idx,k_idx] = id_number  #### this needs to be fixed: look at type of i,j for quick find by id
-        #             id_number+=1
-        #             k_idx+=1
-        #         j_idx+=1
-        #     i_idx+=1
         
 
     def setup_dataframes(self,columns,voxel_id,is_cached):
@@ -236,27 +264,15 @@ class RPMGrid:
             df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx'])
             self.voxel_array[r, p, m].add_data(df_chunk)
 
-
-        # df['r_idx'] = pd.cut(df['R_pE'], bins=self.radius_grid_array, labels=False, include_lowest=True, right=False)
-        # df['p_idx'] = pd.cut(df['Period_days'], bins=self.period_grid_array, labels=False, include_lowest=True, right=False)
-        # df['m_idx'] = pd.cut(df['M_pE'], bins=self.mass_grid_array, labels=False, include_lowest=True, right=False)
-
-        # # Drop rows outside of grid (NaNs)
-        # df_clean = df.dropna(subset=['r_idx', 'p_idx', 'm_idx']).copy()
-        # df_clean[['r_idx', 'p_idx', 'm_idx']] = df_clean[['r_idx', 'p_idx', 'm_idx']].astype(int)
-
-        # # Group rows by voxel indices
-        # for (r_idx, p_idx, m_idx), group in df_clean.groupby(['r_idx', 'p_idx', 'm_idx']):
-        #     voxel = self.voxel_array[r_idx,p_idx,m_idx]
-        #     voxel.add_data(group.drop(['r_idx', 'p_idx', 'm_idx'], axis=1))
-            
             
     def cache_dataframes(self,cache_path="../data/thinned/voxel_data"):
+        """Saves the dataframes of each voxel of the grid."""
         for voxel in self.voxel_array.flat:
             voxel.cache_data(cache_path)
     
     
     def find_voxel_by_id(self,voxel_id):
+        """Finds the voxel represented by a given id number."""
         location = np.argwhere(self.id_array == voxel_id)
         if location.size == 0:
             print("Unable to find voxel with given voxel id.")
@@ -266,6 +282,7 @@ class RPMGrid:
         
 
     def find_voxel_by_coordinates(self,radius,period,mass):
+        """Finds the voxel that contains a given radius, period, mass value."""
         for voxel in self.voxel_array.flat:
             if voxel.within(radius,period,mass):
                 return voxel
@@ -273,6 +290,7 @@ class RPMGrid:
         print("unable to find voxel with given coordinates.")
         
     def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period,cache_path,is_cached=True):
+        """Counts the number of points in every voxel that has the same radius and period values."""
         num_points = 0
         for voxel in self.voxel_array.flat:
             if voxel.bottom_radius == low_radius and voxel.top_radius == high_radius and voxel.bottom_period == low_period and voxel.top_period == high_period:
@@ -285,6 +303,7 @@ class RPMGrid:
         return num_points
     
     def make_mass_divided_weights(self,voxel_id,cache_path,is_cached=True):
+    
         for voxel in self.voxel_array.flat:
             if voxel.id_number == voxel_id:
               voxel_number_of_posterior_draws = voxel.num_data()
@@ -312,32 +331,8 @@ class RPMGrid:
                 for k in range(self.m_len):
                     self.Rmrp_array[i, j, k] = self.voxel_array[i, j, k].get_Rmrp()
         
-        # print(self.Rmrp_array.reshape(-1,9))
         return self.Rmrp_array.reshape(-1,9)       
                 
-
-        
-        #     for lookup_voxel in self.voxel_array.flat:
-        #         if lookup_voxel.bottom_radius == voxel.bottom_radius and lookup_voxel.top_radius == voxel.top_radius and lookup_voxel.bottom_period == voxel.bottom_period and lookup_voxel.top_period == voxel.top_period:
-        #             print("bottom radius: ",voxel.bottom_radius)
-        #             print("top radius: ",voxel.top_radius)
-        #             print("bottom period: ",voxel.bottom_period)
-        #             print("top period: ",voxel.top_period)
-
-        #             luv_id = lookup_voxel.id_number
-        #             print("HHHEEERREEEE" + f" with {luv_id}")
-
-        #             lines = 0
-        #             with open(f"../data/thinned/voxel_data/voxel_{luv_id}.csv", 'rb') as f:
-        #                 print("hshsfhsdfhsadfhasdhsfhsdfhhdssdhsdfh")
-        #                 lines = sum(1 for line in f) - 1
-
-        #             if lines > 0:
-        #                 print(f"voxel {luv_id} had lines!!!!!")
-        #                 return lookup_voxel.df["occurrence_rate_hsu"].iloc[0]
-                    
-        # print("Unable to get occurrence rate.")
-
 
     def __str__(self):
         """Returns a string representation of the entire grid."""

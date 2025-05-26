@@ -33,6 +33,7 @@ class ReadJson:
     
 
 def timer(is_timer,benchmark_message_string,mode='benchmark'):
+    """Tracks and prints the runtime of the script since script start."""
     global old_time
     global start_time
     if mode is 'final' and is_timer:
@@ -48,6 +49,7 @@ def timer(is_timer,benchmark_message_string,mode='benchmark'):
     
 
 def number_of_singles_in_voxel(voxel, expanded_dr_df):
+    """Returns the number of singles in a given voxel."""
     mask = ((expanded_dr_df["radius"] < voxel.top_radius) &
             (expanded_dr_df["radius"] > voxel.bottom_radius) &
             (expanded_dr_df["period"] < voxel.top_period) &
@@ -61,7 +63,7 @@ def number_of_singles_in_voxel(voxel, expanded_dr_df):
 
 
 def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
-    
+    """Configures and runs the emcee MCMC sampler."""
     # Get the specific voxel to run the model on. 
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
     assert type(voxel) == RPMVoxel
@@ -74,7 +76,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
             print("This voxel is outside of the density priors. emcee will not be run on it.")
             with open(runprops["log_filename"], "a") as file:
                 file.write("Voxel outside density priors for: "+str(voxel_id)+"\n")
-        quit()
+        sys.exit(1)
 
     # Get DR25 catalog.
     dr_df = pd.read_csv(dr_path)
@@ -117,7 +119,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
             file.write("observation probability = 0 for: "+str(voxel_id)+"\n")
         if not runprops["suppress_warnings"]: 
             print("Observation probability = 0. Not running emcee.") # what about observation probability?
-        quit()
+        sys.exit(1)
 
     # Find how many planets we should actually expect to observe based off of the Hsu model.
     if len(voxel.df) != 0: 
@@ -130,7 +132,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
                 file.write("R_mrp and D_mrp = 0 for: "+str(voxel_id)+"\n")
         if not runprops["suppress_warnings"]: 
             print("Both the R_mrp and actual_PhoDyMM values = 0. Not running emcee.") # what about observation probability?
-        quit()
+        sys.exit(1)
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
@@ -174,7 +176,7 @@ def main(voxel_id):
         runprops_filename = "runprops.txt"
     else:
         print('you are not starting from a proper directory. you should run kg_run.py from a src, runs, or a results directory.')
-        sys.exit()
+        sys.exit(1)
     
     # Get runprops loaded in, find the initial guess file.
     getData = ReadJson(runprops_filename)
@@ -225,12 +227,14 @@ def main(voxel_id):
 
     try:        
         run_emcee(voxel_grid,voxel_id,runprops)
+        sys.exit(0)
     except Exception as e:
         print("Error occurred..." + str(e))
         with open(runprops["log_filename"], "a") as file:
             file.write(str(e)+": "+str(voxel_id)+"\n")
     finally:
         timer(runprops["timer"],"",mode="final")
+    
 
 
 if __name__ == "__main__":
@@ -238,12 +242,11 @@ if __name__ == "__main__":
     start_time = old_time
     if len(sys.argv) != 2:
         print("invalid input. Enter which voxel id you want to run kepler_globals on.")
-        sys.exit()
+        sys.exit(1)
         
     voxel_id = int(sys.argv[1])
     main(voxel_id)
         
-
     
 
 # figure out a way to visualize this...maybe show it before setup? then again after doing emcee? figure 
