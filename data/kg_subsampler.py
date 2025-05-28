@@ -37,30 +37,15 @@ import re
 import sys
 from tqdm import tqdm
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
+from kg_constants import *  # Import constants from kg_constants.py
 
 RAW_PATH = '/hdd2/backup/danielkj/PhoDyMM_results_final/completed_systems/'   # pathway to directory with raw PhoDyMM output posterior data
 SUBSAMPLED_PATH = '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/' # pathway to directory containing lists of subsampled rows for each different KOI output by PhoDyMM 
 SAVE_PATH = '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/thinned/'  # pathway to directory to save data
 
-METOMS=3.0024584*10**-6 # earth mass to solar mass
-METOMJ=0.00314636   # earth mass to jupiter mass
-MEG=5.9721986*10**27 # earth mass in grams
-MEKG=MEG/1000 # earth mass in kilograms
-MSKG=1.9891*10**30 # solar mass in kilograms
-MSTOMJ=1047.92612 # solar mass in jupiter masses
 
-RECM=6.378*10**8  # earth radius in cm
-RETORS=0.009171 # earth radius to solar radius
-RJTORE=11.20814 # jupiter radius to earth radius
-RJTORS=0.10045 # jupiter radius to solar radius
-RSAU=0.00465047 # solar radius in AU
-RJAU=4.676*10**-4 # jupiter radius in AU
-RSCM=6.9634*10**10 # solar radius in cm
-
-DTOS=24*3600 # days to seconds
-MTOAU=6.68458712*10**-12 # meters to AU
-
-G=6.6743*10**-11 # gravitational constant in sci units
 
 
 def find_koi(name_with_numbers):

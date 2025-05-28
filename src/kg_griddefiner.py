@@ -24,9 +24,8 @@ import emcee
 import numpy as np
 import pandas as pd
 
+from kg_constants import *
 
-RECM=6.378*10**8  # earth radius in cm
-MEG=5.9721986*10**27 # earth mass in grams
 
 
 class RPMVoxel:
@@ -142,16 +141,16 @@ class RPMVoxel:
         upper : float
           The 2σ locatoin of Rmrp.Equals 0.0 if no backend file is found, or 
           the file contains no data.
-        The voxel's boundaries are then returned for scripting convenience in MRPGrid.
+        The voxel's boundaries and id are then returned for scripting convenience in kg_plots.
         """
         h5_file = f"/voxel_{self.id_number}_chain.h5"
         if not os.path.exists(backend_path+h5_file):
-            return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
+            return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass, self.id_number
         
         size_bytes = os.path.getsize(backend_path+h5_file)
         size_mb = size_bytes / (1024 ** 2)
         if size_mb < 1: ### figure out a better way to check if it's empty???
-            return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
+            return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass, self.id_number
         
         reader = emcee.backends.HDFBackend(backend_path + h5_file)
         samples = np.array(reader.get_chain())
@@ -160,7 +159,7 @@ class RPMVoxel:
         mean = np.mean(better_samples)
         lower = np.percentile(better_samples, 15.87)
         upper = np.percentile(better_samples, 84.13)
-        return mean, lower, upper, self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
+        return mean, lower, upper, self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass, self.id_number
     
     def __str__(self):
         """Returns a string representation of the voxel."""
@@ -324,14 +323,14 @@ class RPMGrid:
         
     def get_Rmrps(self,nburnin,backend_path="../results/backend"):
         
-        self.Rmrp_array = np.empty((self.r_len, self.p_len, self.m_len, 9))
+        self.Rmrp_array = np.empty((self.r_len, self.p_len, self.m_len, 10))
 
         for i in range(self.r_len):
             for j in range(self.p_len):
                 for k in range(self.m_len):
                     self.Rmrp_array[i, j, k] = self.voxel_array[i, j, k].get_Rmrp(nburnin,backend_path=backend_path)
         
-        return self.Rmrp_array.reshape(-1,9)       
+        return self.Rmrp_array.reshape(-1,10)       
                 
 
     def __str__(self):

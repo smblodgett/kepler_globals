@@ -16,9 +16,9 @@ import time
 
 import kg_likelihood
 from kg_griddefiner import *
+from kg_constants import N_HSU_STARS
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
 
-N_HSU_STARS = 80006 
 
 
 class ReadJson:

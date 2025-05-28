@@ -35,13 +35,17 @@ import os
 import sys
 import commentjson as json
 import re
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.ticker as ticker
+
 from PIL import Image
 
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
-from kg_griddefiner import *
+from kg_griddefiner import RPMGrid, RPMVoxel
+from kg_constants import *
 
 
 class ReadJson:
@@ -55,7 +59,7 @@ class ReadJson:
         return self.data
 
     
-def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, fps=0.5,backend_path="../results/backend"):
+def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend"):
     """
     Plots sequences of heatmaps from the base KMDC, iterating on mass, radius, and period.
     
@@ -81,11 +85,11 @@ def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, ver
     None
     """
     if mode == "all" or mode == "mass":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="mass",make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="mass",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path)
     if mode == "all" or mode == "period":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="period",make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="period",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path)
     if mode == "all" or mode == "radius":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="radius",make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="radius",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path)
 
 
 def get_arrays(mode):
@@ -108,7 +112,7 @@ def get_arrays(mode):
     return x_array, y_array, z_array, search_dict
 
 
-def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verbose=False, fps=0.5,backend_path="../results/backend"): ######## tidy up this script a lot
+def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend"): ######## tidy up this script a lot
     """This function needs to be cut down to size..."""
 
     assert mode == "mass" or mode == "period" or mode == "radius", "heatmaps iterate over mass, period, or radius"
@@ -138,6 +142,7 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
             mean = np.empty((len(y_array)-1,len(x_array)-1))
             lower = np.empty((len(y_array)-1,len(x_array)-1))
             upper = np.empty((len(y_array)-1,len(x_array)-1))
+            ids = np.empty((len(y_array)-1,len(x_array)-1))
             annot = np.empty((len(y_array)-1, len(x_array)-1), dtype=object)
 
             for voxel in Rmrps:
@@ -154,6 +159,7 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
                     mean[x_idx,y_idx] = voxel[0]
                     lower[x_idx,y_idx] = voxel[1]
                     upper[x_idx,y_idx] = voxel[2]
+                    ids[x_idx,y_idx] = voxel[9]
                     if voxel[0] == 0:
                         annot[x_idx,y_idx] = f"{voxel[0]:.1f}$^{{+{voxel[2]:.1f}}}_{{-{voxel[1]:.1f}}}$%"
                     elif voxel[0] < 1e-2 and voxel[0] > 1e-3:
@@ -201,7 +207,17 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
 
         plt.figure(figsize=(10, 8),dpi=150)
         ax = sns.heatmap(mean, annot=annot, fmt='', cmap=cmap, norm=norm,#vmin=0.0, vmax=vmax,
-                        cbar=True,annot_kws={"size":6,"color": "white"})
+                        cbar=False,annot_kws={"size":6,"color": "white"})
+
+        if not is_cumul_mode and is_plot_ids:
+            for i in range(mean.shape[0]):      # rows (y)
+                for j in range(mean.shape[1]):  # columns (x)
+                    # Calculate the id number for this cell (replace with your actual logic if needed)
+                    id_number = int(ids[i,j])  # Or however you want to tag it
+
+                    # Place in upper left: x=j, y=i, with a small offset
+                    ax.text(j + 0.02, i + 0.15, id_number, color='black', fontsize=3, ha='left', va='top', alpha=0.5)
+
 
 
         xedges = np.array(x_array)
@@ -287,6 +303,8 @@ def heatmap_prior_line_config(ax,z,next_z,x_array,y_array,mode):
         rho10_prior_lower = radius_given_density_mass(10,z)        
         rho001_prior_upper = radius_given_density_mass(0.01,next_z)
         rho001_prior_lower = radius_given_density_mass(0.01,z)
+        rho55_earth_upper = radius_given_density_mass(5.5,next_z)
+        rho55_earth_lower = radius_given_density_mass(5.5,z)
 
     elif mode == "radius":
         rho30_prior_upper = mass_given_density_radius(30,next_z)
@@ -295,14 +313,17 @@ def heatmap_prior_line_config(ax,z,next_z,x_array,y_array,mode):
         rho10_prior_lower = mass_given_density_radius(10,z)        
         rho001_prior_upper = mass_given_density_radius(0.01,next_z)
         rho001_prior_lower = mass_given_density_radius(0.01,z)
+        rho55_earth_upper = mass_given_density_radius(5.5,next_z)
+        rho55_earth_lower = mass_given_density_radius(5.5,z)
 
     if (mode == "mass" or mode == "radius"):
         color_array = ["darkslategrey",'k','k',"darkslategrey"] if mode == "mass" else ['k',"darkslategrey","darkslategrey",'k']
-        for colors, prior_line in zip(["dimgrey","dimgrey"]+color_array,[rho10_prior_lower,rho10_prior_upper,rho30_prior_upper,rho30_prior_lower,rho001_prior_upper,rho001_prior_lower]):
-            heatmap_prior_lines(ax,x_array,y_array,prior_line,colors=colors)
+        for colors, prior_line in zip(["aqua","aqua","dimgrey","dimgrey"]+color_array,[rho55_earth_lower,rho55_earth_upper,rho10_prior_lower,rho10_prior_upper,rho30_prior_upper,rho30_prior_lower,rho001_prior_upper,rho001_prior_lower]):
+            alpha = 0.2 if colors == "aqua" else 0.7
+            heatmap_prior_lines(ax,x_array,y_array,prior_line,colors=colors,alpha=alpha)
     
 
-def heatmap_prior_lines(ax,x_bins,y_bins,prior_line_y,colors='k'):
+def heatmap_prior_lines(ax,x_bins,y_bins,prior_line_y,colors='k',alpha=0.7):
     """Helper function which plots the prior lines on the heatmaps."""
     if prior_line_y > np.max(y_bins):
         return 
@@ -316,7 +337,7 @@ def heatmap_prior_lines(ax,x_bins,y_bins,prior_line_y,colors='k'):
     mapped_y = bin_idx + frac 
 
     # Plot the precise horizontal line.
-    ax.hlines(y=mapped_y, xmin=0, xmax=len(x_bins)-1, colors=colors, linestyles='dashed',alpha=0.7)
+    ax.hlines(y=mapped_y, xmin=0, xmax=len(x_bins)-1, colors=colors, linestyles='dashed',alpha=alpha)
 
 
 def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True):
@@ -465,16 +486,15 @@ def main(voxel_id,plottype):
     backend_path = plotprops.get("backend_path")
     make_gifs = plotprops.get("make_gifs")
     fps = plotprops.get("fps")
+    is_plot_ids = plotprops.get("is_plot_ids")
     heatmap_plot_type = plotprops.get("heatmap_plot_type")
     print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
-
-    plot_all = plottype == "all"
-    
+# Default to False if not specified
     # Actually make the plots.
-    if plot_all or plottype == "heatmap":
-        heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
+    if plottype == "heatmap":
+        heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path)
              
     if plottype == "trace":
         assert voxel_id is not None, "You need to input the voxel you want to run trace plots on!"
@@ -485,7 +505,7 @@ def main(voxel_id,plottype):
         corner_plot(voxel_id, results_folder,nburnin)
         
     
-if __name__ == "__main__":
+if __name__ == "__main__":# Default to False if not specified
    
     # Read the first argument as the voxel to plot.
     if len(sys.argv) > 1:
