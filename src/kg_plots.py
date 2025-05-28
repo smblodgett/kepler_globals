@@ -55,7 +55,7 @@ class ReadJson:
         return self.data
 
     
-def heatmap_plot(rpm_grid,results_folder,mode="all", make_gifs=True, verbose=False, fps=0.5):
+def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, fps=0.5,backend_path="../results/backend"):
     """
     Plots sequences of heatmaps from the base KMDC, iterating on mass, radius, and period.
     
@@ -67,6 +67,8 @@ def heatmap_plot(rpm_grid,results_folder,mode="all", make_gifs=True, verbose=Fal
       A grid of radius-period-mass voxels (of class RPMVoxel).
     results_folder : str
       The pathway to Kepler Globals' results folder.
+    mode : str, optional
+      Which kind of heatmap should be plotted. Default is 'all', which plots all three types.
     make_gifs : bool, optional
       Whether the function should make a gif from its generated heatmaps (default is True).
     verbose : bool, optional
@@ -79,11 +81,11 @@ def heatmap_plot(rpm_grid,results_folder,mode="all", make_gifs=True, verbose=Fal
     None
     """
     if mode == "all" or mode == "mass":
-        make_histograms(rpm_grid,results_folder,mode="mass",make_gifs=make_gifs,verbose=verbose,fps=fps)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="mass",make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
     if mode == "all" or mode == "period":
-        make_histograms(rpm_grid,results_folder,mode="period",make_gifs=make_gifs,verbose=verbose,fps=fps)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="period",make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
     if mode == "all" or mode == "radius":
-        make_histograms(rpm_grid,results_folder,mode="radius",make_gifs=make_gifs,verbose=verbose,fps=fps)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="radius",make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
 
 
 def get_arrays(mode):
@@ -106,7 +108,7 @@ def get_arrays(mode):
     return x_array, y_array, z_array, search_dict
 
 
-def make_histograms(rpm_grid, results_folder, mode, make_gifs=True, verbose=False, fps=0.5): ######## tidy up this script a lot
+def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verbose=False, fps=0.5,backend_path="../results/backend"): ######## tidy up this script a lot
     """This function needs to be cut down to size..."""
 
     assert mode == "mass" or mode == "period" or mode == "radius", "heatmaps iterate over mass, period, or radius"
@@ -116,10 +118,11 @@ def make_histograms(rpm_grid, results_folder, mode, make_gifs=True, verbose=Fals
     heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal",mode)
     os.makedirs(heatmap_folder, exist_ok=True)
 
-    Rmrps = rpm_grid.get_Rmrps()
+    Rmrps = rpm_grid.get_Rmrps(nburnin,backend_path)
 
     all_means = Rmrps[:,0]
-    vmax = np.max(all_means*100)
+    vmax = np.max(all_means*100) # Express Rmrp in a percentage.
+    vmin = np.min(all_means[all_means>0]*100)
 
     cumul_mean = np.zeros((len(y_array)-1,len(x_array)-1))
     cumul_lower = np.zeros((len(y_array)-1,len(x_array)-1))
@@ -153,6 +156,8 @@ def make_histograms(rpm_grid, results_folder, mode, make_gifs=True, verbose=Fals
                     upper[x_idx,y_idx] = voxel[2]
                     if voxel[0] == 0:
                         annot[x_idx,y_idx] = f"{voxel[0]:.1f}$^{{+{voxel[2]:.1f}}}_{{-{voxel[1]:.1f}}}$%"
+                    elif voxel[0] < 1e-2 and voxel[0] > 1e-3:
+                        annot[x_idx,y_idx] = f"{voxel[0]:.3f}$^{{+{voxel[2]:.3f}}}_{{-{voxel[1]:.3f}}}$%"
                     elif voxel[0] < 1e-3:
                         annot[x_idx,y_idx] = f"{compact_sci(voxel[0])}$^{{+{compact_sci(voxel[2],1)}}}_{{-{compact_sci(voxel[1],1)}}}$%"
                     else:
@@ -160,30 +165,43 @@ def make_histograms(rpm_grid, results_folder, mode, make_gifs=True, verbose=Fals
 
         if is_cumul_mode:
             mean = cumul_mean
-            lower = cumul_lower
             upper = cumul_upper
+            lower = cumul_lower
             for row_idx, row in enumerate(mean):
                 for col_idx, voxel_mean in enumerate(row):
                     if voxel_mean == 0:
                         annot[row_idx,col_idx] = f"{voxel_mean:.1f}$^{{+{upper[row_idx,col_idx]:.1f}}}_{{-{lower[row_idx,col_idx]:.1f}}}$%"
+                    elif voxel[0] < 1e-2 and voxel[0] > 1e-3:
+                        annot[row_idx,col_idx] = f"{voxel_mean:.3f}$^{{+{upper[row_idx,col_idx]:.3f}}}_{{-{lower[row_idx,col_idx]:.3f}}}$%"
                     elif voxel_mean < 1e-3:
                         annot[row_idx,col_idx] = f"{compact_sci(voxel_mean)}$^{{+{compact_sci(upper[row_idx,col_idx],1)}}}_{{-{compact_sci(lower[row_idx,col_idx],1)}}}$%"
                     else:
                         annot[row_idx,col_idx] = f"{voxel_mean:.2f}$^{{+{upper[row_idx,col_idx]:.3f}}}_{{-{lower[row_idx,col_idx]:.3f}}}$%"
 
         
-        cubehelix_blue = sns.cubehelix_palette(start=2, rot=0.2, light=0.5,dark=0.1,n_colors=20,gamma=1.2)
+        # Create a cubehelix palette
 
-        colors = [(0.6,0.6,0.6)] + cubehelix_blue
+        cubehelix = sns.cubehelix_palette(start=2,rot=-1.4,n_colors=1000,light=.74,dark=0.4,reverse=False)
+        # Prepend gray for zero values
+        colors = [(0.6, 0.6, 0.6)] + cubehelix
         cmap = ListedColormap(colors)
 
+        # Handle vmax if in cumulative mode
+        if is_cumul_mode:
+            vmax = np.max(mean[mean > 0])  # Exclude zeros for log spacing
+            vmin = np.min(mean[mean>0])
+        print("vmax: ",vmax)
+        print("vmin: ",vmin)
 
-        boundaries = [0] + list(np.linspace(np.nextafter(0,1), vmax,len(colors)))
-        norm = BoundaryNorm(boundaries,len(colors))
+        # Create boundaries:
+        n_bins = len(colors) - 1  # excluding the zero bin
+        log_boundaries = np.logspace(np.log10(np.nextafter(vmin, 0)), np.log10(vmax), n_bins)
+        boundaries = [0] + list(log_boundaries)
+        norm = BoundaryNorm(boundaries, len(colors))
 
         plt.figure(figsize=(10, 8),dpi=150)
         ax = sns.heatmap(mean, annot=annot, fmt='', cmap=cmap, norm=norm,#vmin=0.0, vmax=vmax,
-                        cbar=False,annot_kws={"size":5.5})
+                        cbar=True,annot_kws={"size":6,"color": "white"})
 
 
         xedges = np.array(x_array)
@@ -208,7 +226,7 @@ def make_histograms(rpm_grid, results_folder, mode, make_gifs=True, verbose=Fals
         ax.invert_yaxis()
 
         xlabel, ylabel = get_labels(mode)
-
+        plt.grid()
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.suptitle("$\mathcal{R}_{MRP}$ Heatmap", fontsize=25)
@@ -298,7 +316,7 @@ def heatmap_prior_lines(ax,x_bins,y_bins,prior_line_y,colors='k'):
     mapped_y = bin_idx + frac 
 
     # Plot the precise horizontal line.
-    ax.hlines(y=mapped_y, xmin=0, xmax=len(x_bins)-1, colors=colors, linestyles='dashed')
+    ax.hlines(y=mapped_y, xmin=0, xmax=len(x_bins)-1, colors=colors, linestyles='dashed',alpha=0.7)
 
 
 def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True):
@@ -338,7 +356,7 @@ def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True):
  ### residuals (best fit - data)
 
     
-def trace_plot(voxel_id,results_folder):
+def trace_plot(voxel_id,results_folder,nburnin):
     """Makes the trace plot for an individual voxel's Rmrp value."""
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
@@ -353,6 +371,8 @@ def trace_plot(voxel_id,results_folder):
     reader = emcee.backends.HDFBackend(file_path)
 
     samples = reader.get_chain()
+    samples = samples[nburnin:,:,:]
+
     print("Chain shape:", samples.shape)
     n_steps, n_walkers, n_dim = samples.shape
     samples = np.array(samples)
@@ -362,6 +382,8 @@ def trace_plot(voxel_id,results_folder):
         walker_data = np.squeeze(walker_data)
         plt.plot(np.linspace(0,n_steps,n_steps), walker_data)
     
+    plt.minorticks_on()
+    plt.grid()
     plt.xlabel("Step Number")
     plt.ylabel("$\mathcal{R}_{MRP}$")
     plt.suptitle("Trace Plot",fontsize=17)
@@ -386,7 +408,7 @@ def find_h5_file(voxel_id,sampler_backend_folder):
     return h5_path
 
 
-def corner_plot(voxel_id, results_folder):
+def corner_plot(voxel_id, results_folder, nburnin):
     """Makes the corner plot for an individual voxel's Rmrp value."""
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
@@ -401,7 +423,10 @@ def corner_plot(voxel_id, results_folder):
     reader = emcee.backends.HDFBackend(file_path)
 
     samples = reader.get_chain()
+    samples = samples[nburnin:,:,:]
+
     print("Chain shape:", samples.shape)
+
     n_steps, n_walkers, n_dim = samples.shape
     samples = np.array(samples)
     
@@ -432,10 +457,12 @@ def main(voxel_id,plottype):
     # Get plotprops loaded in.
     getData = ReadJson(plotprops_filename)
     plotprops = getData.outProps()
+    nburnin = plotprops.get("nburnin")
     verbose = plotprops.get("verbose")
     # plottype = plotprops.get("plottype")
     input_data_filename = plotprops.get("input_data_filename")
     results_folder = plotprops.get("results_folder")
+    backend_path = plotprops.get("backend_path")
     make_gifs = plotprops.get("make_gifs")
     fps = plotprops.get("fps")
     heatmap_plot_type = plotprops.get("heatmap_plot_type")
@@ -447,15 +474,15 @@ def main(voxel_id,plottype):
     
     # Actually make the plots.
     if plot_all or plottype == "heatmap":
-        heatmap_plot(voxel_grid,results_folder,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,fps=fps)
+        heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,fps=fps,backend_path=backend_path)
              
     if plottype == "trace":
         assert voxel_id is not None, "You need to input the voxel you want to run trace plots on!"
-        trace_plot(voxel_id,results_folder)
+        trace_plot(voxel_id,results_folder,nburnin)
         
     if plottype == "corner":
         assert voxel_id is not None, "You need to input the voxel you want to run corner plots on!"
-        corner_plot(voxel_id, results_folder)
+        corner_plot(voxel_id, results_folder,nburnin)
         
     
 if __name__ == "__main__":

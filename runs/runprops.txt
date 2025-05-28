@@ -9,9 +9,9 @@
 
     # Run properties/parameters
     "nwalkers" : 20,           # number of walkers in emcee ensemble
-    "nburnin" : 400,            # length of burn in
+    "nburnin" : 100,            # length of burn in
     "ndim" : 1,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 1000,           # number of initial steps for sampling
+    "nsteps" : 1000,           # number of steps for sampling
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction

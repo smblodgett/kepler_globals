@@ -116,7 +116,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
     observation_probability = observed_planets_num / (hsu_occurrence_rate * N_HSU_STARS)
     if observation_probability == 0:
         with open(runprops["log_filename"], "a") as file:
-            file.write("observation probability = 0 for: "+str(voxel_id)+"\n")
+            file.write("observation probability = 0 for: "+str(voxel_id)+f" (expected obs: {hsu_occurrence_rate*N_HSU_STARS})"+str(voxel)+"\n")
         if not runprops["suppress_warnings"]: 
             print("Observation probability = 0. Not running emcee.") # what about observation probability?
         sys.exit(1)
@@ -149,12 +149,12 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
 # correct for the distribution of 
     
-    if runprops["verbose"]: print('sampler created. Starting the burn in.')
+    if runprops["verbose"]: print('sampler created. Beginning run.')
     
     if runprops['thin_run']:
-        state = sampler.run_mcmc(p0, runprops["nsteps"], progress = True, store = True, thin=runprops["nthinning"])
+        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True, thin=runprops["nthinning"])
     else:
-        state = sampler.run_mcmc(p0, runprops["nsteps"], progress = True, store = True)
+        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True)
 
     with open(runprops["log_filename"], "a") as file:
         file.write("success: "+str(voxel_id)+"\n")

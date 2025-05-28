@@ -122,7 +122,7 @@ class RPMVoxel:
             return (mass * MEG) / ((4/3)*np.pi*(RECM*radius)**3) if radius > 0 else np.inf
         return density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01 
 
-    def get_Rmrp(self,backend_path="../results/backend"):
+    def get_Rmrp(self,nburnin,backend_path="../results/backend"):
         """
         Calculates several statistical metrics from the emcee run on a voxel's occurrence rate.
 
@@ -142,11 +142,10 @@ class RPMVoxel:
         upper : float
           The 2σ locatoin of Rmrp.Equals 0.0 if no backend file is found, or 
           the file contains no data.
-        The voxel's boundaries are returned for scripting convenience in MRPGrid.
+        The voxel's boundaries are then returned for scripting convenience in MRPGrid.
         """
         h5_file = f"/voxel_{self.id_number}_chain.h5"
         if not os.path.exists(backend_path+h5_file):
-            print(f"Warning! No backend file was found for {self.id_number}!")
             return 0.0,0.0,0.0,self.bottom_radius, self.top_radius, self.bottom_period, self.top_period, self.bottom_mass, self.top_mass
         
         size_bytes = os.path.getsize(backend_path+h5_file)
@@ -156,6 +155,7 @@ class RPMVoxel:
         
         reader = emcee.backends.HDFBackend(backend_path + h5_file)
         samples = np.array(reader.get_chain())
+        samples = samples[nburnin:,:,:]
         better_samples = samples.reshape(-1,1)
         mean = np.mean(better_samples)
         lower = np.percentile(better_samples, 15.87)
@@ -322,14 +322,14 @@ class RPMGrid:
                     )
             return occurrence_rate_df.loc[mask].iloc[0]["occurrence"]
         
-    def get_Rmrps(self):
+    def get_Rmrps(self,nburnin,backend_path="../results/backend"):
         
         self.Rmrp_array = np.empty((self.r_len, self.p_len, self.m_len, 9))
 
         for i in range(self.r_len):
             for j in range(self.p_len):
                 for k in range(self.m_len):
-                    self.Rmrp_array[i, j, k] = self.voxel_array[i, j, k].get_Rmrp()
+                    self.Rmrp_array[i, j, k] = self.voxel_array[i, j, k].get_Rmrp(nburnin,backend_path=backend_path)
         
         return self.Rmrp_array.reshape(-1,9)       
                 
