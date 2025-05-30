@@ -259,7 +259,7 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
         if not is_cumul_mode: 
             cumul_mean += mean
             cumul_lower += lower
-            cumul_upper += upper 
+            cumul_upper += upper
 
     if make_gifs:
         os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","normal"), exist_ok=True)
@@ -285,6 +285,8 @@ def get_labels(mode):
     elif mode == "period":
         ylabel = "Mass [$M_{⊕}$]"
         xlabel = "Radius [$R_{⊕}$]"
+    else:
+        raise ValueError("Invalid mode. Choose 'mass', 'radius', or 'period'.")
     return xlabel, ylabel
 
 
@@ -459,7 +461,148 @@ def corner_plot(voxel_id, results_folder, nburnin):
     
     corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
         
+
+def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/backend"):
+    """
+    Makes the residual plot for an individual voxel's Rmrp value.
+    
+    Parameters
+    ----------
+    rpm_grid : RPMGrid
+      A grid of radius-period-mass voxels (of class RPMVoxel).
+    results_folder : str
+      The pathway to Kepler Globals' results folder.
+    nburnin : int
+      The number of burn-in steps to skip in the MCMC chain.
+    mode : str, optional
+      The type of residual plot to create. Default is 'all', which plots all three types.
+    verbose : bool, optional
+      Whether the function should produce print statements to track its progress (default is False).
+    fps : float, optional
+      What the frame rate for the gifs should be (default is 0.5).
+    
+    Returns
+    -------
+    None
+    """
+
+    if mode == "all" or mode == "mass":
+        make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=verbose,fps=fps,backend_path=backend_path)
         
+    if mode == "all" or mode == "period":
+        make_residuals(rpm_grid,results_folder,nburnin,mode="period",verbose=verbose,fps=fps,backend_path=backend_path)
+        
+    if mode == "all" or mode == "radius":
+        make_residuals(rpm_grid,results_folder,nburnin,mode="radius",verbose=verbose,fps=fps,backend_path=backend_path)
+
+
+def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps=0.5,backend_path="../results/backend"):
+    """
+    Makes the residuals for a given voxel.
+    
+    Parameters
+    ----------
+    rpm_grid : RPMGrid
+      A grid of radius-period-mass voxels (of class RPMVoxel).
+    results_folder : str
+      The pathway to Kepler Globals' results folder.
+    nburnin : int
+      The number of burn-in steps to skip in the MCMC chain.bin_edges
+    mode : str, optional
+      The type of residual plot to create. Default is 'mass'.
+    verbose : bool, optional
+      Whether the function should produce print statements to track its progress (default is False).
+    fps : float, optional
+      What the frame rate for the gifs should be (default is 0.5).
+    
+    Returns
+    -------
+    None
+    """
+    
+    assert mode == "mass" or mode == "period" or mode == "radius", "residuals iterate over mass, period, or radius"
+    
+    x_array, y_array, z_array, search_dict = get_arrays(mode)
+
+    residual_folder = os.path.join(results_folder, "plots", "residuals","normal",mode)
+    os.makedirs(residual_folder, exist_ok=True)
+
+    Rmrps = rpm_grid.get_Rmrps(nburnin,backend_path)
+
+    # cumul_mean = np.zeros((len(y_array)-1,len(x_array)-1))
+    # cumul_lower = np.zeros((len(y_array)-1,len(x_array)-1))
+    # cumul_upper = np.zeros((len(y_array)-1,len(x_array)-1))
+    is_cumul_mode = False
+    print("x_array: ", x_array)
+    print("y_array: ", y_array)
+
+    for i, z in enumerate(z_array):
+        
+        if i == len(z_array)-1:
+            break
+            is_cumul_mode = True
+        if not is_cumul_mode: 
+            next_z = z_array[i+1]
+
+            mean = np.zeros((len(y_array)-1))
+            lower = np.zeros((len(y_array)-1))
+            upper = np.zeros((len(y_array)-1))
+
+            for voxel in Rmrps:
+            #   print("nextz_comp: ",voxel[search_dict["z_next"]], next_z)
+
+                if voxel[search_dict["z"]] == z and voxel[search_dict["z_next"]] == next_z:
+                    
+                    y_idx = np.searchsorted(y_array, voxel[search_dict["x"]],side='right')-1
+                    print("y_idx: ",y_idx)
+                    # print("voxel[0]: ",voxel[0])
+                    mean[y_idx] += voxel[0] * 100
+                    lower[y_idx] += voxel[1] * 100
+                    upper[y_idx] += voxel[2] * 100
+                    # input("mean: "+str(mean)+" lower: "+str(lower)+" upper: "+str(upper))
+                    
+        # if is_cumul_mode:
+        #     mean = cumul_mean
+        #     upper = cumul_upper
+        #     lower = cumul_lower
+            
+        bins = range(len(mean))  # len(mean) = N bins
+        bin_edges = y_array      # N+1 edges for N bins
+
+        plt.figure()
+        plt.bar(bins, mean, width=1, align='edge', alpha=0.7, color='skyblue')
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+        xlabel, ylabel = get_labels(mode)
+
+        plt.title(f'Residuals for {mode} {z}-{next_z}')
+
+        # Use all N+1 bin edges as tick labels
+        plt.xticks(
+            ticks=np.arange(len(bin_edges)),  # 0 to N
+            labels=[f"{v:.2f}" if v < 1e4 else f"{v:.2e}" for v in bin_edges],
+            rotation=45
+        )
+
+        plt.xlabel(xlabel)  # You had ylabel here by mistake earlier
+        plt.ylabel('$\mathcal{R}_{MRP}$')
+        plt.tight_layout()
+        plt.show()
+
+        if not is_cumul_mode: 
+            plt.savefig(os.path.join(residual_folder, mode + f"_{z}-{next_z}_residual.png"), dpi=200)
+        else:
+            plt.savefig(os.path.join(residual_folder, f"cumulative_"+mode+"_residual.png"), dpi=200)
+        plt.close()  # Close the plot to free memory
+        # input()
+        # if not is_cumul_mode: 
+        #     cumul_mean += mean
+        #     cumul_lower += lower
+        #     cumul_upper += upper 
+
+    
+
+    
 def main(voxel_id,plottype):
     
     cwd = os.getcwd()
@@ -488,11 +631,15 @@ def main(voxel_id,plottype):
     fps = plotprops.get("fps")
     is_plot_ids = plotprops.get("is_plot_ids")
     heatmap_plot_type = plotprops.get("heatmap_plot_type")
+    residual_plot_type = plotprops.get("residual_plot_type")
     print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
 # Default to False if not specified
     # Actually make the plots.
+    if plottype == "residual":
+        residual_plot(voxel_grid,results_folder,nburnin,mode=residual_plot_type,verbose=verbose,fps=fps,backend_path=backend_path)
+    
     if plottype == "heatmap":
         heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path)
              
@@ -517,7 +664,7 @@ if __name__ == "__main__":# Default to False if not specified
     # Read the second argument as the type of plot.
     if len(sys.argv) > 2:
         plottype = sys.argv[2]
-        assert plottype == "trace" or plottype == "corner" or plottype == "heatmap", "Only valid plottypes are heatmap, trace, and corner."
+        assert plottype == "trace" or plottype == "corner" or plottype == "heatmap" or plottype == "residual", "Only valid plottypes are residual, heatmap, trace, and corner."
     else:
         print("Indicate what type of plot to create. Valid plottypes are heatmap, trace, and corner.")
         sys.exit(1)

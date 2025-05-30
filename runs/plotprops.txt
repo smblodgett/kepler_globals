@@ -16,6 +16,6 @@
     "make_gifs" : true,           # creates gifs from the plots
     "is_plot_ids" : true,         # Whether the plot should include voxel ids
     "fps" : 0.3,                  # frames per second for gifs    
-    "heatmap_plot_type" : "all"   # type of heatmap plot to create (should probably be set to all unless debugging)
-
+    "heatmap_plot_type" : "all",  # type of heatmap plot to create (should probably be set to all unless debugging)
+    "residual_plot_type" : "all"  # type of residual plots to create (again, should probably be set to all)
 }
