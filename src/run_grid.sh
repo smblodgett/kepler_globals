@@ -3,7 +3,7 @@ start=$SECONDS
 rm ../runs/grid_model_log.txt
 
 for i in $(seq 0 3419); do
-    python kg_run.py "$i" && \
+    python kg_run_grid.py "$i" && \
     python kg_plots.py "$i" trace && \
     python kg_plots.py "$i" corner
 done
@@ -14,4 +14,4 @@ duration=$((SECONDS-start))
 let "hours=duration/3600"
 let "minutes=(duration%3600)/60"
 let "seconds=(duration%3600)%60"
-echo "Completed in $hours hour(s), $minutes minute(s) and $seconds second(s)" 
+echo "Grid Model completed in $hours hour(s), $minutes minute(s) and $seconds second(s)" 

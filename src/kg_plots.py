@@ -205,9 +205,9 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
         boundaries = [0] + list(log_boundaries)
         norm = BoundaryNorm(boundaries, len(colors))
 
-        plt.figure(figsize=(10, 8),dpi=150)
+        plt.figure(figsize=(10, 8),dpi=250,facecolor="#000034")
         ax = sns.heatmap(mean, annot=annot, fmt='', cmap=cmap, norm=norm,#vmin=0.0, vmax=vmax,
-                        cbar=False,annot_kws={"size":6,"color": "white"})
+                        cbar=False,annot_kws={"size":6.7,"color": "white","weight": "bold" })
 
         if not is_cumul_mode and is_plot_ids:
             for i in range(mean.shape[0]):      # rows (y)
@@ -216,7 +216,7 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
                     id_number = int(ids[i,j])  # Or however you want to tag it
 
                     # Place in upper left: x=j, y=i, with a small offset
-                    ax.text(j + 0.02, i + 0.15, id_number, color='black', fontsize=3, ha='left', va='top', alpha=0.5)
+                    ax.text(j + 0.02, i + 0.15, id_number, color='white', fontsize=3, ha='left', va='top', alpha=0.5)
 
 
 
@@ -230,32 +230,32 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
         xtick_positions = np.arange(len(xedges))
         xtick_labels = [f"{x:.2f}" if x < 1e5 else f"{x:.2e}" for x in xedges]
         ax.set_xticks(xtick_positions)
-        ax.set_xticklabels(xtick_labels, rotation=45, fontsize=5)
+        ax.set_xticklabels(xtick_labels, rotation=45, fontsize=8,color="white")
 
         # Y-axis: radius bin edges
         ytick_positions = np.arange(len(yedges))
         ytick_labels = [f"{y:.2f}" if y < 1e5 else f"{y:.2e}" for y in yedges]
         ax.set_yticks(ytick_positions)
-        ax.set_yticklabels(ytick_labels, rotation=0, fontsize=5)
+        ax.set_yticklabels(ytick_labels, rotation=0, fontsize=8,color="white")
 
         # Flip y-axis so smaller radii are on bottom
         ax.invert_yaxis()
 
         xlabel, ylabel = get_labels(mode)
         plt.grid()
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.suptitle("$\mathcal{R}_{MRP}$ Heatmap", fontsize=25)
+        plt.xlabel(xlabel,color="white",fontsize=12)
+        plt.ylabel(ylabel,color="white",fontsize=12)
+        plt.suptitle("$\mathcal{R}_{MRP}$ Heatmap", fontsize=25,color="white")
         if not is_cumul_mode:
-            plt.title(mode+f" {z}-{next_z}")
+            plt.title(mode+f" {z}-{next_z}",color="white")
         else:
-            plt.title(mode +" (cumulative)")
+            plt.title(mode +" (cumulative)",color="white")
         plt.tight_layout()
         if not is_cumul_mode: 
             plt.savefig(os.path.join(heatmap_folder, mode + f"_{z}-{next_z}_heatmap.png"), dpi=200)
         else:
             plt.savefig(os.path.join(heatmap_folder, f"cumulative_"+mode+"_heatmap.png"), dpi=200)
-
+        plt.close()
         if not is_cumul_mode: 
             cumul_mean += mean
             cumul_lower += lower
@@ -342,15 +342,26 @@ def heatmap_prior_lines(ax,x_bins,y_bins,prior_line_y,colors='k',alpha=0.7):
     ax.hlines(y=mapped_y, xmin=0, xmax=len(x_bins)-1, colors=colors, linestyles='dashed',alpha=alpha)
 
 
-def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True):
+def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True,residual_iter=None):
     """Make gifs from the stacked heatmap sequences iterating through mass, period, or radius"""
-    png_files = [f for f in os.listdir(input_dir) if f.endswith('.png')]
+    if residual_iter is None:
+        png_files = [f for f in os.listdir(input_dir) if f.endswith('.png')]
+    else:
+        png_files = [f for f in os.listdir(input_dir) if f.endswith('.png') and f"{residual_iter}_residual" in f]
     
     file_numbers_dict = {} # Make dict with all the right png files.
     for file in png_files:
-        m = re.search('\d+\.\d+',file)
+
+        if residual_iter is None:
+            m = re.search('\d+\.\d+',file)
+        else:
+            m = re.search(f"\d+\.\d+_{residual_iter}",file)
+
         if m:
-            value = float(m.group(0))
+            m = m.group(0)
+            if residual_iter is not None:
+                m = m.split("_")[0]
+            value = float(m)
             file_numbers_dict[value] = file
         else:
             file_numbers_dict[9e99] = file
@@ -462,7 +473,7 @@ def corner_plot(voxel_id, results_folder, nburnin):
     corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
         
 
-def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/backend"):
+def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/backend",make_gifs=True):
     """
     Makes the residual plot for an individual voxel's Rmrp value.
     
@@ -487,16 +498,17 @@ def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0
     """
 
     if mode == "all" or mode == "mass":
-        make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=verbose,fps=fps,backend_path=backend_path)
-        
+        make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=verbose,fps=fps,backend_path=backend_path,make_gifs=make_gifs)
+        make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=verbose,fps=fps,backend_path=backend_path,switch=True,make_gifs=make_gifs)
+
     if mode == "all" or mode == "period":
-        make_residuals(rpm_grid,results_folder,nburnin,mode="period",verbose=verbose,fps=fps,backend_path=backend_path)
-        
+        make_residuals(rpm_grid,results_folder,nburnin,mode="period",verbose=verbose,fps=fps,backend_path=backend_path,make_gifs=make_gifs)
+        make_residuals(rpm_grid,results_folder,nburnin,mode="period",verbose=verbose,fps=fps,backend_path=backend_path,switch=True,make_gifs=make_gifs)
     if mode == "all" or mode == "radius":
-        make_residuals(rpm_grid,results_folder,nburnin,mode="radius",verbose=verbose,fps=fps,backend_path=backend_path)
+        make_residuals(rpm_grid,results_folder,nburnin,mode="radius",verbose=verbose,fps=fps,backend_path=backend_path,make_gifs=make_gifs)
+        make_residuals(rpm_grid,results_folder,nburnin,mode="radius",verbose=verbose,fps=fps,backend_path=backend_path,switch=True,make_gifs=make_gifs)
 
-
-def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps=0.5,backend_path="../results/backend"):
+def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps=0.5,backend_path="../results/backend",switch=False,make_gifs=True):
     """
     Makes the residuals for a given voxel.
     
@@ -522,25 +534,30 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
     
     assert mode == "mass" or mode == "period" or mode == "radius", "residuals iterate over mass, period, or radius"
     
-    x_array, y_array, z_array, search_dict = get_arrays(mode)
+    if not switch:
+        x_array, y_array, z_array, search_dict = get_arrays(mode)
+    else:
+        y_array, x_array, z_array, search_dict = get_arrays(mode)
 
     residual_folder = os.path.join(results_folder, "plots", "residuals","normal",mode)
     os.makedirs(residual_folder, exist_ok=True)
 
     Rmrps = rpm_grid.get_Rmrps(nburnin,backend_path)
 
-    # cumul_mean = np.zeros((len(y_array)-1,len(x_array)-1))
-    # cumul_lower = np.zeros((len(y_array)-1,len(x_array)-1))
-    # cumul_upper = np.zeros((len(y_array)-1,len(x_array)-1))
+    cumul_mean = np.zeros((len(y_array)-1))
+    cumul_lower = np.zeros((len(y_array)-1))
+    cumul_upper = np.zeros((len(y_array)-1))
     is_cumul_mode = False
     print("x_array: ", x_array)
     print("y_array: ", y_array)
 
+    over_dimension = None
+
     for i, z in enumerate(z_array):
         
         if i == len(z_array)-1:
-            break
             is_cumul_mode = True
+            
         if not is_cumul_mode: 
             next_z = z_array[i+1]
 
@@ -552,31 +569,53 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
             #   print("nextz_comp: ",voxel[search_dict["z_next"]], next_z)
 
                 if voxel[search_dict["z"]] == z and voxel[search_dict["z_next"]] == next_z:
-                    
-                    y_idx = np.searchsorted(y_array, voxel[search_dict["x"]],side='right')-1
-                    print("y_idx: ",y_idx)
+                    dict_key = "x" if not switch else "y"
+                    idx = np.searchsorted(y_array, voxel[search_dict[dict_key]],side='right')-1
+                    # print("y_idx: ",y_idx)5
                     # print("voxel[0]: ",voxel[0])
-                    mean[y_idx] += voxel[0] * 100
-                    lower[y_idx] += voxel[1] * 100
-                    upper[y_idx] += voxel[2] * 100
+                    mean[idx] += voxel[0] * 100
+                    lower[idx] += voxel[1] * 100
+                    upper[idx] += voxel[2] * 100
                     # input("mean: "+str(mean)+" lower: "+str(lower)+" upper: "+str(upper))
                     
-        # if is_cumul_mode:
-        #     mean = cumul_mean
-        #     upper = cumul_upper
-        #     lower = cumul_lower
+        if is_cumul_mode:
+            mean = cumul_mean
+            upper = cumul_upper
+            lower = cumul_lower
             
         bins = range(len(mean))  # len(mean) = N bins
         bin_edges = y_array      # N+1 edges for N bins
 
         plt.figure()
-        plt.bar(bins, mean, width=1, align='edge', alpha=0.7, color='skyblue')
+        plt.bar(bins, mean, width=1, align='edge', alpha=0.7, color='skyblue',zorder=2)
+
+        yerr = [lower, upper]
+
+        # Add error bars at center of each bin
+        bin_centers = np.array(bins) + 0.5  # center of each bar if width=1
+        plt.errorbar(
+            bin_centers,
+            mean,
+            yerr=yerr,
+            fmt='none',
+            color='black',
+            ecolor='gray',
+            elinewidth=0.75,
+            capsize=3,
+            label='$1\sigma$ Error Bars'
+        )
+
         plt.grid(axis='y', linestyle='--', alpha=0.7)
 
-        xlabel, ylabel = get_labels(mode)
+        if not switch:
+            xlabel, ylabel = get_labels(mode) 
+        else:
+            ylabel, xlabel = get_labels(mode)
 
-        plt.title(f'Residuals for {mode} {z}-{next_z}')
-
+        if not is_cumul_mode: 
+            plt.title(f'Residuals for {mode} {z}-{next_z}')
+        else: 
+            plt.title(f'Residuals for {mode} (cumulative)')
         # Use all N+1 bin edges as tick labels
         plt.xticks(
             ticks=np.arange(len(bin_edges)),  # 0 to N
@@ -584,21 +623,28 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
             rotation=45
         )
 
-        plt.xlabel(xlabel)  # You had ylabel here by mistake earlier
+        plt.xlabel(ylabel)
         plt.ylabel('$\mathcal{R}_{MRP}$')
         plt.tight_layout()
         plt.show()
 
+        over_dimension = ylabel.split()[0].lower()
+
         if not is_cumul_mode: 
-            plt.savefig(os.path.join(residual_folder, mode + f"_{z}-{next_z}_residual.png"), dpi=200)
+            plt.savefig(os.path.join(residual_folder, mode + f"_{z}-{next_z}_{over_dimension}_residual.png"), dpi=200)
         else:
-            plt.savefig(os.path.join(residual_folder, f"cumulative_"+mode+"_residual.png"), dpi=200)
+            plt.savefig(os.path.join(residual_folder, f"cumulative_"+mode+f"_{over_dimension}_residual.png"), dpi=200)
         plt.close()  # Close the plot to free memory
         # input()
-        # if not is_cumul_mode: 
-        #     cumul_mean += mean
-        #     cumul_lower += lower
-        #     cumul_upper += upper 
+        if not is_cumul_mode: 
+            cumul_mean += mean
+            cumul_lower += lower
+            cumul_upper += upper
+
+    if make_gifs:
+        os.makedirs(os.path.join(results_folder, "plots", "animations","residuals","normal"), exist_ok=True)
+        output_gif_path = os.path.join(results_folder, "plots", "animations","residuals","normal", mode+f"_over_{over_dimension}_residual_animation.gif")
+        make_gif_from_pngs(residual_folder, output_gif_path, fps=fps, residual_iter=over_dimension)
 
     
 
@@ -638,7 +684,7 @@ def main(voxel_id,plottype):
 # Default to False if not specified
     # Actually make the plots.
     if plottype == "residual":
-        residual_plot(voxel_grid,results_folder,nburnin,mode=residual_plot_type,verbose=verbose,fps=fps,backend_path=backend_path)
+        residual_plot(voxel_grid,results_folder,nburnin,mode=residual_plot_type,verbose=verbose,fps=fps,backend_path=backend_path,make_gifs=make_gifs)
     
     if plottype == "heatmap":
         heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path)
@@ -666,7 +712,7 @@ if __name__ == "__main__":# Default to False if not specified
         plottype = sys.argv[2]
         assert plottype == "trace" or plottype == "corner" or plottype == "heatmap" or plottype == "residual", "Only valid plottypes are residual, heatmap, trace, and corner."
     else:
-        print("Indicate what type of plot to create. Valid plottypes are heatmap, trace, and corner.")
+        print("Indicate what type of plot to create. Valid plottypes are residual, heatmap, trace, and corner.")
         sys.exit(1)
         
     main(voxel_id,plottype)

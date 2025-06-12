@@ -16,15 +16,12 @@
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction
     "thin_run" : false,       # whether a run should be thinned
-    "maxreset" : 10000,         # maximum number of resets when checking parameters set
-    "numprocesses": 30,         # number of cores to use
-    "initthinnednumber": 1000,  # number of thinned initial data per system
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
     "log_filename": "../runs/grid_model_log.txt", 
-    "input_data_filename": "../data/thinned/all_thin.csv",  # PhoDyMM thinned posteriors (with calculated values)
+    "input_data_filename": "../data/thinned/KMDC.csv",  # PhoDyMM thinned posteriors (with calculated values)
     "voxel_data_folder": "../data/thinned/voxel_data",      # location of cached voxel dataframes (for faster runs)
     "results_folder":"../results",                          # where the results go 
 
@@ -32,12 +29,6 @@
     "verbose" : true,			    # Enables print statements within the code
     "suppress_warnings" : false,    # Suppresses warning statements (things that will print even when not verbose)
     "timer" : false,                # Prints timing of the elements of the script 
-    "updatebestfitfile" : true,		# Writes to a file when new best fit is found
-    "use_clustering" : true,		# Implements a clustering/pruning algorithm after (first) burnin
-    "clustering_burnin" : 500,		# Number of steps to burn in after clustering
-    "clustering_maxfrac" : 0.8,    
+    "updatebestfitfile" : true,		# Writes to a file when new best fit is found ??
 
-
-    # Which parameters to have floating
-    "model_occurrence" : 1
 }

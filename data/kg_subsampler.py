@@ -40,6 +40,7 @@ from tqdm import tqdm
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from kg_constants import *  # Import constants from kg_constants.py
+from kg_kmdc_col_headers import col_headers
 
 RAW_PATH = '/hdd2/backup/danielkj/PhoDyMM_results_final/completed_systems/'   # pathway to directory with raw PhoDyMM output posterior data
 SUBSAMPLED_PATH = '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/' # pathway to directory containing lists of subsampled rows for each different KOI output by PhoDyMM 
@@ -100,6 +101,10 @@ def process_dataframe(df,koi):
         final_system_df = rowe_table_attach(koi,final_system_df) # Add table from Lissauer et al.
         final_system_df = is_in_hsu(final_system_df)
         final_system_df = final_system_df.drop("Unnamed: 0", axis=1) # Get rid of read-in column.
+        final_system_df["kmdc_index"] = final_system_df["KOI"].astype(str) +"_"+ final_system_df["chisq_rank"].astype(int).astype(str) # create the "KMDC index" identifier 
+        final_system_df["phodymm_index"] = final_system_df.index # Set PhoDyMM's assigned index to its own column
+        final_system_df = final_system_df.reset_index(drop=True) # remove the PhoDyMM index and set to default range
+        final_system_df = final_system_df[col_headers] # Rearrange columns to be more legible
         return final_system_df
 
 
@@ -240,6 +245,7 @@ def rowe_table_attach(koi,df):
         df.loc[df["planet"] == planet, "KIC":"e_BZ*_rowe"] = row_rowe_match.loc[mask].loc[:,"KIC":"e_BZ*_rowe"].values
     return df
     
+    
 def is_in_hsu(df):
     """Creates a column which marks whether a system is in the Hsu et al. catalog or not."""
     hsu_star_df = pd.read_csv("hsu_stellar_catalog_output.csv")
@@ -362,13 +368,12 @@ def read_in_one_koi(koi):
     print(f"finished koi: {koi}")
         
 
-
 def single_df_write(subsampled_rows,koi):
     """"Creates a dataframe from one PhoDyMM output file, processes it, and then writes it to all_thin.csv ."""
     df = make_df_from_subsample(subsampled_rows,koi)
     df = process_dataframe(df,koi)       
     write_header = not os.path.exists('thinned/KMDC.csv')
-    df.to_csv('thinned/KMDC.csv', mode='a',header=write_header)
+    df.to_csv('thinned/KMDC.csv', mode='a', header=write_header, index=False) # need to verify that index false works for the pipeline... 
 
 
 if __name__ == "__main__":

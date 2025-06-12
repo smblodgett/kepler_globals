@@ -1,6 +1,6 @@
 {
     # What kinds of plots should be made?
-    "plottype": "corner", # possible types: all, heatmap, trace, corner
+    "plottype": "corner", # possible types: all, heatmap, trace, corner, residual
 
     "nburnin" : 100, # number of burnin steps the emcee run took (should match whatever runprops has for this value)
 
@@ -9,7 +9,7 @@
     "priors_filename": "../runs/init_priors.csv",
     "input_data_filename": "../data/thinned/all_thin.csv",  # PhoDyMM thinned posteriors (with calculated values)
     "results_folder":"../results",                          # where the results go
-    "backend_path": "../results/backend",                  # the emcee backend location
+    "backend_path": "../results/grid_backend",                  # the emcee backend location
     
     # Additional options
     "verbose" : true,             # Enables print statements within the code

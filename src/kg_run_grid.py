@@ -136,7 +136,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-    kg_likelihood.likelihood, backend=backend, args=(actual_phodymm_observed,N_HSU_STARS,observation_probability))
+    kg_likelihood.grid_log_probability, backend=backend, args=(actual_phodymm_observed,N_HSU_STARS,observation_probability))
 
     timer(runprops["timer"],"emcee setup")
 
@@ -169,11 +169,11 @@ def main(voxel_id):
 
     # Find the runprops file path. 
     if 'src' in cwd:
-        runprops_filename = "../runs/runprops.txt"
+        runprops_filename = "../runs/grid_runprops.txt"
     elif 'runs' in cwd:
-        runprops_filename = "runprops.txt"
+        runprops_filename = "grid_runprops.txt"
     elif 'results' in cwd:
-        runprops_filename = "runprops.txt"
+        runprops_filename = "grid_runprops.txt"
     else:
         print('you are not starting from a proper directory. you should run kg_run.py from a src, runs, or a results directory.')
         sys.exit(1)
