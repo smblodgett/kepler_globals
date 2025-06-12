@@ -93,7 +93,7 @@ def run_emcee(df,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-    kg_likelihood.likelihood, backend=backend, args=(,))
+    kg_likelihood.likelihood, backend=backend, args=(1,))
 
     timer(runprops["timer"],"emcee setup")
 

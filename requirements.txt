@@ -1,0 +1,12 @@
+commentjson==0.9.0
+corner==2.2.1
+emcee==3.1.6
+h5py==3.4.0
+matplotlib==3.5.3
+numpy==1.21.6
+pandas==1.3.5
+Pillow==9.5.0
+Pillow==11.2.1
+scipy==1.7.3
+seaborn==0.13.2
+tqdm==4.32.1
