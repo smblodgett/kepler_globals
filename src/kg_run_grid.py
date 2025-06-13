@@ -71,7 +71,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
     timer(runprops["timer"],"voxel find")
 
     # If the voxel is completely outside of the density prior, just skip it.
-    if voxel.is_implausible():
+    if voxel.is_implausible(runprops["upper_rho_prior"],runprops["lower_rho_prior"]):
         if not runprops["suppress_warnings"]:
             print("This voxel is outside of the density priors. emcee will not be run on it.")
             with open(runprops["log_filename"], "a") as file:
@@ -91,7 +91,12 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
     
     # Create the emcee backend.
-    backend_folder = runprops["results_folder"] + "/backend/"
+    
+    if runprops["upper_rho_prior"] == 30:
+        backend_folder = runprops["results_folder"] + "/backend_30/"
+    elif runprops["upper_rho_prior"] == 10:
+        backend_folder = runprops["results_folder"] + "/backend_10/"
+
     os.makedirs(backend_folder, exist_ok=True)
     backend_filename = backend_folder + "voxel_" + str(voxel_id) + "_chain.h5"
     if os.path.exists(backend_filename):
@@ -170,12 +175,8 @@ def main(voxel_id):
     # Find the runprops file path. 
     if 'src' in cwd:
         runprops_filename = "../runs/grid_runprops.txt"
-    elif 'runs' in cwd:
-        runprops_filename = "grid_runprops.txt"
-    elif 'results' in cwd:
-        runprops_filename = "grid_runprops.txt"
     else:
-        print('you are not starting from a proper directory. you should run kg_run.py from a src, runs, or a results directory.')
+        print('you are not starting from a proper directory. you should run kg_run_grid.py from the src directory.')
         sys.exit(1)
     
     # Get runprops loaded in, find the initial guess file.
@@ -225,8 +226,14 @@ def main(voxel_id):
 
     timer(runprops["timer"],"weight partition")
 
+    if runprops["upper_rho_prior"] == 30:
+        expanded_dr_path="../data/expanded_dr25_singles_30_001.csv"
+    elif runprops["upper_rho_prior"] == 10:
+        if runprops["verbose"]: print("You are using 10 g/cm3 density prior!")
+        expanded_dr_path="../data/expanded_dr25_singles_10_001.csv"
+
     try:        
-        run_emcee(voxel_grid,voxel_id,runprops)
+        run_emcee(voxel_grid,voxel_id,runprops,expanded_dr_path=expanded_dr_path)
         sys.exit(0)
     except Exception as e:
         print("Error occurred..." + str(e))

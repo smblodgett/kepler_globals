@@ -1,5 +1,7 @@
 import numpy as np
 
+# Format for prior arguments:
+# 'parameter_name': (mu, sigma, type)
 prior_args = {
         'Gamma_0': (0, 1,"lnN"),  # lnN(0,1)
         'gamma_1': (0.6, 0.1,"lnN"),  # lnN(0.6,0.1)

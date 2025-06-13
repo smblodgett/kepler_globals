@@ -114,12 +114,12 @@ class RPMVoxel:
         with open(cache_path+f"/voxel_{self.id_number}.csv", 'r', encoding='utf-8') as f:
           return sum(1 for _ in f) - 1  # subtract header
         
-    def is_implausible(self):
+    def is_implausible(self,upper_density_limit=30,lower_density_limit=0.01):
         """Returns true if a voxel is implausible, i.e., outside of the 0.01-30 g/cm3 density priors which mark the physical limits of planetary composition."""
         def density(radius, mass): # Returns density in g/cm3 given a radius in Earth radii and mass in Earth masses.
             assert radius >= 0
             return (mass * MEG) / ((4/3)*np.pi*(RECM*radius)**3) if radius > 0 else np.inf
-        return density(self.top_radius,self.bottom_mass) > 30 or density(self.bottom_radius,self.top_mass) < 0.01 
+        return density(self.top_radius,self.bottom_mass) > upper_density_limit or density(self.bottom_radius,self.top_mass) < lower_density_limit
 
     def get_Rmrp(self,nburnin,backend_path="../results/backend"):
         """

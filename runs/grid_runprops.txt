@@ -12,10 +12,10 @@
     "nburnin" : 100,            # length of burn in
     "ndim" : 1,                 # number of floating parameters/dimension of sample space
     "nsteps" : 1000,           # number of steps for sampling
-    "essgoal" : 10,             # effective sample size desired
-    "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction
     "thin_run" : false,       # whether a run should be thinned
+    "lower_rho_prior" : 0.01, # the lower bound density that is allowed in the run
+    "upper_rho_prior" : 10,   # the upper bound density that is allowed in the run
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
@@ -23,7 +23,7 @@
     "log_filename": "../runs/grid_model_log.txt", 
     "input_data_filename": "../data/thinned/KMDC.csv",  # PhoDyMM thinned posteriors (with calculated values)
     "voxel_data_folder": "../data/thinned/voxel_data",      # location of cached voxel dataframes (for faster runs)
-    "results_folder":"../results",                          # where the results go 
+    "results_folder":"../results/grid",                          # where the results go 
 
     # Additional options
     "verbose" : true,			    # Enables print statements within the code

@@ -112,14 +112,14 @@ def get_arrays(mode):
     return x_array, y_array, z_array, search_dict
 
 
-def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend"): ######## tidy up this script a lot
+def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/grid/backend_30",upper_rho_prior=30): ######## tidy up this script a lot
     """This function needs to be cut down to size..."""
 
     assert mode == "mass" or mode == "period" or mode == "radius", "heatmaps iterate over mass, period, or radius"
     
     x_array, y_array, z_array, search_dict = get_arrays(mode)
 
-    heatmap_folder = os.path.join(results_folder, "plots", "heatmaps","normal",mode)
+    heatmap_folder = os.path.join(results_folder, "plots", "heatmaps",f"grid_{upper_rho_prior}",mode)
     os.makedirs(heatmap_folder, exist_ok=True)
 
     Rmrps = rpm_grid.get_Rmrps(nburnin,backend_path)
@@ -262,8 +262,8 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
             cumul_upper += upper
 
     if make_gifs:
-        os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps","normal"), exist_ok=True)
-        output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps","normal", mode+"_heatmap_animation.gif")
+        os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}"), exist_ok=True)
+        output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}", mode+"_heatmap_animation.gif")
         make_gif_from_pngs(heatmap_folder, output_gif_path, fps=fps)
 
 
@@ -390,14 +390,14 @@ def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True,residual_i
  ### residuals (best fit - data)
 
     
-def trace_plot(voxel_id,results_folder,nburnin):
+def trace_plot(voxel_id,results_folder,nburnin, upper_rho_limit=30):
     """Makes the trace plot for an individual voxel's Rmrp value."""
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
 
-    trace_plot_folder = os.path.join(results_folder, "plots", "traces","basic_grid")
+    trace_plot_folder = os.path.join(results_folder, "plots", "traces",f"grid_{upper_rho_limit}")
     os.makedirs(trace_plot_folder, exist_ok=True)
-    sampler_backend_folder = results_folder + "/backend"
+    sampler_backend_folder = results_folder + f"/grid/backend_{upper_rho_limit}"
     
     filename = find_h5_file(voxel_id,sampler_backend_folder)
     file_path = os.path.join(sampler_backend_folder, filename)
@@ -442,14 +442,14 @@ def find_h5_file(voxel_id,sampler_backend_folder):
     return h5_path
 
 
-def corner_plot(voxel_id, results_folder, nburnin):
+def corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30):
     """Makes the corner plot for an individual voxel's Rmrp value."""
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
 
-    corner_plot_folder = os.path.join(results_folder, "plots", "corners","basic_grid")
+    corner_plot_folder = os.path.join(results_folder, "plots", "corners",f"grid_{upper_rho_limit}")
     os.makedirs(corner_plot_folder, exist_ok=True)
-    sampler_backend_folder = results_folder + "/backend"
+    sampler_backend_folder = results_folder + f"/grid/backend_{upper_rho_limit}"
     
     filename = find_h5_file(voxel_id,sampler_backend_folder)
     file_path = os.path.join(sampler_backend_folder, filename)
@@ -473,7 +473,7 @@ def corner_plot(voxel_id, results_folder, nburnin):
     corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
         
 
-def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/backend",make_gifs=True):
+def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/grid/backend_30",make_gifs=True):
     """
     Makes the residual plot for an individual voxel's Rmrp value.
     
@@ -672,7 +672,9 @@ def main(voxel_id,plottype):
     # plottype = plotprops.get("plottype")
     input_data_filename = plotprops.get("input_data_filename")
     results_folder = plotprops.get("results_folder")
-    backend_path = plotprops.get("backend_path")
+    upper_rho_prior = plotprops.get("upper_rho_prior")
+
+    backend_path = plotprops.get("backend_path") + f"{upper_rho_prior}"
     make_gifs = plotprops.get("make_gifs")
     fps = plotprops.get("fps")
     is_plot_ids = plotprops.get("is_plot_ids")
@@ -687,15 +689,15 @@ def main(voxel_id,plottype):
         residual_plot(voxel_grid,results_folder,nburnin,mode=residual_plot_type,verbose=verbose,fps=fps,backend_path=backend_path,make_gifs=make_gifs)
     
     if plottype == "heatmap":
-        heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path)
+        heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
              
     if plottype == "trace":
         assert voxel_id is not None, "You need to input the voxel you want to run trace plots on!"
-        trace_plot(voxel_id,results_folder,nburnin)
+        trace_plot(voxel_id,results_folder,nburnin,upper_rho_limit=upper_rho_prior)
         
     if plottype == "corner":
         assert voxel_id is not None, "You need to input the voxel you want to run corner plots on!"
-        corner_plot(voxel_id, results_folder,nburnin)
+        corner_plot(voxel_id, results_folder,nburnin,upper_rho_limit=upper_rho_prior)
         
     
 if __name__ == "__main__":# Default to False if not specified
