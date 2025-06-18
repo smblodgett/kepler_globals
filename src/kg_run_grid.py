@@ -57,7 +57,7 @@ def number_of_singles_in_voxel(voxel, expanded_dr_df):
             (expanded_dr_df["mass"] < voxel.top_mass) &
             (expanded_dr_df["mass"] > voxel.bottom_mass)
             )
-    
+    print("all singles length: ", len(expanded_dr_df))
     print("singles length: ",len(expanded_dr_df.loc[mask]))
     return len(expanded_dr_df.loc[mask])
 
@@ -198,7 +198,7 @@ def main(voxel_id):
     # If the voxels don't have their data cached, then read in everything.
     if not use_cache:
         df = pd.read_csv(runprops["input_data_filename"],index_col=0) 
-        if runprops["verbose"]: print("read in the catalog without caching")
+        if runprops["verbose"]: print("read in the catalog without accessing the cache")
     # Otherwise, you can just read in 1 voxel that has its data cached.    
     else:
         df = pd.read_csv(runprops["voxel_data_folder"]+"/voxel_"+str(voxel_id)+".csv",index_col=0)
@@ -218,11 +218,12 @@ def main(voxel_id):
     if not use_cache:
         os.makedirs(runprops["voxel_data_folder"],exist_ok=True)
         voxel_grid.cache_dataframes(runprops["voxel_data_folder"])
+        voxel_grid.cache_prior_excluded_values(runprops["voxel_data_folder"],runprops["upper_rho_prior"],runprops["lower_rho_prior"])
 
     timer(runprops["timer"],"cache dataframes")
 
     # Partition the Hsu et al. weights by mass.
-    voxel_grid.make_mass_divided_weights(voxel_id,runprops["voxel_data_folder"],use_cache)
+    voxel_grid.make_mass_divided_weights(voxel_id,runprops["voxel_data_folder"],use_cache,runprops["upper_rho_prior"],runprops["lower_rho_prior"])
 
     timer(runprops["timer"],"weight partition")
 

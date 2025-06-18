@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from kg_constants import *
-
+from kg_utilities import radius_given_density_mass, mass_given_density_radius
 
 
 class RPMVoxel:
@@ -79,7 +79,9 @@ class RPMVoxel:
         self.top_period = top_period
         self.bottom_mass = bottom_mass
         self.top_mass = top_mass
-        self.id_number = -1 # Set to -1 as a flag that the voxel has been initialized but not assigned an id value within a full grid. 
+        self.id_number = -1 # Set to -1 as a flag that the voxel has been initialized but not assigned an id value within a full grid.
+        self.num_excluded_by_priors = 0 # Number of posterior draws in voxel that were excluded by the priors.
+        self.is_add_data = False # Flag to indicate whether the voxel has data added to it.
     
     def within(self,radius,period,mass):
         """For a given value in radius-period-mass space, returns True if the voxel contains this value."""
@@ -96,10 +98,21 @@ class RPMVoxel:
     def add_data(self, df_chunk):
         """Adds posterior draw data to the voxel's dataframe."""
         self.df = pd.concat([self.df, df_chunk], ignore_index=True)
+        self.is_add_data = True
+
+    def update_excluded_by_priors(self,upper_density_limit=30,lower_density_limit=0.01):    
+        assert self.is_add_data, "Data must be added to the voxel before updating excluded draws by priors."
+        self.num_excluded_by_priors = len(self.df) - self.num_data(upper_density_limit,lower_density_limit)  # Update the number of excluded draws by priors
         
-    def num_data(self):
+    def num_data(self,upper_density_limit=30,lower_density_limit=0.01):
         """Returns the number of rows/posterior draws within the voxel."""
-        return len(self.df) if hasattr(self,"df") else 0
+        
+        mask = ((self.df["R_pE"] <= radius_given_density_mass(lower_density_limit, self.df['M_pE'])) & 
+                (self.df["R_pE"] >= radius_given_density_mass(upper_density_limit, self.df['M_pE'])) & 
+                (self.df["M_pE"] <= mass_given_density_radius(upper_density_limit, self.df['R_pE'])) &
+                (self.df["M_pE"] >= mass_given_density_radius(lower_density_limit, self.df['R_pE']))
+        )
+        return len(self.df[mask]) if hasattr(self,"df") else 0
     
     def cache_data(self,cache_path):
         """Saves the dataframe of a voxel to a csv identified with the voxel's id number."""
@@ -113,6 +126,14 @@ class RPMVoxel:
         """Reads the line count from saved csv for a voxel (minus 1), indicating the number of posterior draws for that voxel"""
         with open(cache_path+f"/voxel_{self.id_number}.csv", 'r', encoding='utf-8') as f:
           return sum(1 for _ in f) - 1  # subtract header
+        
+    def get_cached_num_excluded_by_priors(self,cache_path,upper_density_limit=30,lower_density_limit=0.01):
+        """Reads the number of posterior draws that were excluded by the priors from a cached csv."""
+        excluded_df = pd.read_csv(cache_path + f"/excluded_by_priors_{upper_density_limit}_{lower_density_limit}.csv")
+        if self.id_number in excluded_df["voxel_id"].values:
+            return excluded_df.loc[excluded_df["voxel_id"] == self.id_number, "excluded_count"].values[0]
+        else:
+            return 0    
         
     def is_implausible(self,upper_density_limit=30,lower_density_limit=0.01):
         """Returns true if a voxel is implausible, i.e., outside of the 0.01-30 g/cm3 density priors which mark the physical limits of planetary composition."""
@@ -269,6 +290,21 @@ class RPMGrid:
         for voxel in self.voxel_array.flat:
             voxel.cache_data(cache_path)
     
+    def cache_prior_excluded_values(self,cache_path="../data/thinned/voxel_data",upper_density_limit=30,lower_density_limit=0.01):
+        """Stores the number of posterior draws in each voxel that were excluded by the priors in a cache."""
+        excluded_df = pd.DataFrame(columns=["voxel_id","excluded_count"])
+        excluded_path = cache_path + f"/excluded_by_priors_{upper_density_limit}_{lower_density_limit}.csv"
+        for voxel in self.voxel_array.flat:
+            if voxel.is_add_data:
+                print("here????")
+                voxel.update_excluded_by_priors(upper_density_limit,lower_density_limit)
+                excluded_count = voxel.num_excluded_by_priors
+            else:
+                excluded_count = voxel.num_excluded_by_priors
+            print("excluded count: ",excluded_count)
+            write_header = not os.path.exists(excluded_path)
+            excluded_df = excluded_df.append({"voxel_id": voxel.id_number, "excluded_count": excluded_count}, ignore_index=True)
+        excluded_df.to_csv(excluded_path, index=False,mode='a',header=write_header)
     
     def find_voxel_by_id(self,voxel_id):
         """Finds the voxel represented by a given id number."""
@@ -288,25 +324,27 @@ class RPMGrid:
                     
         print("unable to find voxel with given coordinates.")
         
-    def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period,cache_path,is_cached=True):
+    def count_points_in_RP_column(self,high_radius,low_radius,high_period,low_period,cache_path,is_cached=True,upper_density_limit=30,lower_density_limit=0.01):
         """Counts the number of points in every voxel that has the same radius and period values."""
         num_points = 0
         for voxel in self.voxel_array.flat:
+            if voxel.is_implausible(upper_density_limit,lower_density_limit):
+                continue
             if voxel.bottom_radius == low_radius and voxel.top_radius == high_radius and voxel.bottom_period == low_period and voxel.top_period == high_period:
                 if is_cached: 
-                    length_voxel = voxel.get_cached_data_count(cache_path)
+                    length_voxel = voxel.get_cached_data_count(cache_path) - voxel.get_cached_num_excluded_by_priors(cache_path,upper_density_limit,lower_density_limit)
                 else:
-                    length_voxel = len(voxel.df)
+                    length_voxel = voxel.num_data(upper_density_limit,lower_density_limit)
                 num_points += length_voxel
                         
         return num_points
     
-    def make_mass_divided_weights(self,voxel_id,cache_path,is_cached=True):
+    def make_mass_divided_weights(self,voxel_id,cache_path,is_cached=True,upper_density_limit=30,lower_density_limit=0.01):
     
         for voxel in self.voxel_array.flat:
             if voxel.id_number == voxel_id:
-              voxel_number_of_posterior_draws = voxel.num_data()
-              voxel.df["mass_divided_weights"] = voxel.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / self.count_points_in_RP_column(voxel.top_radius,voxel.bottom_radius,voxel.top_period,voxel.bottom_period,cache_path,is_cached) # used to multiply by voxel_number
+              voxel_number_of_posterior_draws = voxel.num_data(upper_density_limit,lower_density_limit)
+              voxel.df["mass_divided_weights"] = voxel.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / self.count_points_in_RP_column(voxel.top_radius,voxel.bottom_radius,voxel.top_period,voxel.bottom_period,cache_path,is_cached,upper_density_limit=upper_density_limit,lower_density_limit=lower_density_limit) # used to multiply by voxel_number
         
     def get_occurrence_rate(self,voxel_id):
         voxel = self.find_voxel_by_id(voxel_id)

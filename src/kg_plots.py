@@ -46,6 +46,7 @@ from PIL import Image
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
 from kg_griddefiner import RPMGrid, RPMVoxel
 from kg_constants import *
+from kg_utilities import *
 
 
 class ReadJson:
@@ -59,7 +60,7 @@ class ReadJson:
         return self.data
 
     
-def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend"):
+def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend",upper_rho_prior=30):
     """
     Plots sequences of heatmaps from the base KMDC, iterating on mass, radius, and period.
     
@@ -85,11 +86,11 @@ def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, ver
     None
     """
     if mode == "all" or mode == "mass":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="mass",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="mass",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
     if mode == "all" or mode == "period":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="period",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="period",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
     if mode == "all" or mode == "radius":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="radius",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="radius",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
 
 
 def get_arrays(mode):
@@ -207,7 +208,7 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
 
         plt.figure(figsize=(10, 8),dpi=250,facecolor="#000034")
         ax = sns.heatmap(mean, annot=annot, fmt='', cmap=cmap, norm=norm,#vmin=0.0, vmax=vmax,
-                        cbar=False,annot_kws={"size":6.7,"color": "white","weight": "bold" })
+                        cbar=False,annot_kws={"size":6.65 if mode != "period" else 5.2,"color": "white","weight": "bold" })
 
         if not is_cumul_mode and is_plot_ids:
             for i in range(mean.shape[0]):      # rows (y)
@@ -245,16 +246,16 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
         plt.grid()
         plt.xlabel(xlabel,color="white",fontsize=12)
         plt.ylabel(ylabel,color="white",fontsize=12)
-        plt.suptitle("$\mathcal{R}_{MRP}$ Heatmap", fontsize=25,color="white")
+        plt.suptitle("$\mathcal{R}_{MRP}$", fontsize=25,color="white")
         if not is_cumul_mode:
             plt.title(mode+f" {z}-{next_z}",color="white")
         else:
             plt.title(mode +" (cumulative)",color="white")
         plt.tight_layout()
         if not is_cumul_mode: 
-            plt.savefig(os.path.join(heatmap_folder, mode + f"_{z}-{next_z}_heatmap.png"), dpi=200)
+            plt.savefig(os.path.join(heatmap_folder, mode + f"_{z}-{next_z}_heatmap.png"), dpi=300)
         else:
-            plt.savefig(os.path.join(heatmap_folder, f"cumulative_"+mode+"_heatmap.png"), dpi=200)
+            plt.savefig(os.path.join(heatmap_folder, f"cumulative_"+mode+"_heatmap.png"), dpi=300)
         plt.close()
         if not is_cumul_mode: 
             cumul_mean += mean
@@ -292,11 +293,6 @@ def get_labels(mode):
 
 def heatmap_prior_line_config(ax,z,next_z,x_array,y_array,mode):
     """Helper function which prepares the prior lines for graphing, then calls the graphing function."""
-    def radius_given_density_mass(density,mass):
-        return (((mass)*MEG)/((4/3)*np.pi*density))**(1/3) / RECM
-        
-    def mass_given_density_radius(density,radius):
-        return ((4/3)*np.pi*density/MEG)*(radius * RECM)**3
 
     if mode == "mass":
         rho30_prior_upper = radius_given_density_mass(30,next_z)
