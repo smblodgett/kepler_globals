@@ -3418,3 +3418,4 @@ observation probability = 0 for: 3416 (expected obs: 950.9806252228669)RPM_Voxel
 observation probability = 0 for: 3417 (expected obs: 950.9806252228669)RPM_Voxel(id: 3417, R: 16.0 - 1000000000.0, P: 500.0 - 1000000000.0, M: 64.0 - 128.0)number of data points: 0
 observation probability = 0 for: 3418 (expected obs: 950.9806252228669)RPM_Voxel(id: 3418, R: 16.0 - 1000000000.0, P: 500.0 - 1000000000.0, M: 128.0 - 256.0)number of data points: 0
 observation probability = 0 for: 3419 (expected obs: 950.9806252228669)RPM_Voxel(id: 3419, R: 16.0 - 1000000000.0, P: 500.0 - 1000000000.0, M: 256.0 - 1000000000.0)number of data points: 0
+success: 1008

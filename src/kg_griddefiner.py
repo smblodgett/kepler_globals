@@ -294,14 +294,15 @@ class RPMGrid:
         """Stores the number of posterior draws in each voxel that were excluded by the priors in a cache."""
         excluded_df = pd.DataFrame(columns=["voxel_id","excluded_count"])
         excluded_path = cache_path + f"/excluded_by_priors_{upper_density_limit}_{lower_density_limit}.csv"
+        if os.path.exists(excluded_path):
+            os.remove(excluded_path)
         for voxel in self.voxel_array.flat:
             if voxel.is_add_data:
-                print("here????")
                 voxel.update_excluded_by_priors(upper_density_limit,lower_density_limit)
                 excluded_count = voxel.num_excluded_by_priors
             else:
+                print("warning! voxel did not have data added to it!")
                 excluded_count = voxel.num_excluded_by_priors
-            print("excluded count: ",excluded_count)
             write_header = not os.path.exists(excluded_path)
             excluded_df = excluded_df.append({"voxel_id": voxel.id_number, "excluded_count": excluded_count}, ignore_index=True)
         excluded_df.to_csv(excluded_path, index=False,mode='a',header=write_header)
@@ -344,7 +345,9 @@ class RPMGrid:
         for voxel in self.voxel_array.flat:
             if voxel.id_number == voxel_id:
               voxel_number_of_posterior_draws = voxel.num_data(upper_density_limit,lower_density_limit)
-              voxel.df["mass_divided_weights"] = voxel.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / self.count_points_in_RP_column(voxel.top_radius,voxel.bottom_radius,voxel.top_period,voxel.bottom_period,cache_path,is_cached,upper_density_limit=upper_density_limit,lower_density_limit=lower_density_limit) # used to multiply by voxel_number
+              voxel.df["mass_divided_weights"] = (voxel.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / 
+                                                  self.count_points_in_RP_column(voxel.top_radius,voxel.bottom_radius,voxel.top_period,voxel.bottom_period,cache_path,
+                                                                                 is_cached,upper_density_limit=upper_density_limit,lower_density_limit=lower_density_limit)) # used to multiply by voxel_number
         
     def get_occurrence_rate(self,voxel_id):
         voxel = self.find_voxel_by_id(voxel_id)

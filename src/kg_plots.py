@@ -46,7 +46,7 @@ from PIL import Image
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
 from kg_griddefiner import RPMGrid, RPMVoxel
 from kg_constants import *
-from kg_utilities import *
+from kg_utilities import mass_given_density_radius, radius_given_density_mass
 
 
 class ReadJson:

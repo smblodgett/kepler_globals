@@ -14,7 +14,7 @@ import os
 import emcee
 import time
 
-import kg_likelihood
+from kg_likelihood import grid_log_probability
 from kg_griddefiner import *
 from kg_constants import N_HSU_STARS
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
@@ -141,7 +141,7 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-    kg_likelihood.grid_log_probability, backend=backend, args=(actual_phodymm_observed,N_HSU_STARS,observation_probability))
+    grid_log_probability, backend=backend, args=(actual_phodymm_observed,N_HSU_STARS,observation_probability))
 
     timer(runprops["timer"],"emcee setup")
 

@@ -1,7 +1,7 @@
 import numpy as np
 
 # Format for prior arguments:
-# 'parameter_name': (mu, sigma, type)
+# 'parameter_name': (mu, sigma, type)  should try using parameters.csv instead?
 prior_args = {
         'Gamma_0': (0, 1,"lnN"),  # lnN(0,1)
         'gamma_1': (0.6, 0.1,"lnN"),  # lnN(0.6,0.1)
@@ -26,6 +26,7 @@ def get_prior_arguments(parameter_name):
 
 
 def get_initial_guess_from_priors(parameter_name, nwalkers):
+    """Return an initial guess for a parameter based solely on its prior."""
     mu, sigma, type =  get_prior_arguments(parameter_name)
     if type == "lnN":
         return np.random.lognormal(mu, sigma, nwalkers)
