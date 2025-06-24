@@ -1,4 +1,5 @@
 import numpy as np
+import commentjson as json
 from kg_constants import *
 
 def radius_given_density_mass(density,mass):
@@ -6,3 +7,13 @@ def radius_given_density_mass(density,mass):
 
 def mass_given_density_radius(density,radius):
     return ((4/3)*np.pi*density/MEG)*(radius * RECM)**3
+
+class ReadJson:
+    """Read and store the contents of a Json file in a dict."""
+    def __init__(self, filename):
+        """Load the Json file."""
+        print('reading in the runprops.txt file')
+        self.data = json.load(open(filename))
+    def outProps(self):
+        """Return the parsed Json dictionary."""
+        return self.data

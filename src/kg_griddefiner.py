@@ -97,7 +97,13 @@ class RPMVoxel:
         
     def add_data(self, df_chunk):
         """Adds posterior draw data to the voxel's dataframe."""
-        self.df = pd.concat([self.df, df_chunk], ignore_index=True)
+        frames = [df for df in [self.df, df_chunk] if not df.empty and not df.isna().all().all()]
+    
+        if frames:
+            self.df = pd.concat(frames, ignore_index=True)
+        else:
+            self.df = pd.DataFrame()  # Ensure self.df is still a valid DataFrame
+
         self.is_add_data = True
 
     def update_excluded_by_priors(self,upper_density_limit=30,lower_density_limit=0.01):    
@@ -245,7 +251,6 @@ class RPMGrid:
             self.voxel_array[i, j, k].create_id(id_number)
             it[0] = id_number  # Write to id_array
             it.iternext()
-        
 
     def setup_dataframes(self,columns,voxel_id,is_cached):
         if is_cached:
@@ -265,7 +270,7 @@ class RPMGrid:
             (r_idx >= 0) & (r_idx < self.r_len) &
             (p_idx >= 0) & (p_idx < self.p_len) &
             (m_idx >= 0) & (m_idx < self.m_len)
-        )
+            )
         df_valid = df.loc[valid_mask].copy()
         df_valid['r_idx'] = r_idx[valid_mask]
         df_valid['p_idx'] = p_idx[valid_mask]
@@ -284,7 +289,6 @@ class RPMGrid:
             df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx'])
             self.voxel_array[r, p, m].add_data(df_chunk)
 
-            
     def cache_dataframes(self,cache_path="../data/thinned/voxel_data"):
         """Saves the dataframes of each voxel of the grid."""
         for voxel in self.voxel_array.flat:
@@ -296,16 +300,21 @@ class RPMGrid:
         excluded_path = cache_path + f"/excluded_by_priors_{upper_density_limit}_{lower_density_limit}.csv"
         if os.path.exists(excluded_path):
             os.remove(excluded_path)
+        
+        rows = []
         for voxel in self.voxel_array.flat:
             if voxel.is_add_data:
                 voxel.update_excluded_by_priors(upper_density_limit,lower_density_limit)
                 excluded_count = voxel.num_excluded_by_priors
             else:
-                print("warning! voxel did not have data added to it!")
                 excluded_count = voxel.num_excluded_by_priors
-            write_header = not os.path.exists(excluded_path)
-            excluded_df = excluded_df.append({"voxel_id": voxel.id_number, "excluded_count": excluded_count}, ignore_index=True)
-        excluded_df.to_csv(excluded_path, index=False,mode='a',header=write_header)
+            # write_header = not os.path.exists(excluded_path)
+
+            rows.append({"voxel_id": voxel.id_number, "excluded_count": excluded_count})
+        excluded_df = pd.DataFrame(rows)
+
+            # excluded_df = excluded_df.append({"voxel_id": voxel.id_number, "excluded_count": excluded_count}, ignore_index=True)
+        excluded_df.to_csv(excluded_path, index=False,mode='a',header=True)
     
     def find_voxel_by_id(self,voxel_id):
         """Finds the voxel represented by a given id number."""
@@ -315,7 +324,6 @@ class RPMGrid:
             return None
         i, j, k = location[0]
         return self.voxel_array[i][j][k]
-        
 
     def find_voxel_by_coordinates(self,radius,period,mass):
         """Finds the voxel that contains a given radius, period, mass value."""
@@ -373,7 +381,6 @@ class RPMGrid:
         
         return self.Rmrp_array.reshape(-1,10)       
                 
-
     def __str__(self):
         """Returns a string representation of the entire grid."""
         string_representation = ""

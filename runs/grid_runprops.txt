@@ -3,9 +3,8 @@
     "first_run": true,
     "date": "today",
     "time": "now",
-    "user": "autogenerate",
-    "RunGoal" : "Kepler Occurrence Rate Fitting",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
+    "uniform_densities" : true, # whether we should assign a random uniform density (and thus mass) for testing purposes
 
     # Run properties/parameters
     "nwalkers" : 20,           # number of walkers in emcee ensemble
@@ -15,7 +14,7 @@
     "nthinning" : 1,            # thinning fraction
     "thin_run" : false,       # whether a run should be thinned
     "lower_rho_prior" : 0.01, # the lower bound density that is allowed in the run
-    "upper_rho_prior" : 10,   # the upper bound density that is allowed in the run
+    "upper_rho_prior" : 30,   # the upper bound density that is allowed in the run
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",

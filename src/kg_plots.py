@@ -46,20 +46,9 @@ from PIL import Image
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
 from kg_griddefiner import RPMGrid, RPMVoxel
 from kg_constants import *
-from kg_utilities import mass_given_density_radius, radius_given_density_mass
+from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
 
 
-class ReadJson:
-    """Read and store the contents of a Json file in a dict."""
-    def __init__(self, filename):
-        """Load the Json file."""
-        print('reading in the plotprops.txt file')
-        self.data = json.load(open(filename))
-    def outProps(self):
-        """Return the parsed Json dictionary."""
-        return self.data
-
-    
 def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend",upper_rho_prior=30):
     """
     Plots sequences of heatmaps from the base KMDC, iterating on mass, radius, and period.
@@ -113,7 +102,9 @@ def get_arrays(mode):
     return x_array, y_array, z_array, search_dict
 
 
-def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/grid/backend_30",upper_rho_prior=30): ######## tidy up this script a lot
+def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, 
+                    verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/grid/backend_30",
+                    upper_rho_prior=30,is_uniform_density=False): ######## tidy up this script a lot
     """This function needs to be cut down to size..."""
 
     assert mode == "mass" or mode == "period" or mode == "radius", "heatmaps iterate over mass, period, or radius"
@@ -121,6 +112,8 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
     x_array, y_array, z_array, search_dict = get_arrays(mode)
 
     heatmap_folder = os.path.join(results_folder, "plots", "heatmaps",f"grid_{upper_rho_prior}",mode)
+    if is_uniform_density: 
+        heatmap_folder += "_uniform"
     os.makedirs(heatmap_folder, exist_ok=True)
 
     Rmrps = rpm_grid.get_Rmrps(nburnin,backend_path)
@@ -246,7 +239,7 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
         plt.grid()
         plt.xlabel(xlabel,color="white",fontsize=12)
         plt.ylabel(ylabel,color="white",fontsize=12)
-        plt.suptitle("$\mathcal{R}_{MRP}$", fontsize=25,color="white")
+        plt.suptitle(r"$\mathcal{R}_{MRP}$", fontsize=25,color="white")
         if not is_cumul_mode:
             plt.title(mode+f" {z}-{next_z}",color="white")
         else:
@@ -263,13 +256,17 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True, verb
             cumul_upper += upper
 
     if make_gifs:
-        os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}"), exist_ok=True)
-        output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}", mode+"_heatmap_animation.gif")
+        if not is_uniform_density:
+            os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}"), exist_ok=True)
+            output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}", mode+"_heatmap_animation.gif")
+        else:
+            os.makedirs(os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}_uniform"), exist_ok=True)
+            output_gif_path = os.path.join(results_folder, "plots", "animations","heatmaps",f"grid_{upper_rho_prior}_uniform", mode+"_heatmap_animation.gif")   
         make_gif_from_pngs(heatmap_folder, output_gif_path, fps=fps)
 
 
 def compact_sci(x, precision=2):
-    """Makes python's default scientific notation display more compact."""
+    """Makes python's default scientific notation display more compactly."""
     s = f"{x:.{precision}e}"
     base, exp = s.split("e")
     return f"{base}e{int(exp)}"
@@ -349,9 +346,9 @@ def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True,residual_i
     for file in png_files:
 
         if residual_iter is None:
-            m = re.search('\d+\.\d+',file)
+            m = re.search(r'\d+\.\d+',file)
         else:
-            m = re.search(f"\d+\.\d+_{residual_iter}",file)
+            m = re.search(rf"\d+\.\d+_{residual_iter}",file)
 
         if m:
             m = m.group(0)
@@ -386,15 +383,17 @@ def make_gif_from_pngs(input_dir, output_gif_path, fps=1,verbose=True,residual_i
  ### residuals (best fit - data)
 
     
-def trace_plot(voxel_id,results_folder,nburnin, upper_rho_limit=30):
+def trace_plot(voxel_id,results_folder,nburnin, upper_rho_limit=30,is_uniform_density=False):
     """Makes the trace plot for an individual voxel's Rmrp value."""
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
 
     trace_plot_folder = os.path.join(results_folder, "plots", "traces",f"grid_{upper_rho_limit}")
+    if is_uniform_density: trace_plot_folder += "_uniform"
+
     os.makedirs(trace_plot_folder, exist_ok=True)
     sampler_backend_folder = results_folder + f"/grid/backend_{upper_rho_limit}"
-    
+    if is_uniform_density: sampler_backend_folder += "_uniform"
     filename = find_h5_file(voxel_id,sampler_backend_folder)
     file_path = os.path.join(sampler_backend_folder, filename)
 
@@ -415,7 +414,7 @@ def trace_plot(voxel_id,results_folder,nburnin, upper_rho_limit=30):
     plt.minorticks_on()
     plt.grid()
     plt.xlabel("Step Number")
-    plt.ylabel("$\mathcal{R}_{MRP}$")
+    plt.ylabel(r"$\mathcal{R}_{MRP}$")
     plt.suptitle("Trace Plot",fontsize=17)
     plt.title(f"voxel: {voxel.id_number}, R: {voxel.bottom_radius} - {voxel.top_radius}, "
             f"P: {voxel.bottom_period} - {voxel.top_period}, "
@@ -438,15 +437,16 @@ def find_h5_file(voxel_id,sampler_backend_folder):
     return h5_path
 
 
-def corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30):
+def corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uniform_density=False):
     """Makes the corner plot for an individual voxel's Rmrp value."""
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
 
     corner_plot_folder = os.path.join(results_folder, "plots", "corners",f"grid_{upper_rho_limit}")
+    if is_uniform_density: corner_plot_folder += "_uniform"
     os.makedirs(corner_plot_folder, exist_ok=True)
     sampler_backend_folder = results_folder + f"/grid/backend_{upper_rho_limit}"
-    
+    if is_uniform_density: sampler_backend_folder += "_uniform"
     filename = find_h5_file(voxel_id,sampler_backend_folder)
     file_path = os.path.join(sampler_backend_folder, filename)
 
@@ -460,7 +460,7 @@ def corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30):
     n_steps, n_walkers, n_dim = samples.shape
     samples = np.array(samples)
     
-    corner_plot = corner.corner(samples.reshape(-1,1),labels=["$\mathcal{R}_{MRP}$"])
+    corner_plot = corner.corner(samples.reshape(-1,1),labels=[r"$\mathcal{R}_{MRP}$"])
     # plt.suptitle("         Corner Plot") ????
     plt.title(f"voxel: {voxel.id_number}, R: {voxel.bottom_radius} - {voxel.top_radius}, "
                 f"P: {voxel.bottom_period} - {voxel.top_period}, "
@@ -598,7 +598,7 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
             ecolor='gray',
             elinewidth=0.75,
             capsize=3,
-            label='$1\sigma$ Error Bars'
+            label=r'$1\sigma$ Error Bars'
         )
 
         plt.grid(axis='y', linestyle='--', alpha=0.7)
@@ -620,7 +620,7 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
         )
 
         plt.xlabel(ylabel)
-        plt.ylabel('$\mathcal{R}_{MRP}$')
+        plt.ylabel(r'$\mathcal{R}_{MRP}$')
         plt.tight_layout()
         plt.show()
 
@@ -669,8 +669,10 @@ def main(voxel_id,plottype):
     input_data_filename = plotprops.get("input_data_filename")
     results_folder = plotprops.get("results_folder")
     upper_rho_prior = plotprops.get("upper_rho_prior")
-
+    is_uniform_density = plotprops.get("uniform_densities")
     backend_path = plotprops.get("backend_path") + f"{upper_rho_prior}"
+    if is_uniform_density:
+        backend_path += "_uniform"
     make_gifs = plotprops.get("make_gifs")
     fps = plotprops.get("fps")
     is_plot_ids = plotprops.get("is_plot_ids")
@@ -689,11 +691,11 @@ def main(voxel_id,plottype):
              
     if plottype == "trace":
         assert voxel_id is not None, "You need to input the voxel you want to run trace plots on!"
-        trace_plot(voxel_id,results_folder,nburnin,upper_rho_limit=upper_rho_prior)
+        trace_plot(voxel_id,results_folder,nburnin,upper_rho_limit=upper_rho_prior,is_uniform_density=is_uniform_density)
         
     if plottype == "corner":
         assert voxel_id is not None, "You need to input the voxel you want to run corner plots on!"
-        corner_plot(voxel_id, results_folder,nburnin,upper_rho_limit=upper_rho_prior)
+        corner_plot(voxel_id, results_folder,nburnin,upper_rho_limit=upper_rho_prior,is_uniform_density=is_uniform_density)
         
     
 if __name__ == "__main__":# Default to False if not specified

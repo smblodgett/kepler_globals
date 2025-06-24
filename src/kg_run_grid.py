@@ -6,7 +6,6 @@
 # codebase drawn from Dallin Spencer's multi_moon
 
 
-import commentjson as json
 import pandas as pd
 import numpy as np
 import sys
@@ -18,30 +17,19 @@ from kg_likelihood import grid_log_probability
 from kg_griddefiner import *
 from kg_constants import N_HSU_STARS
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
-
-
-
-class ReadJson:
-    """Read and store the contents of a Json file in a dict."""
-    def __init__(self, filename):
-        """Load the Json file."""
-        print('reading in the runprops.txt file')
-        self.data = json.load(open(filename))
-    def outProps(self):
-        """Return the parsed Json dictionary."""
-        return self.data
+from kg_utilities import radius_given_density_mass, mass_given_density_radius, ReadJson
     
 
 def timer(is_timer,benchmark_message_string,mode='benchmark'):
     """Tracks and prints the runtime of the script since script start."""
     global old_time
     global start_time
-    if mode is 'final' and is_timer:
+    if mode == 'final' and is_timer:
         end_time = time.time()
         run_time = end_time - start_time
         print(f"total runtime: {run_time} s")
 
-    if mode is 'benchmark'and is_timer:    
+    if mode == 'benchmark'and is_timer:    
         new_time = time.time()
         benchmark = new_time - old_time
         print("time since "+benchmark_message_string+f": {benchmark} s")
@@ -91,11 +79,17 @@ def run_emcee(voxel_grid,voxel_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
     
     # Create the emcee backend.
-    
-    if runprops["upper_rho_prior"] == 30:
-        backend_folder = runprops["results_folder"] + "/backend_30/"
-    elif runprops["upper_rho_prior"] == 10:
-        backend_folder = runprops["results_folder"] + "/backend_10/"
+    match runprops["upper_rho_prior"], runprops["uniform_densities"]:
+        case 30, False:
+            backend_folder = runprops["results_folder"] + "/backend_30/"
+        case 30, True:
+            backend_folder = runprops["results_folder"] + "/backend_30_uniform/"
+        case 10, False:
+            backend_folder = runprops["results_folder"] + "/backend_10/"
+        case 10, True:
+            backend_folder = runprops["results_folder"] + "/backend_10_uniform/"
+        case _, True | False:
+            raise ValueError("Invalid upper_rho_prior. Must be 10 or 30 g/cm^3.")
 
     os.makedirs(backend_folder, exist_ok=True)
     backend_filename = backend_folder + "voxel_" + str(voxel_id) + "_chain.h5"
@@ -190,19 +184,23 @@ def main(voxel_id):
     
     use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
 
-    if not runprops["suppress_warnings"]: 
+    if not runprops["suppress_warnings"]:
         if not use_cache:
             print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
             print("Only run this way if your voxel data hasn't yet been cached.")
     
     # If the voxels don't have their data cached, then read in everything.
     if not use_cache:
-        df = pd.read_csv(runprops["input_data_filename"],index_col=0) 
+        df = pd.read_csv(runprops["input_data_filename"],index_col=0)
         if runprops["verbose"]: print("read in the catalog without accessing the cache")
     # Otherwise, you can just read in 1 voxel that has its data cached.    
     else:
         df = pd.read_csv(runprops["voxel_data_folder"]+"/voxel_"+str(voxel_id)+".csv",index_col=0)
         if runprops["verbose"]: print("read in cached df")
+    
+    if runprops["uniform_densities"]:
+        uniform_densities = np.random.uniform(runprops["lower_rho_prior"],runprops["upper_rho_prior"],len(df))
+        df["M_pJ"] = mass_given_density_radius(uniform_densities,df["R_pJ"])
     
     timer(runprops["timer"],"data readin")
 
@@ -218,7 +216,8 @@ def main(voxel_id):
     if not use_cache:
         os.makedirs(runprops["voxel_data_folder"],exist_ok=True)
         voxel_grid.cache_dataframes(runprops["voxel_data_folder"])
-        voxel_grid.cache_prior_excluded_values(runprops["voxel_data_folder"],runprops["upper_rho_prior"],runprops["lower_rho_prior"])
+        if not runprops["uniform_densities"]: 
+            voxel_grid.cache_prior_excluded_values(runprops["voxel_data_folder"],runprops["upper_rho_prior"],runprops["lower_rho_prior"])
 
     timer(runprops["timer"],"cache dataframes")
 
