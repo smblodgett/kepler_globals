@@ -2,7 +2,7 @@
 start=$SECONDS
 rm ../runs/grid_model_log.txt
 
-for i in $(seq 0 3419); do
+for i in $(seq 2070 3419); do
     python kg_run_grid.py "$i" && \
     python kg_plots.py "$i" trace && \
     python kg_plots.py "$i" corner

@@ -1,7 +1,7 @@
 {
     # What kinds of plots should be made?
     "plottype": "corner", # possible types: all, heatmap, trace, corner, residual
-    "upper_rho_prior" : 30, # what the upper limit of the density prior is
+    "upper_rho_prior" : 10, # what the upper limit of the density prior is
     "uniform_densities" : true, # if the densities (and masses) are uniform (typically no, but is an option for visualization purposes)
 
     "nburnin" : 100, # number of burnin steps the emcee run took (should match whatever runprops has for this value)

@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from kg_constants import *
-from kg_utilities import radius_given_density_mass, mass_given_density_radius
+from kg_utilities import radius_given_density_mass, mass_given_density_radius, detection_probability
 
 
 class RPMVoxel:
@@ -111,7 +111,10 @@ class RPMVoxel:
         self.num_excluded_by_priors = len(self.df) - self.num_data(upper_density_limit,lower_density_limit)  # Update the number of excluded draws by priors
         
     def num_data(self,upper_density_limit=30,lower_density_limit=0.01):
-        """Returns the number of rows/posterior draws within the voxel."""
+        """
+        Returns the number of rows/posterior draws within the voxel.
+        If a posterior is outside of the specified density limits, it is excluded from the count.
+        """
         
         mask = ((self.df["R_pE"] <= radius_given_density_mass(lower_density_limit, self.df['M_pE'])) & 
                 (self.df["R_pE"] >= radius_given_density_mass(upper_density_limit, self.df['M_pE'])) & 
@@ -119,6 +122,17 @@ class RPMVoxel:
                 (self.df["M_pE"] >= mass_given_density_radius(lower_density_limit, self.df['R_pE']))
         )
         return len(self.df[mask]) if hasattr(self,"df") else 0
+    
+    def create_probability_weighted(self):
+        self.df["p_detection"] = [detection_probability(mes) for mes in self.df["MES_rowe"]]
+    
+    def num_data_with_weighting(self,upper_density_limit=30,lower_density_limit=0.01): #### though is this just the hsu occurrence rates? can I just use that?
+        mask = ((self.df["R_pE"] <= radius_given_density_mass(lower_density_limit, self.df['M_pE'])) & 
+                (self.df["R_pE"] >= radius_given_density_mass(upper_density_limit, self.df['M_pE'])) & 
+                (self.df["M_pE"] <= mass_given_density_radius(upper_density_limit, self.df['R_pE'])) &
+                (self.df["M_pE"] >= mass_given_density_radius(lower_density_limit, self.df['R_pE']))
+                )
+        return np.sum((1 / self.df[mask]["p_detection"]) * (1/self.df[mask]["p_trans"])) if hasattr(self,"df") else 0
     
     def cache_data(self,cache_path):
         """Saves the dataframe of a voxel to a csv identified with the voxel's id number."""
@@ -150,7 +164,7 @@ class RPMVoxel:
 
     def get_Rmrp(self,nburnin,backend_path="../results/backend"):
         """
-        Calculates several statistical metrics from the emcee run on a voxel's occurrence rate.
+        Calculates several statistical metrics from the nonparametric grid model run on a voxel's occurrence rate.
 
         Parameters
         ----------
@@ -195,6 +209,57 @@ class RPMVoxel:
                 f"M: {self.bottom_mass} - {self.top_mass})"
                 f"number of data points: {self.num_data()}")
     
+class RPMeVoxel(RPMVoxel):
+    """
+    Represents part of the radius-period-mass-eccentricity exoplanet occurrence space.
+    
+    This class inherits from RPMVoxel and adds an eccentricity dimension.
+    
+    Parameters
+    ----------
+    bottom_radius : float
+      The lower limit radius of the voxel.
+    top_radius : float
+      The upper limit radius of the voxel.
+    bottom_period : float
+      The lower limit period of the voxel.
+    top_period : float
+      The upper limit period of the voxel.
+    bottom_mass : float
+      The lower limit mass of the voxel.
+    top_mass : float
+      The upper limit mass of the voxel.
+    bottom_eccentricity : float
+      The lower limit eccentricity of the voxel.
+    top_eccentricity : float
+      The upper limit eccentricity of the voxel.
+    
+    Attributes
+    ----------
+    Inherits all attributes from RPMVoxel.
+    
+    """
+    def __init__(self,bottom_radius,top_radius,bottom_period,top_period,bottom_mass,top_mass,bottom_eccentricity,top_eccentricity):
+        """
+        Initializes the RPMeVoxel with the given radius, period, mass, and eccentricity limits.
+        """
+        super().__init__(bottom_radius,top_radius,bottom_period,top_period,bottom_mass,top_mass)
+        self.bottom_eccentricity = bottom_eccentricity
+        self.top_eccentricity = top_eccentricity
+    
+    def within(self,radius,period,mass,eccentricity):
+        """For a given value in radius-period-mass-eccentricity space, returns True if the voxel contains this value."""
+        return (super().within(radius,period,mass) and 
+                eccentricity >= self.bottom_eccentricity and eccentricity < self.top_eccentricity)
+    
+    def __str__(self):
+        """Returns a string representation of the voxel."""
+        return (f"RPM_Voxel(id: {self.id_number}, R: {self.bottom_radius} - {self.top_radius}, "
+                f"P: {self.bottom_period} - {self.top_period}, "
+                f"M: {self.bottom_mass} - {self.top_mass}), "
+                f"e: {self.bottom_eccentricity} - {self.top_eccentricity}, "
+                f"number of data points: {self.num_data()}") 
+
     
 class RPMGrid:
     """
@@ -234,7 +299,6 @@ class RPMGrid:
         self.radius_grid_array = radius_grid_array
         self.period_grid_array = period_grid_array
         self.mass_grid_array = mass_grid_array
-        
         
         self.r_len = len(radius_grid_array) - 1
         self.p_len = len(period_grid_array) - 1
@@ -355,7 +419,9 @@ class RPMGrid:
               voxel_number_of_posterior_draws = voxel.num_data(upper_density_limit,lower_density_limit)
               voxel.df["mass_divided_weights"] = (voxel.df['occurrence_rate_hsu']  * voxel_number_of_posterior_draws / 
                                                   self.count_points_in_RP_column(voxel.top_radius,voxel.bottom_radius,voxel.top_period,voxel.bottom_period,cache_path,
-                                                                                 is_cached,upper_density_limit=upper_density_limit,lower_density_limit=lower_density_limit)) # used to multiply by voxel_number
+                                                                                 is_cached,upper_density_limit=upper_density_limit,lower_density_limit=lower_density_limit
+                                                                                 )
+                                                  ) # used to multiply by voxel_number
         
     def get_occurrence_rate(self,voxel_id):
         voxel = self.find_voxel_by_id(voxel_id)
@@ -404,4 +470,104 @@ class RPMGrid:
         string_representation += f"dimensions: {radius_count} Rbins x {period_count} Pbins x {mass_count} Mbins\n"
         return string_representation
 
-##### for empty voxels, we need to put a slightly nonuniform prior on them so that it doesn't go crazy...it should just return the priors for these ones.
+class RPMeGRID(RPMGrid):
+    """
+    A subclass of RPMGrid that is specifically designed for the radius-period-mass-eccentricity parametric models.
+    
+    This class inherits from RPMGrid.
+    
+    Parameters
+    ----------
+    radius_grid_array : list(float)
+      A list of the radii values denoting the voxel boundaries of the grid.
+    period_grid_array : list(float)
+      A list of the period values denoting the voxel boundaries of the grid.
+    mass_grid_array : list(float)
+      A list of the mass values denoting the voxel boundaries of the grid.
+    eccentricity_grid_array : list(float)
+      A list of the eccentricity values denoting the voxel boundaries of the grid.
+    
+    Attributes
+    ----------
+    Inherits all attributes from RPMGrid.
+    
+    """
+    def __init__(self,radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array):
+        """
+        Initializes the RPMeGRID with the given radius, period, mass, and eccentricity grid arrays.
+        """
+        self.radius_grid_array = radius_grid_array
+        self.period_grid_array = period_grid_array
+        self.mass_grid_array = mass_grid_array
+        self.eccentricity_grid_array = eccentricity_grid_array
+  
+        self.r_len = len(radius_grid_array) - 1
+        self.p_len = len(period_grid_array) - 1
+        self.m_len = len(mass_grid_array) - 1
+        self.e_len = len(eccentricity_grid_array) - 1
+
+        self.voxel_array = [[[[RPMeVoxel(self.radius_grid_array[i],self.radius_grid_array[i+1],
+                                        self.period_grid_array[j],self.period_grid_array[j+1],
+                                        self.mass_grid_array[k],self.mass_grid_array[k+1],
+                                        eccentricity_grid_array[l],eccentricity_grid_array[l+1]) 
+                                        for l in range(self.e_len)] for k in range(self.m_len)] 
+                                        for j in range(self.p_len)] for i in range(self.r_len)]
+        self.voxel_array = np.array(self.voxel_array,dtype=object)
+        id_number=0
+        self.id_array=np.empty((self.r_len,self.p_len,self.m_len,self.e_len))
+
+        it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
+        for id_number in range(self.r_len * self.p_len * self.m_len * self.e_len):
+            i, j, k, l = it.multi_index  # Gives current (i, j, k) position
+            self.voxel_array[i, j, k, l].create_id(id_number)
+            it[0] = id_number  # Write to id_array
+            it.iternext()
+
+    def add_data(self,df):
+        
+        r_idx = np.searchsorted(self.radius_grid_array, df['R_pE'].values, side='right') - 1
+        p_idx = np.searchsorted(self.period_grid_array, df['Period_days'].values, side='right') - 1
+        m_idx = np.searchsorted(self.mass_grid_array, df['M_pE'].values, side='right') - 1
+        e_idx = np.searchsorted(self.eccentricity_grid_array, df['e'].values, side='right') - 1
+
+        # Filter valid entries
+        valid_mask = (
+            (r_idx >= 0) & (r_idx < self.r_len) &
+            (p_idx >= 0) & (p_idx < self.p_len) &
+            (m_idx >= 0) & (m_idx < self.m_len) &
+            (e_idx >= 0) & (e_idx < self.e_len)
+            )
+        df_valid = df.loc[valid_mask].copy()
+        df_valid['r_idx'] = r_idx[valid_mask]
+        df_valid['p_idx'] = p_idx[valid_mask]
+        df_valid['m_idx'] = m_idx[valid_mask]
+        df_valid['e_idx'] = e_idx[valid_mask]
+
+        # Sort to improve memory access pattern (optional, measurable on big data)
+        df_valid.sort_values(['r_idx', 'p_idx', 'm_idx','e_idx'], inplace=True)
+
+        # Grouping via numpy keys instead of tuple hashing (faster)
+        index_array = df_valid[['r_idx', 'p_idx', 'm_idx','e_idx']].values
+        voxel_keys, inverse = np.unique(index_array, axis=0, return_inverse=True)
+
+        # Slice records into voxel groups without Python dicts
+        for voxel_id, (r, p, m, e) in enumerate(voxel_keys):
+            group_mask = (inverse == voxel_id)
+            df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx','e_idx'])
+            self.voxel_array[r, p, m, e].add_data(df_chunk)
+
+    def find_voxel_by_id(self,voxel_id):
+        """Finds the voxel represented by a given id number."""
+        location = np.argwhere(self.id_array == voxel_id)
+        if location.size == 0:
+            print("Unable to find voxel with given voxel id.")
+            return None
+        i, j, k, l = location[0]
+        return self.voxel_array[i][j][k][l]
+
+    def find_voxel_by_coordinates(self,radius,period,mass,eccentricity):
+        """Finds the voxel that contains a given radius, period, mass value."""
+        for voxel in self.voxel_array.flat:
+            if voxel.within(radius,period,mass,eccentricity):
+                return voxel
+                        

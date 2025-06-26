@@ -49,7 +49,7 @@ from kg_constants import *
 from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
 
 
-def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend",upper_rho_prior=30):
+def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend",upper_rho_prior=30,is_uniform_density=False):
     """
     Plots sequences of heatmaps from the base KMDC, iterating on mass, radius, and period.
     
@@ -75,11 +75,11 @@ def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, ver
     None
     """
     if mode == "all" or mode == "mass":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="mass",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="mass",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior,is_uniform_density=is_uniform_density)
     if mode == "all" or mode == "period":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="period",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="period",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids, fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior,is_uniform_density=is_uniform_density)
     if mode == "all" or mode == "radius":
-        make_histograms(rpm_grid,results_folder,nburnin,mode="radius",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
+        make_histograms(rpm_grid,results_folder,nburnin,mode="radius",make_gifs=make_gifs,verbose=verbose, is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior,is_uniform_density=is_uniform_density)
 
 
 def get_arrays(mode):
@@ -687,7 +687,8 @@ def main(voxel_id,plottype):
         residual_plot(voxel_grid,results_folder,nburnin,mode=residual_plot_type,verbose=verbose,fps=fps,backend_path=backend_path,make_gifs=make_gifs)
     
     if plottype == "heatmap":
-        heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior)
+        heatmap_plot(voxel_grid,results_folder,nburnin,mode=heatmap_plot_type,make_gifs=make_gifs,verbose=verbose,
+                     is_plot_ids=is_plot_ids,fps=fps,backend_path=backend_path,upper_rho_prior=upper_rho_prior, is_uniform_density=is_uniform_density)
              
     if plottype == "trace":
         assert voxel_id is not None, "You need to input the voxel you want to run trace plots on!"

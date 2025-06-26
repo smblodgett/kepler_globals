@@ -2,6 +2,7 @@ import numpy as np
 from scipy.special import gamma
 from scipy.stats import norm, lognorm
 from kg_priors import prior_args
+from kg_griddefiner import RPMGrid, RPMVoxel
 
 def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
     R_mrp = params[0]
@@ -34,9 +35,12 @@ def parametric_log_prior(params):
     return lp
 
 
-def parametric_log_likelihood(params):
-   
-    return
+def parametric_log_likelihood(params,voxel_grid):
+    grid_sum = 0.0
+    for voxel in voxel_grid.flat:
+        model_count = 0
+        grid_sum += (model_count * np.log(voxel.num_data_with_weighting() - voxel.num_data_with_weighting() - np.log(gamma(model_count+1))))
+    return grid_sum
 
 
 def parametric_log_probability(params):

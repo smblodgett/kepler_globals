@@ -14,7 +14,7 @@
     "nthinning" : 1,            # thinning fraction
     "thin_run" : false,       # whether a run should be thinned
     "lower_rho_prior" : 0.01, # the lower bound density that is allowed in the run
-    "upper_rho_prior" : 30,   # the upper bound density that is allowed in the run
+    "upper_rho_prior" : 10,   # the upper bound density that is allowed in the run
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",

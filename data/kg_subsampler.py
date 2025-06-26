@@ -236,7 +236,8 @@ def rowe_table_attach(koi,df):
 
         if not mask.any(): 
             print(f"Removing planet {planet} from df because no matches were found.")
-            df = df[df["planet"] != planet]  
+            df = df[df["planet"] != planet]
+            df["multiplicity"] -= 1
             with open("removed_planets_log.txt", "a") as file:
                 file.write("koi: " + koi +" planet: "+ str(planet) +"\n")
                 continue

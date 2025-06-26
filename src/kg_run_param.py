@@ -19,19 +19,9 @@ from kg_griddefiner import *
 from kg_constants import N_HSU_STARS
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
 from kg_param_initial_guess import get_initial_guess
+from kg_utilities import ReadJson
 
-
-class ReadJson:
-    """Read and store the contents of a Json file in a dict."""
-    def __init__(self, filename):
-        """Load the Json file."""
-        print('reading in the runprops.txt file')
-        self.data = json.load(open(filename))
-    def outProps(self):
-        """Return the parsed Json dictionary."""
-        return self.data
     
-
 def timer(is_timer,benchmark_message_string,mode='benchmark'):
     """Tracks and prints the runtime of the script since script start."""
     global old_time
