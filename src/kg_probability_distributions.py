@@ -4,13 +4,15 @@ from scipy.integrate import quad #, quad_vec
 from scipy.optimize import root_scalar
 from scipy.stats import lognorm
 
+from kg_griddefiner import RPMeVoxel
+
 
 class PeriodDistribution:
-    def __init__(self, period_fine_grid, beta1, beta2, beta3, Period_break_1, Period_break_2, power_laws=3):
+    def __init__(self, period_fine_grid, β1, β2, β3, Period_break_1, Period_break_2, power_laws=3):
         self.period_fine_grid = period_fine_grid
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.beta3 = beta3
+        self.β1 = β1
+        self.β2 = β2
+        self.β3 = β3
         self.Period_break_1 = Period_break_1
         self.Period_break_2 = Period_break_2
         self.power_laws = power_laws
@@ -51,11 +53,11 @@ class PeriodDistribution:
     def Period_pdf(self,Period):
         
         def power_law_1(P,A):
-            return A*P**self.beta1
+            return A*P**self.β1
         def power_law_2(P,A):
-            return A*self.Period_break_1**(self.beta1-self.beta2)*P**self.beta2
+            return A*self.Period_break_1**(self.β1-self.β2)*P**self.β2
         def power_law_3(P,A):
-            return A*self.Period_break_1**(self.beta1-self.beta2)*self.Period_break_2**(self.beta2-self.beta3)*P**self.beta3
+            return A*self.Period_break_1**(self.β1-self.β2)*self.Period_break_2**(self.β2-self.β3)*P**self.β3
             
         A = self._solve_for_A(self._period_normalization_constant,Period,power_law_1,power_law_2,power_law_3)
         if self.power_laws == 1:
@@ -127,14 +129,6 @@ class RadiusDistribution:
     def __call__(self,low_radius,high_radius):
         return self.radius_pdf_area(low_radius,high_radius)
 
-
-    def radius_pdf_area(self,low_radius,high_radius):
-        """
-        Returns the area under the radius probability density function between low_radius and high_radius.
-        """
-        mask = (self.radius_fine_grid > low_radius) & (self.radius_fine_grid <= high_radius)
-        return np.trapezoid(self.radius_pdf(self.radius_fine_grid)[mask], self.radius_fine_grid[mask])
-
     def _pure_silicate_radius(M):
         M1 = 10.55
         return 3.9 * 10**(-0.209594 + (1/3)*np.log10(M/M1) - 0.0799*(M/M1)**0.413)
@@ -163,16 +157,6 @@ class RadiusDistribution:
                 self._SN(M,self._mass_break_1)*self._SN(M,self._mass_break_2)*self._σ2
                 )
 
-    # gamma0 (model 2): 0.0
-    # gamma1 (model 1): 0.42
-    # gamma2 (model 1): 0.08
-    # mass_break_1 (model 1): 0.43
-    # mass_break_2 (model 1): 267
-    # sigma0 (model 1): 0.07
-    # sigma1 (model 1): 0.27
-    # sigma2 (model 1): 0.11
-
-
     def radius_pdf(self,masses):
         radii = np.empty(0)
         for mass in masses:
@@ -182,6 +166,14 @@ class RadiusDistribution:
                 radius = np.random.normal(self.mu_total(mass),self.sigma_total(mass))
                 radii = np.append(radii,radius)
         return radii
+    
+    def radius_pdf_area(self,low_radius,high_radius): # so does this just return the number of points in a certain radius range?
+        """
+        Returns the area under the radius probability density function between low_radius and high_radius.
+        """
+        radii = self.radius_pdf(self.mass_fine_grid)
+        mask = (radii > low_radius) & (radii <= high_radius)
+        return len(radii[mask])
     
 
 class EccentricityDistribution:
@@ -212,5 +204,20 @@ class EccentricityDistribution:
         mask = (self.eccentricity_fine_grid > low_e) & (self.eccentricity_fine_grid <= high_e)
         return np.trapezoid(self.eccentricity_pdf(self.eccentricity_fine_grid)[mask], self.eccentricity_fine_grid[mask])
 
+def voxel_model_count(voxel,params):
+    # unpack params
+    params[0]
 
+    # period
+
+    # mass
+
+    # radius 
+
+
+    #
+    eccentricity_grid = np.linspace(0,1,10000)
+    p_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ)
+
+    return p_ecc(voxel.bottom_eccentricity,voxel.top_eccentricity)
     
