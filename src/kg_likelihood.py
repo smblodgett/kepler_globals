@@ -2,7 +2,7 @@ import numpy as np
 from scipy.special import gamma
 from scipy.stats import norm, lognorm
 from kg_priors import prior_args
-from kg_griddefiner import RPMGrid, RPMVoxel
+from kg_constants import N_PHODYMM_STARS
 
 from kg_probability_distributions import voxel_model_count
 
@@ -38,10 +38,13 @@ def parametric_log_prior(params):
 
 
 def parametric_log_likelihood(params,voxel_grid):
+    print("IN LLINKELIHOOODDDFSDFS")
     Gamma0 = params[0]
     grid_sum = 0.0
-    for voxel in voxel_grid.flat:
-        model_count = N_STARS_?? * voxel_model_count(voxel)
+    for voxel in voxel_grid.voxel_array.flat:
+        print(voxel.df)
+        # input()
+        model_count = N_PHODYMM_STARS * voxel_model_count(voxel,params)
         grid_sum += (model_count * np.log(voxel.num_data_with_weighting() - voxel.num_data_with_weighting() - np.log(gamma(model_count+1))))
     return Gamma0 * grid_sum
 

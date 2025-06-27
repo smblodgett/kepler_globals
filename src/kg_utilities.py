@@ -1,6 +1,6 @@
 import numpy as np
 import commentjson as json
-from scipy.integrate import quad
+from scipy.integrate import quad, simpson
 from scipy.special import gamma
 from kg_constants import *
 
@@ -14,6 +14,11 @@ def detection_probability(MES,a=29.14,b=0.284,c=0.891):
     def integrand(x):
         return (c / (b**a * gamma(a)) ) * x**(a-1) * np.exp(-x/b)
     return quad(integrand, 0, MES)
+
+def simpson_detection_probability(MES,a=29.14,b=0.284,c=0.891,N=500):
+    x = np.linspace(0, MES, N)
+    integrand = (c / (b**a * gamma(a))) * x**(a-1) * np.exp(-x/b)
+    return simpson(integrand, x)
 
 class ReadJson:
     """Read and store the contents of a Json file in a dict."""

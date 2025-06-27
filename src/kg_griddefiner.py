@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from kg_constants import *
-from kg_utilities import radius_given_density_mass, mass_given_density_radius, detection_probability
+from kg_utilities import radius_given_density_mass, mass_given_density_radius, detection_probability, simpson_detection_probability
 
 
 class RPMVoxel:
@@ -120,11 +120,13 @@ class RPMVoxel:
                 (self.df["R_pE"] >= radius_given_density_mass(upper_density_limit, self.df['M_pE'])) & 
                 (self.df["M_pE"] <= mass_given_density_radius(upper_density_limit, self.df['R_pE'])) &
                 (self.df["M_pE"] >= mass_given_density_radius(lower_density_limit, self.df['R_pE']))
-        )
-        return len(self.df[mask]) if hasattr(self,"df") else 0
+                )
+        if hasattr(self, "df") and (df_length := len(self.df[mask])) != 0:
+            return df_length
+        return 0
     
     def create_probability_weighted(self):
-        self.df["p_detection"] = [detection_probability(mes) for mes in self.df["MES_rowe"]]
+        self.df["p_detection"] = self.df["MES_rowe"].apply(lambda mes: simpson_detection_probability(mes))
     
     def num_data_with_weighting(self,upper_density_limit=30,lower_density_limit=0.01): #### though is this just the hsu occurrence rates? can I just use that?
         mask = ((self.df["R_pE"] <= radius_given_density_mass(lower_density_limit, self.df['M_pE'])) & 
@@ -132,7 +134,9 @@ class RPMVoxel:
                 (self.df["M_pE"] <= mass_given_density_radius(upper_density_limit, self.df['R_pE'])) &
                 (self.df["M_pE"] >= mass_given_density_radius(lower_density_limit, self.df['R_pE']))
                 )
-        return np.sum((1 / self.df[mask]["p_detection"]) * (1/self.df[mask]["p_trans"])) if hasattr(self,"df") else 0
+        if hasattr(self, "df") and (df_length := len(self.df[mask])) != 0:
+            return np.sum((1 / self.df[mask]["p_detection"]) * (1/self.df[mask]["p_trans"])) 
+        return 0
     
     def cache_data(self,cache_path):
         """Saves the dataframe of a voxel to a csv identified with the voxel's id number."""
@@ -316,7 +320,7 @@ class RPMGrid:
             it[0] = id_number  # Write to id_array
             it.iternext()
 
-    def setup_dataframes(self,columns,voxel_id,is_cached):
+    def setup_dataframes(self,columns,voxel_id=0,is_cached=False):
         if is_cached:
             self.find_voxel_by_id(voxel_id).setup_dataframe(columns)
         else:
@@ -352,6 +356,7 @@ class RPMGrid:
             group_mask = (inverse == voxel_id)
             df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx'])
             self.voxel_array[r, p, m].add_data(df_chunk)
+            self.voxel_array[r, p, m].create_probability_weighted()
 
     def cache_dataframes(self,cache_path="../data/thinned/voxel_data"):
         """Saves the dataframes of each voxel of the grid."""
@@ -470,7 +475,7 @@ class RPMGrid:
         string_representation += f"dimensions: {radius_count} Rbins x {period_count} Pbins x {mass_count} Mbins\n"
         return string_representation
 
-class RPMeGRID(RPMGrid):
+class RPMeGrid(RPMGrid):
     """
     A subclass of RPMGrid that is specifically designed for the radius-period-mass-eccentricity parametric models.
     
@@ -555,6 +560,7 @@ class RPMeGRID(RPMGrid):
             group_mask = (inverse == voxel_id)
             df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx','e_idx'])
             self.voxel_array[r, p, m, e].add_data(df_chunk)
+            self.voxel_array[r, p, m, e].create_probability_weighted()
 
     def find_voxel_by_id(self,voxel_id):
         """Finds the voxel represented by a given id number."""

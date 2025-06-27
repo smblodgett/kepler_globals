@@ -1,10 +1,8 @@
 import numpy as np
-import pandas as pd
-from scipy.integrate import quad #, quad_vec
+from scipy.integrate import quad
 from scipy.optimize import root_scalar
 from scipy.stats import lognorm
 
-from kg_griddefiner import RPMeVoxel
 
 
 class PeriodDistribution:
@@ -72,9 +70,9 @@ class PeriodDistribution:
         else: 
             print("this value of Period breaks is not supported")
 
-        probability_distribution_function = np.piecewise(Period,piecewise_conditions,piecewise_func_list)
+        P_pdf = np.piecewise(Period,piecewise_conditions,piecewise_func_list)
         
-        return probability_distribution_function
+        return P_pdf / np.trapezoid(P_pdf,Period)
 
     def Period_pdf_area(self,Period_lower, Period_upper):
         mask = (self.period_fine_grid > Period_lower) & (self.period_fine_grid <= Period_upper)
@@ -91,28 +89,20 @@ class MassDistribution:
     def __call__(self,low_mass,high_mass):
         return self.mass_pdf_area(low_mass,high_mass)
     
-    def mass_pdf(self,mass):
+    def mass_pdf(self):
         """
         Returns the probability density function of the mass distribution.
         Uses a log-normal distribution.
         """
-        return lognorm.pdf(mass, s=self.σ, scale=self.μ)
+        return (m_pdf:=lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=self.μ)) / np.trapezoid(m_pdf,self.mass_fine_grid)
     
     def mass_pdf_area(self,low_mass,high_mass):
         """
         Returns the area under the mass probability density function between low_mass and high_mass.
         """
         mask = (self.mass_fine_grid > low_mass) & (self.mass_fine_grid <= high_mass)
-        return np.trapezoid(self.mass_pdf(self.mass_fine_grid)[mask], self.mass_fine_grid[mask])
+        return np.trapezoid(self.mass_pdf()[mask], self.mass_fine_grid[mask])
 
-# gamma0 (model 2): 0.0
-# gamma1 (model 1): 0.42
-# gamma2 (model 1): 0.08
-# mass_break_1 (model 1): 0.43
-# mass_break_2 (model 1): 267
-# sigma0 (model 1): 0.07
-# sigma1 (model 1): 0.27
-# sigma2 (model 1): 0.11
 class RadiusDistribution:
     def __init__(self,mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C):
         self.mass_fine_grid = mass_fine_grid # one question: what exactly...is this?
@@ -129,11 +119,11 @@ class RadiusDistribution:
     def __call__(self,low_radius,high_radius):
         return self.radius_pdf_area(low_radius,high_radius)
 
-    def _pure_silicate_radius(M):
+    def _pure_silicate_radius(self,M):
         M1 = 10.55
         return 3.9 * 10**(-0.209594 + (1/3)*np.log10(M/M1) - 0.0799*(M/M1)**0.413)
 
-    def _SN(M,mass_break_N):
+    def _SN(self,M,mass_break_N):
         return 1 / (1 + np.exp(-5*(np.log(M)-np.log(mass_break_N))))
 
     def _mu0(self,M):
@@ -153,8 +143,8 @@ class RadiusDistribution:
 
     def sigma_total(self,M):
         return ((1-self._SN(M,self.mass_break_1))*self.σ0 + 
-                self._SN(M,self.mass_break_1)*(1-self._SN(M,self._mass_break_2))*self._σ1 +
-                self._SN(M,self._mass_break_1)*self._SN(M,self._mass_break_2)*self._σ2
+                self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self.σ1 +
+                self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
                 )
 
     def radius_pdf(self,masses):
@@ -173,7 +163,7 @@ class RadiusDistribution:
         """
         radii = self.radius_pdf(self.mass_fine_grid)
         mask = (radii > low_radius) & (radii <= high_radius)
-        return len(radii[mask])
+        return len(radii[mask]) / len(radii)
     
 
 class EccentricityDistribution:
@@ -184,8 +174,8 @@ class EccentricityDistribution:
         self.λ = λ
         self.σ = σ
 
-    def __call__(self, e):
-        return self.eccentricity_pdf_area(e)
+    def __call__(self,low_e,high_e):
+        return self.eccentricity_pdf_area(low_e,high_e)
     
     def rayleigh_exponential(self,e):
         return (self.α*((self.λ*np.exp(-self.λ*e))/(1-np.exp(-self.λ))) + 
@@ -205,19 +195,48 @@ class EccentricityDistribution:
         return np.trapezoid(self.eccentricity_pdf(self.eccentricity_fine_grid)[mask], self.eccentricity_fine_grid[mask])
 
 def voxel_model_count(voxel,params):
+    
     # unpack params
-    params[0]
+    γ0 = params[1]
+    γ1 = params[2]
+    γ2 = params[3]             
+    σ0 = params[4]
+    σ1 = params[5]
+    σ2 = params[6]
+    mass_break_1 = params[7]
+    mass_break_2 = params[8]
+    C = params[9]
+    μM = params[10]
+    σM = params[11]
+    β1 = params[12]
+    β2 = params[13]
+    β3 = params[14]
+    Period_break_1 = params[15]
+    Period_break_2 = params[16]
+    α = params[17]
+    λ = params[18]
+    σ_e = params[19]
+
+    print("C: ",C)
 
     # period
+    Period_grid = np.linspace(0.1,500,10000)
+    p_Period = PeriodDistribution(Period_grid,β1,β2,β3,Period_break_1,Period_break_2)
 
     # mass
+    mass_grid = np.logspace(-1,4,10000)
+    p_mass = MassDistribution(mass_grid,μM,σM)
 
     # radius 
+    p_radius = RadiusDistribution(p_mass.mass_pdf(),γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C)
 
-
-    #
+    # ecc
     eccentricity_grid = np.linspace(0,1,10000)
-    p_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ)
+    p_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e)
 
-    return p_ecc(voxel.bottom_eccentricity,voxel.top_eccentricity)
+    return (p_Period(voxel.bottom_period,voxel.top_period)
+            * p_mass(voxel.bottom_mass,voxel.top_mass)
+            * p_radius(voxel.bottom_radius,voxel.top_radius)
+            * p_ecc(voxel.bottom_eccentricity,voxel.top_eccentricity)
+            )
     

@@ -19,3 +19,6 @@ MTOAU=6.68458712*10**-12 # meters to AU
 G=6.6743*10**-11 # gravitational constant in sci units
 
 N_HSU_STARS = 80006 
+N_PHODYMM_SYSTEMS = 661
+N_PHODYMM_PLANETS = 1665
+N_PHODYMM_STARS = 198709 # what is the correct number on this?

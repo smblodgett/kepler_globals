@@ -6,18 +6,17 @@
 # codebase drawn from Dallin Spencer's multi_moon
 
 
-import commentjson as json
 import pandas as pd
 import numpy as np
 import sys
 import os
 import emcee
 import time
+from schwimmbad import MPIPool
 
 import kg_likelihood
 from kg_griddefiner import *
-from kg_constants import N_HSU_STARS
-from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
+from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array
 from kg_param_initial_guess import get_initial_guess
 from kg_utilities import ReadJson
 
@@ -26,12 +25,12 @@ def timer(is_timer,benchmark_message_string,mode='benchmark'):
     """Tracks and prints the runtime of the script since script start."""
     global old_time
     global start_time
-    if mode is 'final' and is_timer:
+    if mode == 'final' and is_timer:
         end_time = time.time()
         run_time = end_time - start_time
         print(f"total runtime: {run_time} s")
 
-    if mode is 'benchmark'and is_timer:    
+    if mode == 'benchmark'and is_timer:    
         new_time = time.time()
         benchmark = new_time - old_time
         print("time since "+benchmark_message_string+f": {benchmark} s")
@@ -52,7 +51,7 @@ def number_of_singles_in_voxel(voxel, expanded_dr_df):
     return len(expanded_dr_df.loc[mask])
 
 
-def run_emcee(df,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
+def run_emcee(voxel_grid,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
     """Configures and runs the emcee MCMC sampler."""
 
 
@@ -80,16 +79,22 @@ def run_emcee(df,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr
 
     timer(runprops["timer"],"backend setup")
 
+    print("HERE?")
 
-    # Create the emcee sampler.
+    # with MPIPool() as pool:
+        # if not pool.is_master():
+        #     pool.wait()
+        #     sys.exit(0)
+
+        # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-    kg_likelihood.likelihood, backend=backend, args=(1,))
-
+                                    kg_likelihood.parametric_log_likelihood, backend=backend, args=(voxel_grid,))#,pool=pool)
+    print("HEHEHEHERRRREEEEE???")
     timer(runprops["timer"],"emcee setup")
 
     p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
     
-    
+
     if runprops["verbose"]: print('sampler created. Beginning run.')
     
     if runprops['thin_run']:
@@ -100,7 +105,7 @@ def run_emcee(df,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr
     with open(runprops["log_filename"], "a") as file:
         file.write("success: Model "+str(model_id)+"\n")
     timer(runprops["timer"],"emcee run")
-    
+
 
 def main(model_id): 
 
@@ -125,28 +130,30 @@ def main(model_id):
 
     timer(runprops["timer"],"start (& runprops read)")
 
-    use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
+    # use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
 
-    if not runprops["suppress_warnings"]: 
-        if not use_cache:
-            print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
-            print("Only run this way if your voxel data hasn't yet been cached.")
+    # if not runprops["suppress_warnings"]: 
+    #     if not use_cache:
+    #         print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
+    #         print("Only run this way if your voxel data hasn't yet been cached.")
     
     # If the voxels don't have their data cached, then read in everything.
-    if not use_cache:
-        df = pd.read_csv(runprops["input_data_filename"],index_col=0)
-        df = df[["R_pE,period_days,M_pE"]]
-        df.to_csv(runprops["input_data_folder"]+"KMDC_RPM.csv")
-        if runprops["verbose"]: print("read in the catalog without caching")
+    # if not use_cache:
+    df = pd.read_csv(runprops["input_data_filename"],index_col=0)
+    df = df[["R_pE","Period_days","M_pE","e","p_trans","MES_rowe"]]
+    df.to_csv(runprops["input_data_folder"]+"KMDC_RPMe.csv")
+    # if runprops["verbose"]: print("read in the catalog without caching")
     # Otherwise, you can just read in 1 voxel that has its data cached.    
-    else:
-        df = pd.read_csv(runprops["input_data_folder"]+"KMDC_RPM.csv",index_col=0)
-        if runprops["verbose"]: print("read in cached df")
+    # else:
+    #     df = pd.read_csv(runprops["input_data_folder"]+"KMDC_RPM.csv",index_col=0)
+    #     if runprops["verbose"]: print("read in cached df")
     
     timer(runprops["timer"],"data readin")
 
     # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
-    
+    voxel_grid = RPMeGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array)
+    voxel_grid.setup_dataframes(df.columns)
+    voxel_grid.add_data(df)
 
 
     # Partition the Hsu et al. weights by mass. ??? do we need hsu in the parametric models? I don't think so...
@@ -155,7 +162,7 @@ def main(model_id):
     # timer(runprops["timer"],"weight partition")
 
     try:        
-        run_emcee(df,model_id,runprops)
+        run_emcee(voxel_grid,model_id,runprops)
         sys.exit(0)
     except Exception as e:
         print("Error occurred..." + str(e))
