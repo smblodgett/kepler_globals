@@ -2,6 +2,7 @@ import numpy as np
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
 from scipy.stats import lognorm
+from kg_constants import N_PHODYMM_STARS
 
 
 
@@ -20,53 +21,31 @@ class PeriodDistribution:
     def __call__(self,low_period,high_period):
         return self.Period_pdf_area(low_period,high_period)
 
-    def _solve_for_A(self,objective,Period,power_law_1,power_law_2, power_law_3):
-        sol = root_scalar(objective, bracket=[1e-5,2],method='brentq',args=(Period,power_law_1,power_law_2,power_law_3,))
-        if sol.converged:            #for brentq: bracket = [1e-6,2] instead of x0
-            return sol.root
-        else:
-            print("unable to solve!")
-
-    def _period_normalization_constant(self,A,period,power_law_1,power_law_2,power_law_3):
-        return self._integral_of_period_pdf(A,period,power_law_1,power_law_2,power_law_3) - 1
-
-    def _integral_of_period_pdf(self,A,period,power_law_1,power_law_2,power_law_3):
-        lower_bound = np.min(period)
-        upper_bound = np.max(period)
-        
-        power_law_1_upper_bound = self.Period_break_1 if self.power_laws > 1 else upper_bound
-        power_law_2_upper_bound = self.Period_break_2 if self.power_laws > 2 else upper_bound
-
-        error_tol = 1e-3
-        limit = 100
-        result1,_ = quad(power_law_1,lower_bound,power_law_1_upper_bound,args=(A),epsabs=error_tol,epsrel=error_tol,limit=limit)
-        if self.power_laws == 1 : return result1
-        result2,_ = quad(power_law_2,self.Period_break_1,power_law_2_upper_bound,args=(A),epsabs=error_tol,epsrel=error_tol,limit=limit)
-        if self.power_laws == 2: return result1+result2
-        result3,_ = quad(power_law_3,self.Period_break_2,upper_bound, args=(A),epsabs=error_tol,epsrel=error_tol,limit=limit)
-        if self.power_laws == 3: return result1+result2+result3
-        else:
-            print("this number of power laws is not yet supported!")
-
     def Period_pdf(self,Period):
         
-        def power_law_1(P,A):
-            return A*P**self.β1
-        def power_law_2(P,A):
-            return A*self.Period_break_1**(self.β1-self.β2)*P**self.β2
-        def power_law_3(P,A):
-            return A*self.Period_break_1**(self.β1-self.β2)*self.Period_break_2**(self.β2-self.β3)*P**self.β3
+        def power_law_1(P):
+            return P**self.β1
+        def power_law_2(P):
+            return self.Period_break_1**(self.β1-self.β2)*P**self.β2
+        def power_law_3(P):
+            return self.Period_break_1**(self.β1-self.β2)*self.Period_break_2**(self.β2-self.β3)*P**self.β3
             
-        A = self._solve_for_A(self._period_normalization_constant,Period,power_law_1,power_law_2,power_law_3)
         if self.power_laws == 1:
-            piecewise_func_list = [lambda P : power_law_1(P,A)]
+            piecewise_func_list = [lambda P : power_law_1(P)]
             piecewise_conditions = [Period]
         elif self.power_laws == 2:
-            piecewise_func_list = [lambda P : power_law_1(P,A),lambda P : power_law_2(P,A)]
+            piecewise_func_list = [lambda P : power_law_1(P),
+                                   lambda P : power_law_2(P)
+                                   ]
             piecewise_conditions = [Period<=self.Period_break_1, Period>self.Period_break_1]
         elif self.power_laws == 3:
-            piecewise_func_list = [lambda P : power_law_1(P,A),lambda P : power_law_2(P,A),lambda P : power_law_3(P,A)]
-            piecewise_conditions = [Period<=self.Period_break_1, (Period>self.Period_break_1) & (Period<=self.Period_break_2), Period > self.Period_break_2]
+            piecewise_func_list = [lambda P : power_law_1(P),
+                                   lambda P : power_law_2(P),
+                                   lambda P : power_law_3(P)
+                                   ]
+            piecewise_conditions = [Period<=self.Period_break_1, 
+                                    (Period>self.Period_break_1) & (Period<=self.Period_break_2), 
+                                    Period > self.Period_break_2]
         else: 
             print("this value of Period breaks is not supported")
 
@@ -103,6 +82,7 @@ class MassDistribution:
         mask = (self.mass_fine_grid > low_mass) & (self.mass_fine_grid <= high_mass)
         return np.trapezoid(self.mass_pdf()[mask], self.mass_fine_grid[mask])
 
+
 class RadiusDistribution:
     def __init__(self,mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C):
         self.mass_fine_grid = mass_fine_grid # one question: what exactly...is this?
@@ -136,15 +116,15 @@ class RadiusDistribution:
         return self.C*self.mass_break_1**(self.γ0-self.γ1)*self.mass_break_2**(self.γ1-self.γ2)*M**self.γ2
 
     def mu_total(self,M):
-        return ((1-self._SN(M,self.mass_break_1))*self._mu0(M) + 
-                self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self._mu1(M) +
-                self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self._mu2(M)
+        return ((1-self._SN(M,self.mass_break_1))*self._mu0(M) 
+                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self._mu1(M)
+                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self._mu2(M)
                 )
 
     def sigma_total(self,M):
-        return ((1-self._SN(M,self.mass_break_1))*self.σ0 + 
-                self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self.σ1 +
-                self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
+        return ((1-self._SN(M,self.mass_break_1))*self.σ0 
+                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self.σ1
+                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
                 )
 
     def radius_pdf(self,masses):
@@ -178,8 +158,8 @@ class EccentricityDistribution:
         return self.eccentricity_pdf_area(low_e,high_e)
     
     def rayleigh_exponential(self,e):
-        return (self.α*((self.λ*np.exp(-self.λ*e))/(1-np.exp(-self.λ))) + 
-            (1-self.α)*((2*e*(1/(2*self.σ**2))*np.exp(-1*e**2/(2*self.σ**2)))/(1-np.exp(-1/(2*self.σ**2)))))
+        return (self.α*((self.λ*np.exp(-self.λ*e))/(1-np.exp(-self.λ)))
+              + (1-self.α)*((2*e*(1/(2*self.σ**2))*np.exp(-1*e**2/(2*self.σ**2)))/(1-np.exp(-1/(2*self.σ**2)))))
 
     def eccentricity_pdf(self, e): # note that this will probably get added on, with multiple rayleighs or gammas or betas
         """
@@ -194,12 +174,17 @@ class EccentricityDistribution:
         mask = (self.eccentricity_fine_grid > low_e) & (self.eccentricity_fine_grid <= high_e)
         return np.trapezoid(self.eccentricity_pdf(self.eccentricity_fine_grid)[mask], self.eccentricity_fine_grid[mask])
 
+def generate_catalog():
+    fake_catalog = np.zeros((N_PHODYMM_STARS,5))
+    fake_catalog[:,0] = np.random.choice(0.1,500,N_PHODYMM_STARS)  # Period
+    fake_catalog[:,1] = np.random.choice(0.1,10000,N_PHODYMM_STARS)  # Mass
+
 def voxel_model_count(voxel,params):
     
     # unpack params
     γ0 = params[1]
     γ1 = params[2]
-    γ2 = params[3]             
+    γ2 = params[3]
     σ0 = params[4]
     σ1 = params[5]
     σ2 = params[6]

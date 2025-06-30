@@ -5,7 +5,7 @@
     "time": "now",
     "user": "autogenerate",
     "RunGoal" : "Kepler Occurrence Rate Fitting",
-    "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
+    "reload_KMDC" : true,     # whether the base .csv should be reloaded and recached
 
     # Run properties/parameters
     "nwalkers" : 200,           # number of walkers in emcee ensemble
@@ -21,9 +21,10 @@
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
     "log_filename": "../runs/parametric_model_log.txt", 
-    "input_data_folder": "../data/thinned",             # where the KMDC is.
-    "input_data_filename": "../data/thinned/KMDC.csv",  # PhoDyMM thinned posteriors (with calculated values)
-    "results_folder":"../results",                          # where the results go 
+    "input_data_folder": "../data/thinned",                   # where the KMDC is.
+    "input_data_filename": "../data/thinned/KMDC.csv",        # PhoDyMM thinned posteriors (with calculated values)
+    "voxel_data_folder": "../data/thinned/voxel_data_param",   # location of cached voxel dataframes (for faster runs)
+    "results_folder":"../results",                            # where the results go 
 
     # Additional options
     "verbose" : true,			    # Enables print statements within the code

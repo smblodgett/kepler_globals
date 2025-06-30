@@ -42,10 +42,11 @@ def parametric_log_likelihood(params,voxel_grid):
     Gamma0 = params[0]
     grid_sum = 0.0
     for voxel in voxel_grid.voxel_array.flat:
-        print(voxel.df)
+        print("likelihood df: ",voxel.df)
+        voxel_weighted_num_data = voxel.df["num_weighted_data"].iloc[0] if not voxel.df.empty else 0
         # input()
         model_count = N_PHODYMM_STARS * voxel_model_count(voxel,params)
-        grid_sum += (model_count * np.log(voxel.num_data_with_weighting() - voxel.num_data_with_weighting() - np.log(gamma(model_count+1))))
+        grid_sum += (model_count * np.log(voxel_weighted_num_data) - voxel_weighted_num_data - np.log(gamma(model_count+1)))
     return Gamma0 * grid_sum
 
 

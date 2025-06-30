@@ -20,8 +20,8 @@
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
     "log_filename": "../runs/grid_model_log.txt", 
-    "input_data_filename": "../data/thinned/KMDC.csv",  # PhoDyMM thinned posteriors (with calculated values)
-    "voxel_data_folder": "../data/thinned/voxel_data",      # location of cached voxel dataframes (for faster runs)
+    "input_data_filename": "../data/thinned/KMDC.csv",           # PhoDyMM thinned posteriors (with calculated values)
+    "voxel_data_folder": "../data/thinned/voxel_data_grid",      # location of cached voxel dataframes (for faster runs)
     "results_folder":"../results/grid",                          # where the results go 
 
     # Additional options

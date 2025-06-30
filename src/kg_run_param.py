@@ -18,7 +18,7 @@ import kg_likelihood
 from kg_griddefiner import *
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array
 from kg_param_initial_guess import get_initial_guess
-from kg_utilities import ReadJson
+from kg_utilities import ReadJson, create_probability_weighted
 
     
 def timer(is_timer,benchmark_message_string,mode='benchmark'):
@@ -82,11 +82,11 @@ def run_emcee(voxel_grid,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
     print("HERE?")
 
     # with MPIPool() as pool:
-        # if not pool.is_master():
-        #     pool.wait()
-        #     sys.exit(0)
+    #     if not pool.is_master():
+    #         pool.wait()
+    #         sys.exit(0)
 
-        # Create the emcee sampler.
+    # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
                                     kg_likelihood.parametric_log_likelihood, backend=backend, args=(voxel_grid,))#,pool=pool)
     print("HEHEHEHERRRREEEEE???")
@@ -130,23 +130,28 @@ def main(model_id):
 
     timer(runprops["timer"],"start (& runprops read)")
 
-    # use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
+    use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
 
-    # if not runprops["suppress_warnings"]: 
-    #     if not use_cache:
-    #         print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
-    #         print("Only run this way if your voxel data hasn't yet been cached.")
+    if not runprops["suppress_warnings"]: 
+        if not use_cache:
+            print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
+            print("Only run this way if your voxel data hasn't yet been cached.")
     
     # If the voxels don't have their data cached, then read in everything.
-    # if not use_cache:
-    df = pd.read_csv(runprops["input_data_filename"],index_col=0)
-    df = df[["R_pE","Period_days","M_pE","e","p_trans","MES_rowe"]]
-    df.to_csv(runprops["input_data_folder"]+"KMDC_RPMe.csv")
-    # if runprops["verbose"]: print("read in the catalog without caching")
+    if not use_cache:
+        df = pd.read_csv(runprops["input_data_filename"],index_col=0)
+        if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
+        input()
+        print("now we're caching it!")
+        df = df[["R_pE","Period_days","M_pE","e","p_trans","MES_rowe"]]
+        df = create_probability_weighted(df)
+        df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMe.csv")
+        if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
+        input()
     # Otherwise, you can just read in 1 voxel that has its data cached.    
-    # else:
-    #     df = pd.read_csv(runprops["input_data_folder"]+"KMDC_RPM.csv",index_col=0)
-    #     if runprops["verbose"]: print("read in cached df")
+    else:
+        df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMe.csv",index_col=0)
+        if runprops["verbose"]: print("read in cached df")
     
     timer(runprops["timer"],"data readin")
 
@@ -154,6 +159,7 @@ def main(model_id):
     voxel_grid = RPMeGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array)
     voxel_grid.setup_dataframes(df.columns)
     voxel_grid.add_data(df)
+    if runprops["verbose"]: print("grid has been set up!")
 
 
     # Partition the Hsu et al. weights by mass. ??? do we need hsu in the parametric models? I don't think so...
