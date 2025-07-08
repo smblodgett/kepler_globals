@@ -16,9 +16,10 @@ from schwimmbad import MPIPool
 
 import kg_likelihood
 from kg_griddefiner import *
-from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array
+from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 from kg_param_initial_guess import get_initial_guess
 from kg_utilities import ReadJson, create_probability_weighted
+from kg_probability_distributions import get_MES
 
     
 def timer(is_timer,benchmark_message_string,mode='benchmark'):
@@ -51,7 +52,7 @@ def number_of_singles_in_voxel(voxel, expanded_dr_df):
     return len(expanded_dr_df.loc[mask])
 
 
-def run_emcee(voxel_grid,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
+def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
     """Configures and runs the emcee MCMC sampler."""
 
 
@@ -88,7 +89,7 @@ def run_emcee(voxel_grid,model_id,runprops,dr_path="../data/q1_q17_dr25.csv",exp
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_likelihood, backend=backend, args=(voxel_grid,))#,pool=pool)
+                                    kg_likelihood.parametric_log_likelihood, backend=backend, args=(voxel_grid,stellar_df,))#,pool=pool)
     print("HEHEHEHERRRREEEEE???")
     timer(runprops["timer"],"emcee setup")
 
@@ -139,27 +140,48 @@ def main(model_id):
     
     # If the voxels don't have their data cached, then read in everything.
     if not use_cache:
-        df = pd.read_csv(runprops["input_data_filename"],index_col=0)
+        df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
         if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
-        input()
+        # input()
         print("now we're caching it!")
-        df = df[["R_pE","Period_days","M_pE","e","p_trans","MES_rowe"]]
-        df = create_probability_weighted(df)
-        df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMe.csv")
+        df = df[["R_pE","Period_days","M_pE","e","omega"]]#,"p_trans","MES_rowe"]]
+        #df = create_probability_weighted(df)
+        df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
         if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
-        input()
+        # input()
     # Otherwise, you can just read in 1 voxel that has its data cached.    
     else:
-        df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMe.csv",index_col=0)
+        df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv",index_col=0,engine='pyarrow')
         if runprops["verbose"]: print("read in cached df")
     
     timer(runprops["timer"],"data readin")
 
     # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
-    voxel_grid = RPMeGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array)
+    voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
     voxel_grid.setup_dataframes(df.columns)
     voxel_grid.add_data(df)
-    if runprops["verbose"]: print("grid has been set up!")
+
+    gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
+    gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
+
+    stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow')
+    stellar_df = stellar_df[stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+    stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
+
+
+    stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
+
+    for old_col,new_col in zip(["teff","mass","radius"],["Teff","Mass","Rad"]):
+        stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
+
+
+
+    stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
+    stellar_df = stellar_df[(stellar_df["logg"]>4)]
+
+    stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
+    voxel_grid.setup_completeness_grid(stellar_df) # this is the kepler stellar catalog, which has the stellar radii and masses
+    if runprops["verbose"]: print("MES grid has been set up!")
 
 
     # Partition the Hsu et al. weights by mass. ??? do we need hsu in the parametric models? I don't think so...
@@ -168,7 +190,7 @@ def main(model_id):
     # timer(runprops["timer"],"weight partition")
 
     try:        
-        run_emcee(voxel_grid,model_id,runprops)
+        run_emcee(voxel_grid,model_id,runprops,stellar_df)
         sys.exit(0)
     except Exception as e:
         print("Error occurred..." + str(e))

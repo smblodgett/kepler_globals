@@ -4,6 +4,7 @@ results/*
 *.ipynb_checkpoints
 data/thinned/*
 data/plots/*
+data/keplerstellar.csv
 data/subsampled_rows/*
 !data/subsampled_rows/.gitkeep
 !data/thinned/.gitkeep

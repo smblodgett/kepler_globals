@@ -4,7 +4,7 @@ from scipy.stats import norm, lognorm
 from kg_priors import prior_args
 from kg_constants import N_PHODYMM_STARS
 
-from kg_probability_distributions import voxel_model_count
+from kg_probability_distributions import voxel_model_count, generate_catalog, get_probability_distributions
 
 def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
     R_mrp = params[0]
@@ -37,16 +37,18 @@ def parametric_log_prior(params):
     return lp
 
 
-def parametric_log_likelihood(params,voxel_grid):
+def parametric_log_likelihood(params,voxel_grid,stellar_df):
     print("IN LLINKELIHOOODDDFSDFS")
     Gamma0 = params[0]
     grid_sum = 0.0
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_fine_grid = get_probability_distributions(params)
+    synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_fine_grid)
     for voxel in voxel_grid.voxel_array.flat:
         print("likelihood df: ",voxel.df)
-        voxel_weighted_num_data = voxel.df["num_weighted_data"].iloc[0] if not voxel.df.empty else 0
+        voxel_num_data = len(voxel.df) if not voxel.df.empty else 0
         # input()
-        model_count = N_PHODYMM_STARS * voxel_model_count(voxel,params)
-        grid_sum += (model_count * np.log(voxel_weighted_num_data) - voxel_weighted_num_data - np.log(gamma(model_count+1)))
+        model_count = voxel_model_count(voxel_grid,voxel,synthetic_catalog)
+        grid_sum += (model_count * np.log(voxel_num_data) - voxel_num_data - np.log(gamma(model_count+1)))
     return Gamma0 * grid_sum
 
 

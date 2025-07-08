@@ -2,7 +2,7 @@
 kg_griddefiner.py
 =================
 
-Contains several classes useful for creating a non-parametric grid model.
+Contains several classes useful for creating exoplanet population models.
 
 Classes
 -------
@@ -26,6 +26,8 @@ import pandas as pd
 
 from kg_constants import *
 from kg_utilities import radius_given_density_mass, mass_given_density_radius, num_data_with_weighting
+from kg_probability_distributions import get_MES, get_transit_probability, get_detection_probability
+from scipy.interpolate import RegularGridInterpolator
 
 
 class RPMVoxel:
@@ -201,7 +203,7 @@ class RPMVoxel:
                 f"M: {self.bottom_mass} - {self.top_mass})"
                 f"number of data points: {self.num_data()}")
     
-class RPMeVoxel(RPMVoxel):
+class RPMeoVoxel(RPMVoxel):
     """
     Represents part of the radius-period-mass-eccentricity exoplanet occurrence space.
     
@@ -231,18 +233,21 @@ class RPMeVoxel(RPMVoxel):
     Inherits all attributes from RPMVoxel.
     
     """
-    def __init__(self,bottom_radius,top_radius,bottom_period,top_period,bottom_mass,top_mass,bottom_eccentricity,top_eccentricity):
+    def __init__(self,bottom_radius,top_radius,bottom_period,top_period,bottom_mass,top_mass,bottom_eccentricity,top_eccentricity,bottom_omega,top_omega):
         """
         Initializes the RPMeVoxel with the given radius, period, mass, and eccentricity limits.
         """
         super().__init__(bottom_radius,top_radius,bottom_period,top_period,bottom_mass,top_mass)
         self.bottom_eccentricity = bottom_eccentricity
         self.top_eccentricity = top_eccentricity
+        self.bottom_omega = bottom_omega
+        self.top_omega = top_omega
     
-    def within(self,radius,period,mass,eccentricity):
+    def within(self,radius,period,mass,eccentricity,omega):
         """For a given value in radius-period-mass-eccentricity space, returns True if the voxel contains this value."""
-        return (super().within(radius,period,mass) and 
-                eccentricity >= self.bottom_eccentricity and eccentricity < self.top_eccentricity)
+        return (super().within(radius,period,mass) 
+                and eccentricity >= self.bottom_eccentricity and eccentricity < self.top_eccentricity
+                and omega >= self.bottom_omega and omega < self.top_omega)
     
     def __str__(self):
         """Returns a string representation of the voxel."""
@@ -250,6 +255,7 @@ class RPMeVoxel(RPMVoxel):
                 f"P: {self.bottom_period} - {self.top_period}, "
                 f"M: {self.bottom_mass} - {self.top_mass}), "
                 f"e: {self.bottom_eccentricity} - {self.top_eccentricity}, "
+                f"omega: {self.bottom_omega} - {self.top_omega}, "
                 f"number of data points: {self.num_data()}") 
 
     
@@ -344,7 +350,7 @@ class RPMGrid:
             group_mask = (inverse == voxel_id)
             df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx'])
             self.voxel_array[r, p, m].add_data(df_chunk)
-            num_data_with_weighting(self.voxel_array[r, p, m])  # Update the number of data points with weighting
+            # num_data_with_weighting(self.voxel_array[r, p, m].df)  # Update the number of data points with weighting
             # self.voxel_array[r, p, m].create_probability_weighted()
 
     def cache_dataframes(self,cache_path="../data/thinned/voxel_data"):
@@ -464,9 +470,9 @@ class RPMGrid:
         string_representation += f"dimensions: {radius_count} Rbins x {period_count} Pbins x {mass_count} Mbins\n"
         return string_representation
 
-class RPMeGrid(RPMGrid):
+class RPMeoGrid(RPMGrid):
     """
-    A subclass of RPMGrid that is specifically designed for the radius-period-mass-eccentricity parametric models.
+    A subclass of RPMGrid that is specifically designed for the radius-period-mass-eccentricity-argument of periapse parametric models.
     
     This class inherits from RPMGrid.
     
@@ -486,7 +492,7 @@ class RPMeGrid(RPMGrid):
     Inherits all attributes from RPMGrid.
     
     """
-    def __init__(self,radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array):
+    def __init__(self,radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array,omega_grid_array):
         """
         Initializes the RPMeGRID with the given radius, period, mass, and eccentricity grid arrays.
         """
@@ -494,26 +500,32 @@ class RPMeGrid(RPMGrid):
         self.period_grid_array = period_grid_array
         self.mass_grid_array = mass_grid_array
         self.eccentricity_grid_array = eccentricity_grid_array
+        self.omega_grid_array = omega_grid_array
   
         self.r_len = len(radius_grid_array) - 1
         self.p_len = len(period_grid_array) - 1
         self.m_len = len(mass_grid_array) - 1
         self.e_len = len(eccentricity_grid_array) - 1
+        self.o_len = len(omega_grid_array) - 1
 
-        self.voxel_array = [[[[RPMeVoxel(self.radius_grid_array[i],self.radius_grid_array[i+1],
-                                        self.period_grid_array[j],self.period_grid_array[j+1],
-                                        self.mass_grid_array[k],self.mass_grid_array[k+1],
-                                        eccentricity_grid_array[l],eccentricity_grid_array[l+1]) 
+        self.voxel_array = [[[[[RPMeoVoxel(self.radius_grid_array[i],self.radius_grid_array[i+1],
+                                          self.period_grid_array[j],self.period_grid_array[j+1],
+                                          self.mass_grid_array[k],self.mass_grid_array[k+1],
+                                          self.eccentricity_grid_array[l],self.eccentricity_grid_array[l+1],
+                                          self.omega_grid_array[m],self.omega_grid_array[m+1]) 
+                                        for m in range(self.o_len)]
                                         for l in range(self.e_len)] for k in range(self.m_len)] 
                                         for j in range(self.p_len)] for i in range(self.r_len)]
         self.voxel_array = np.array(self.voxel_array,dtype=object)
         id_number=0
-        self.id_array=np.empty((self.r_len,self.p_len,self.m_len,self.e_len))
+        self.id_array=np.empty((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len))
+        self.p_detection_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
+        self.p_transit_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
 
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
-        for id_number in range(self.r_len * self.p_len * self.m_len * self.e_len):
-            i, j, k, l = it.multi_index  # Gives current (i, j, k) position
-            self.voxel_array[i, j, k, l].create_id(id_number)
+        for id_number in range(self.r_len * self.p_len * self.m_len * self.e_len * self.o_len):
+            i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l) position
+            self.voxel_array[i, j, k, l, m].create_id(id_number)
             it[0] = id_number  # Write to id_array
             it.iternext()
 
@@ -523,34 +535,85 @@ class RPMeGrid(RPMGrid):
         p_idx = np.searchsorted(self.period_grid_array, df['Period_days'].values, side='right') - 1
         m_idx = np.searchsorted(self.mass_grid_array, df['M_pE'].values, side='right') - 1
         e_idx = np.searchsorted(self.eccentricity_grid_array, df['e'].values, side='right') - 1
+        o_idx = np.searchsorted(self.omega_grid_array, df['omega'].values, side='right') - 1
 
         # Filter valid entries
         valid_mask = (
             (r_idx >= 0) & (r_idx < self.r_len) &
             (p_idx >= 0) & (p_idx < self.p_len) &
             (m_idx >= 0) & (m_idx < self.m_len) &
-            (e_idx >= 0) & (e_idx < self.e_len)
+            (e_idx >= 0) & (e_idx < self.e_len) &
+            (o_idx >= 0) & (o_idx < self.o_len)
             )
         df_valid = df.loc[valid_mask].copy()
         df_valid['r_idx'] = r_idx[valid_mask]
         df_valid['p_idx'] = p_idx[valid_mask]
         df_valid['m_idx'] = m_idx[valid_mask]
         df_valid['e_idx'] = e_idx[valid_mask]
+        df_valid['o_idx'] = o_idx[valid_mask]
 
         # Sort to improve memory access pattern (optional, measurable on big data)
-        df_valid.sort_values(['r_idx', 'p_idx', 'm_idx','e_idx'], inplace=True)
+        df_valid.sort_values(['r_idx', 'p_idx', 'm_idx','e_idx','o_idx'], inplace=True)
 
         # Grouping via numpy keys instead of tuple hashing (faster)
-        index_array = df_valid[['r_idx', 'p_idx', 'm_idx','e_idx']].values
+        index_array = df_valid[['r_idx', 'p_idx', 'm_idx','e_idx','o_idx']].values
         voxel_keys, inverse = np.unique(index_array, axis=0, return_inverse=True)
 
         # Slice records into voxel groups without Python dicts
-        for voxel_id, (r, p, m, e) in enumerate(voxel_keys):
+        for voxel_id, (r, p, m, e, o) in enumerate(voxel_keys):
             group_mask = (inverse == voxel_id)
-            df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx','e_idx'])
-            self.voxel_array[r, p, m, e].add_data(df_chunk)
-            num_data_with_weighting(self.voxel_array[r, p, m, e].df)
+            df_chunk = df_valid.loc[group_mask].drop(columns=['r_idx', 'p_idx', 'm_idx','e_idx','o_idx'])
+            self.voxel_array[r, p, m, e, o].add_data(df_chunk)
+            # num_data_with_weighting(self.voxel_array[r, p, m, e].df)
             # self.voxel_array[r, p, m, e].create_probability_weighted()
+    
+    def setup_completeness_grid(self,stellar_df,N_SAMPLE_STARS=100):
+        
+
+        stellar_df=stellar_df.sample(n=N_SAMPLE_STARS,random_state=41)
+
+
+        it = np.nditer(self.p_detection_array, flags=['multi_index'], op_flags=['writeonly'])
+        for grid_edgepoint_number in range((self.r_len+1) * (self.p_len+1) * (self.m_len+1) * (self.e_len+1) * (self.o_len+1)):
+            i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
+
+            print("mass input: ", self.mass_grid_array[k])
+            print("radius input: ", self.radius_grid_array[i])
+            print("period input: ", self.period_grid_array[j])
+            print("eccentricity input: ", self.eccentricity_grid_array[l])
+            print("omega input: ", self.omega_grid_array[m])
+            MES = get_MES(stellar_df, self.mass_grid_array[k],
+                                                    self.radius_grid_array[i],
+                                                    self.period_grid_array[j],
+                                                    self.eccentricity_grid_array[l],
+                                                    self.omega_grid_array[m],
+                                                    b=0
+                                                    )
+            assert MES >= 0, "MES should be non-negative, check stellar_df and input parameters."
+
+            self.p_detection_array[i, j, k, l, m] = get_detection_probability(MES)[0]
+            
+            self.p_transit_array[i, j, k, l, m] = get_transit_probability(stellar_df, self.mass_grid_array[k],
+                                                                            self.radius_grid_array[i],
+                                                                            self.period_grid_array[j],
+                                                                            self.eccentricity_grid_array[l],
+                                                                            self.omega_grid_array[m]
+                                                                            )
+            # it[0] = grid_edgepoint_number  # Write to id_array
+            it.iternext()
+
+        self.p_detection_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
+                                                  self.mass_grid_array,self.eccentricity_grid_array,
+                                                  self.omega_grid_array),self.p_detection_array
+                                                  )
+        
+        self.p_transit_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
+                                                  self.mass_grid_array,self.eccentricity_grid_array,
+                                                  self.omega_grid_array),self.p_transit_array
+                                                  )
+
+        
+
 
     def find_voxel_by_id(self,voxel_id):
         """Finds the voxel represented by a given id number."""
@@ -558,12 +621,12 @@ class RPMeGrid(RPMGrid):
         if location.size == 0:
             print("Unable to find voxel with given voxel id.")
             return None
-        i, j, k, l = location[0]
-        return self.voxel_array[i][j][k][l]
+        i, j, k, l, m = location[0]
+        return self.voxel_array[i][j][k][l][m]
 
-    def find_voxel_by_coordinates(self,radius,period,mass,eccentricity):
+    def find_voxel_by_coordinates(self,radius,period,mass,eccentricity,omega):
         """Finds the voxel that contains a given radius, period, mass value."""
         for voxel in self.voxel_array.flat:
-            if voxel.within(radius,period,mass,eccentricity):
+            if voxel.within(radius,period,mass,eccentricity,omega):
                 return voxel
                         

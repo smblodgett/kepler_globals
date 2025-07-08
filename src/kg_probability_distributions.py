@@ -1,8 +1,11 @@
 import numpy as np
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
+from scipy.interpolate import PchipInterpolator
+from scipy.optimize import curve_fit
 from scipy.stats import lognorm
-from kg_constants import N_PHODYMM_STARS
+from scipy.special import gamma
+from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
 
 
 
@@ -133,8 +136,10 @@ class RadiusDistribution:
             # if (radius := pure_silicate_radius(mass)) < 1.6 and mass < 100:
             #     radii = np.append(radii,radius)
             # else:
+            radius = np.random.normal(self.mu_total(mass),self.sigma_total(mass))
+            while radius < 0.4:
                 radius = np.random.normal(self.mu_total(mass),self.sigma_total(mass))
-                radii = np.append(radii,radius)
+            radii = np.append(radii,radius)
         return radii
     
     def radius_pdf_area(self,low_radius,high_radius): # so does this just return the number of points in a certain radius range?
@@ -174,13 +179,118 @@ class EccentricityDistribution:
         mask = (self.eccentricity_fine_grid > low_e) & (self.eccentricity_fine_grid <= high_e)
         return np.trapezoid(self.eccentricity_pdf(self.eccentricity_fine_grid)[mask], self.eccentricity_fine_grid[mask])
 
-def generate_catalog():
-    fake_catalog = np.zeros((N_PHODYMM_STARS,5))
-    fake_catalog[:,0] = np.random.choice(0.1,500,N_PHODYMM_STARS)  # Period
-    fake_catalog[:,1] = np.random.choice(0.1,10000,N_PHODYMM_STARS)  # Mass
 
-def voxel_model_count(voxel,params):
+def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     
+    # stellar_df["u1"] = stellar_df['limbdark_coeff1'] #-1.93 * 10**-4 * stellar_df['teff'] + 1.5169
+    # stellar_df["u2"] = stellar_df['limbdark_coeff2'] #1.25 * 10**-4 * stellar_df['teff'] - 0.4601
+
+    stellar_df["u1"] = -1.93 * 10**-4 * stellar_df['teff'] + 1.5169
+    stellar_df["u2"] = 1.25 * 10**-4 * stellar_df['teff'] - 0.4601
+
+    stellar_df["c0"] = 1 - (stellar_df['u1'] + stellar_df['u2'])
+    stellar_df["omega"] = stellar_df['c0']/4 + (stellar_df['u1']+(2*stellar_df['u2']))/6 - stellar_df['u2']/8
+
+    # print("stellar median radius: ", np.median(stellar_df['radius']))
+    # print(stellar_df)
+    sm_axis = (G * (period*24*3600)**2 * (np.median(stellar_df['mass'])*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
+    
+    i = np.arccos(((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))*(RSCM/100*np.median(stellar_df['radius'])*b/sm_axis)) # check conversions here!
+    
+    k_rp = (RETORS*radius) / np.median(stellar_df['radius'])
+    
+    n_tr = np.median(stellar_df["dataspan"]) / period
+
+    def get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis):
+        # print("np.mean(stellar_df['radius']): ",np.median(stellar_df['radius']))
+        # print("sm_axis: ",sm_axis)
+        # print("np.sin(i): ",np.sin(i)) 
+        # print(((RSCM/100)*np.median(stellar_df['radius'])/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i))
+        if abs((((RSCM/100)*np.median(stellar_df['radius'])/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i)) * np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180))) > 1:
+            print("((RSCM/100)*np.median(stellar_df['radius'])/sm_axis)", ((RSCM/100)*np.median(stellar_df['radius'])/sm_axis))
+            print("np.sqrt((1+k_rp)**2 - b**2)", np.sqrt((1+k_rp)**2 - b**2))
+            print("np.sin(i)", np.sin(i))
+            print("np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180))", np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)))
+            
+            raise ValueError("The abs argument of arcsin is greater than 1, which is not possible. Check your inputs.")
+        
+        return (period/np.pi) * np.arcsin(((RSCM/100)*np.median(stellar_df['radius'])/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i)) * np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)) # check conversions here!
+
+    def find_CDPP(transit_duration):
+        
+        # cpdds = [np.median(stellar_df[col]) for col in stellar_df.columns if col.startswith('rrmscdpp')]
+        # durations = [1.5,2,2.5,3,3.5,4.5,5,6,7.5,9,10.5,12,12.5,15]
+        # cdpp_f = UnivariateSpline(durations,cpdds,s=0)
+        # return cdpp_f(transit_duration)
+            # def find_CDPP(transit_duration):
+        
+        cpdds = [np.median(stellar_df[col]) for col in stellar_df.columns if col.startswith('rrmscdpp')]
+        durations = [1.5,2,2.5,3,3.5,4.5,5,6,7.5,9,10.5,12,12.5,15]
+        # cdpp_f = UnivariateSpline(durations,cpdds,s=0)
+        cdpp_f = PchipInterpolator(durations,cpdds,extrapolate=False)
+
+
+        def cdpp_model(t, A, B):
+            return np.sqrt((A**2) / t + B**2) # power law to extrapolate beyond the given transit duration regime
+        
+        # Fit this to your duration and CDPP values
+        params, _ = curve_fit(cdpp_model, durations, cpdds)
+        A, B = params
+        return cdpp_f(transit_duration) if not np.isnan(cdpp_f(transit_duration)) else cdpp_model(transit_duration, A, B)
+    
+    def get_depth(stellar_df,k_rp):
+        return 1 - (np.median(stellar_df['c0'])/4 
+                    + ((np.median(stellar_df["u1"])+(2*np.median(stellar_df["u2"])))*(1-k_rp**2)**1.5)/6 
+                    -   np.median(stellar_df["u2"])*(1-k_rp**2)/8) / (np.median(stellar_df["omega"]))
+
+
+    
+    print("depth: ",get_depth(stellar_df,k_rp)*10**6)
+    assert get_depth(stellar_df,k_rp)*10**6 > 0, "Depth must be greater than 0"
+    assert sm_axis > (RSCM/100)*np.median(stellar_df['radius']), "Semi-major axis must be greater than stellar radius"
+    
+    print("i: ",i)
+
+    print("transit duration: ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis))
+    print("transit duration x 24 : ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24)
+
+    print("n_tr: ",n_tr)
+
+    print("c0: ",np.median(stellar_df["c0"]))
+
+    print("omega: ",np.median(stellar_df["omega"]))
+
+    print("CDPP: ",find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))
+    
+
+    return (get_depth(stellar_df,k_rp)*10**6 / (find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))) * 1.003 * n_tr**0.5
+               
+
+def get_transit_probability(stellar_df, mass, radius, period, ecc, omega):
+    a = (G * (period*24*3600)**2 * (np.median(stellar_df["mass"])*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
+    return ((np.median(stellar_df["radius"])*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2)) 
+
+
+def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):
+    def integrand(x):
+        return (c / (b**a * gamma(a)) ) * x**(a-1) * np.exp(-x/b)
+    return quad(integrand, 0, MES)
+
+
+def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_fine_grid):
+    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),6))
+    print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
+    print("np.sum(p_Period): ", np.sum(p_Period))
+    fake_catalog[:,0] = np.random.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
+    fake_catalog[:,1] = np.random.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
+    fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
+    fake_catalog[:,3] = np.random.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
+    fake_catalog[:,4] = np.random.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
+    fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter)
+    return fake_catalog
+
+
+def get_probability_distributions(params):
     # unpack params
     γ0 = params[1]
     γ1 = params[2]
@@ -202,26 +312,45 @@ def voxel_model_count(voxel,params):
     λ = params[18]
     σ_e = params[19]
 
-    print("C: ",C)
-
     # period
-    Period_grid = np.linspace(0.1,500,10000)
-    p_Period = PeriodDistribution(Period_grid,β1,β2,β3,Period_break_1,Period_break_2)
+    Period_fine_grid = np.linspace(0.1,500,10000)
+    p_Period = PeriodDistribution(Period_fine_grid,β1,β2,β3,Period_break_1,Period_break_2).Period_pdf(Period_fine_grid)
 
     # mass
-    mass_grid = np.logspace(-1,4,10000)
-    p_mass = MassDistribution(mass_grid,μM,σM)
+    mass_fine_grid = np.logspace(-1,4,10000)
+    p_mass = MassDistribution(mass_fine_grid,μM,σM).mass_pdf()
 
     # radius 
-    p_radius = RadiusDistribution(p_mass.mass_pdf(),γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C)
+    p_radius = RadiusDistribution(mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).radius_pdf(mass_fine_grid)
 
     # ecc
     eccentricity_grid = np.linspace(0,1,10000)
-    p_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e)
+    p_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e).eccentricity_pdf(eccentricity_grid)
 
-    return (p_Period(voxel.bottom_period,voxel.top_period)
-            * p_mass(voxel.bottom_mass,voxel.top_mass)
-            * p_radius(voxel.bottom_radius,voxel.top_radius)
-            * p_ecc(voxel.bottom_eccentricity,voxel.top_eccentricity)
-            )
+    return p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_grid
+
+
+def voxel_model_count(voxel_grid,voxel,synthetic_catalog):
     
+    mask = ((synthetic_catalog[:,0] >= voxel.period_lower) & (synthetic_catalog[:,0] < voxel.period_upper) 
+            & (synthetic_catalog[:,1] >= voxel.mass_lower) & (synthetic_catalog[:,1] < voxel.mass_upper) 
+            & (synthetic_catalog[:,2] >= voxel.radius_lower) & (synthetic_catalog[:,2] < voxel.radius_upper)
+            & (synthetic_catalog[:,3] >= voxel.ecc_lower) & (synthetic_catalog[:,3] < voxel.ecc_upper)
+            & (synthetic_catalog[:,4] >= voxel.omega_lower) & (synthetic_catalog[:,4] < voxel.omega_upper) 
+            ) 
+    
+    catalog_in_voxel = synthetic_catalog[mask]
+
+    return np.sum(voxel_grid.p_detection_interp(catalog_in_voxel[:,2],
+                                                catalog_in_voxel[:,0],
+                                                catalog_in_voxel[:,1],
+                                                catalog_in_voxel[:,3],
+                                                catalog_in_voxel[:,4]
+                                                )   
+                * voxel_grid.p_transit_interp(catalog_in_voxel[:,2],
+                                              catalog_in_voxel[:,0],
+                                              catalog_in_voxel[:,1],
+                                              catalog_in_voxel[:,3],
+                                              catalog_in_voxel[:,4]
+                                              )  
+                  )
