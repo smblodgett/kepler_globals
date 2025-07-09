@@ -131,15 +131,32 @@ class RadiusDistribution:
                 )
 
     def radius_pdf(self,masses):
-        radii = np.empty(0)
-        for mass in masses:
-            # if (radius := pure_silicate_radius(mass)) < 1.6 and mass < 100:
-            #     radii = np.append(radii,radius)
-            # else:
-            radius = np.random.normal(self.mu_total(mass),self.mu_total(mass)*self.sigma_total(mass))
-            while radius < 0.4:
-                radius = np.random.normal(self.mu_total(mass),self.mu_total(mass)*self.sigma_total(mass))
-            radii = np.append(radii,radius)
+        radii = np.empty_like(masses)
+
+        mu = self.mu_total(masses)
+        sigma = mu * self.sigma_total(masses)
+        if np.any(sigma) < 0:
+            print("mu: ", mu)
+            # print("")
+            raise ValueError("Sigma must be positive, but got sigma = {}".format(sigma))
+        radii = np.random.normal(mu, sigma)
+        mask = radii < 0.25
+        i =0
+        while np.any(mask):
+            radii[mask] = np.random.normal(mu[mask], sigma[mask])
+            mask = radii < 0.25
+            if i%10 ==0:
+                print(i," iterations to get radii > 0.25")
+            i += 1
+            
+        # for i,mass in enumerate(masses):
+        #     # if (radius := pure_silicate_radius(mass)) < 1.6 and mass < 100:
+        #     #     radii = np.append(radii,radius)
+        #     # else:
+        #     radius = np.random.normal(mu_tot:=self.mu_total(mass),mu_tot*self.sigma_total(mass))
+        #     while radius < 0.4:
+        #         radius = np.random.normal(mu_tot,mu_tot*self.sigma_total(mass))
+        #     radii[i] = radius
         return radii
     
     def radius_pdf_area(self,low_radius,high_radius): # so does this just return the number of points in a certain radius range?

@@ -85,3 +85,8 @@ probabilities are not non-negative Model: 0
 probabilities are not non-negative Model: 0
 'RPMeoVoxel' object has no attribute 'period_lower' Model: 0
 RegularGridInterpolator.__call__() takes from 2 to 3 positional arguments but 6 were given Model: 0
+Tried to create an MPI pool, but there was only one MPI process available. Need at least two. Model: 0
+name 'pool' is not defined Model: 0
+scale < 0 Model: 0
+scale < 0 Model: 0
+The truth value of an array with more than one element is ambiguous. Use a.any() or a.all() Model: 0

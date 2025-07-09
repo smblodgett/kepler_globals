@@ -80,7 +80,7 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr
 
     timer(runprops["timer"],"backend setup")
 
-    print("HERE?")
+    # print("HERE?")
 
     # with MPIPool() as pool:
     #     if not pool.is_master():
@@ -89,8 +89,8 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_likelihood, backend=backend, args=(voxel_grid,stellar_df,))#,pool=pool)
-    print("HEHEHEHERRRREEEEE???")
+                                    kg_likelihood.parametric_log_likelihood, backend=backend, args=(voxel_grid,stellar_df,) )#,pool=pool)
+    
     timer(runprops["timer"],"emcee setup")
 
     p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
