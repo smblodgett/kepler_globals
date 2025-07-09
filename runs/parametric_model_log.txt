@@ -66,3 +66,22 @@ MassDistribution.mass_pdf() takes 1 positional argument but 2 were given Model: 
 probabilities do not sum to 1 Model: 0
 probabilities do not sum to 1 Model: 0
 probabilities do not sum to 1 Model: 0
+probabilities do not sum to 1 Model: 0
+probabilities contain NaN Model: 0
+'a' and 'p' must have same size Model: 0
+'a' and 'p' must have same size Model: 0
+probabilities contain NaN Model: 0
+probabilities contain NaN Model: 0
+'a' and 'p' must have same size Model: 0
+'a' and 'p' must have same size Model: 0
+'a' and 'p' must have same size Model: 0
+'a' and 'p' must have same size Model: 0
+'numpy.ndarray' object is not callable Model: 0
+probabilities are not non-negative Model: 0
+probabilities are not non-negative Model: 0
+probabilities do not sum to 1 Model: 0
+probabilities are not non-negative Model: 0
+probabilities are not non-negative Model: 0
+probabilities are not non-negative Model: 0
+'RPMeoVoxel' object has no attribute 'period_lower' Model: 0
+RegularGridInterpolator.__call__() takes from 2 to 3 positional arguments but 6 were given Model: 0

@@ -21,7 +21,7 @@ prior_args = {
         'Beta3': (-1.0,1.0,"N"),
         'Pbreak1': (2, 1,"lnN"),   # lnN(2,1)
         'Pbreak2':(5,1.5,"lnN"),
-        'alpha_e': (0,4,"U"),
+        'alpha_e': (0,1,"U"),
         'lambda_e': (3,2,"N"),
         'sigma_e':(0,1,"U")
         }

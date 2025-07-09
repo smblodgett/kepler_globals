@@ -41,8 +41,8 @@ def parametric_log_likelihood(params,voxel_grid,stellar_df):
     print("IN LLINKELIHOOODDDFSDFS")
     Gamma0 = params[0]
     grid_sum = 0.0
-    p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_fine_grid = get_probability_distributions(params)
-    synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_fine_grid)
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid = get_probability_distributions(params)
+    synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid)
     for voxel in voxel_grid.voxel_array.flat:
         print("likelihood df: ",voxel.df)
         voxel_num_data = len(voxel.df) if not voxel.df.empty else 0

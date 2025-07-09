@@ -64,8 +64,8 @@ class PeriodDistribution:
 class MassDistribution:
     def __init__(self,mass_fine_grid,μ,σ):
         self.mass_fine_grid = mass_fine_grid
-        self.μ = μ
-        self.σ = σ
+        self.μ = μ # be careful! this is in ln(M_E), not in M_E!
+        self.σ = σ # same here, this is in ln(M_E), not in M_E!
         assert type(self.mass_fine_grid) == np.ndarray, "Mass grid requires a numpy array!"
 
     def __call__(self,low_mass,high_mass):
@@ -76,7 +76,7 @@ class MassDistribution:
         Returns the probability density function of the mass distribution.
         Uses a log-normal distribution.
         """
-        return (m_pdf:=lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=self.μ)) / np.trapezoid(m_pdf,self.mass_fine_grid)
+        return (m_pdf:=lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=np.exp(self.μ))) / np.trapezoid(m_pdf,self.mass_fine_grid)
     
     def mass_pdf_area(self,low_mass,high_mass):
         """
@@ -136,9 +136,9 @@ class RadiusDistribution:
             # if (radius := pure_silicate_radius(mass)) < 1.6 and mass < 100:
             #     radii = np.append(radii,radius)
             # else:
-            radius = np.random.normal(self.mu_total(mass),self.sigma_total(mass))
+            radius = np.random.normal(self.mu_total(mass),self.mu_total(mass)*self.sigma_total(mass))
             while radius < 0.4:
-                radius = np.random.normal(self.mu_total(mass),self.sigma_total(mass))
+                radius = np.random.normal(self.mu_total(mass),self.mu_total(mass)*self.sigma_total(mass))
             radii = np.append(radii,radius)
         return radii
     
@@ -276,17 +276,24 @@ def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):
         return (c / (b**a * gamma(a)) ) * x**(a-1) * np.exp(-x/b)
     return quad(integrand, 0, MES)
 
+# def draw_radii(mass_distribution):
 
-def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_fine_grid):
+
+
+def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid):
     fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),6))
-    print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
-    print("np.sum(p_Period): ", np.sum(p_Period))
+    # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
+    # print("np.sum(p_Period): ", np.sum(p_Period))
+    print("begin generating fake catalog...")
     fake_catalog[:,0] = np.random.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
     fake_catalog[:,1] = np.random.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
-    fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
+    print("make radius distribution...")
+    fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).radius_pdf(fake_catalog[:,1])  # Radius
+    # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     fake_catalog[:,3] = np.random.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
     fake_catalog[:,4] = np.random.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
     fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter)
+    print("fake catalog has been created!")
     return fake_catalog
 
 
@@ -314,43 +321,73 @@ def get_probability_distributions(params):
 
     # period
     Period_fine_grid = np.linspace(0.1,500,10000)
-    p_Period = PeriodDistribution(Period_fine_grid,β1,β2,β3,Period_break_1,Period_break_2).Period_pdf(Period_fine_grid)
+    pdf_Period = PeriodDistribution(Period_fine_grid,β1,β2,β3,Period_break_1,Period_break_2).Period_pdf(Period_fine_grid)
+    p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
 
     # mass
     mass_fine_grid = np.logspace(-1,4,10000)
-    p_mass = MassDistribution(mass_fine_grid,μM,σM).mass_pdf()
-
+    pdf_mass = MassDistribution(mass_fine_grid,μM,σM).mass_pdf()
+    p_mass = normalize_pdf_to_pmf(pdf_mass, mass_fine_grid)
+    # print("pmass: ", p_mass)
+    # print("area under mass distribution: ", np.trapezoid(pdf_mass, mass_fine_grid))
+    
     # radius 
-    p_radius = RadiusDistribution(mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).radius_pdf(mass_fine_grid)
 
     # ecc
     eccentricity_grid = np.linspace(0,1,10000)
-    p_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e).eccentricity_pdf(eccentricity_grid)
+    pdf_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e).eccentricity_pdf(eccentricity_grid)
+    p_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_grid)
+    print("p_ecc: ", p_ecc)
+    print("alpha: ", α)
+    print("lambda: ", λ)
+    print("sigma_e: ", σ_e)
+    print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
 
-    return p_Period, Period_fine_grid, p_mass, mass_fine_grid, p_radius, p_ecc, eccentricity_grid
+    return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid
+
+
+def normalize_pdf_to_pmf(pdf, grid):
+    """
+    Converts a continuous PDF sampled on a grid to a PMF usable in np.random.choice.
+    
+    Parameters:
+        pdf (np.ndarray): PDF values evaluated on the grid.
+        grid (np.ndarray): Grid values corresponding to the PDF.
+    
+    Returns:
+        np.ndarray: A PMF (probability weights) that sums to 1.
+    """
+    dx = np.diff(grid)
+    print("dx: ", dx)
+    dx = np.append(dx, dx[-1])  # Extend last interval to preserve length
+    pmf = pdf * dx
+    pmf /= np.sum(pmf)
+    print("pmf: ", pmf)
+    if np.isnan(pmf).any():
+        print("Warning: PMF contains NaN values. This may indicate an issue with the PDF or grid.")
+    return pmf
+
 
 
 def voxel_model_count(voxel_grid,voxel,synthetic_catalog):
     
-    mask = ((synthetic_catalog[:,0] >= voxel.period_lower) & (synthetic_catalog[:,0] < voxel.period_upper) 
-            & (synthetic_catalog[:,1] >= voxel.mass_lower) & (synthetic_catalog[:,1] < voxel.mass_upper) 
-            & (synthetic_catalog[:,2] >= voxel.radius_lower) & (synthetic_catalog[:,2] < voxel.radius_upper)
-            & (synthetic_catalog[:,3] >= voxel.ecc_lower) & (synthetic_catalog[:,3] < voxel.ecc_upper)
-            & (synthetic_catalog[:,4] >= voxel.omega_lower) & (synthetic_catalog[:,4] < voxel.omega_upper) 
+    mask = ((synthetic_catalog[:,0] >= voxel.bottom_period) & (synthetic_catalog[:,0] < voxel.top_period) 
+            & (synthetic_catalog[:,1] >= voxel.bottom_mass) & (synthetic_catalog[:,1] < voxel.top_mass) 
+            & (synthetic_catalog[:,2] >= voxel.bottom_radius) & (synthetic_catalog[:,2] < voxel.top_radius)
+            & (synthetic_catalog[:,3] >= voxel.bottom_eccentricity) & (synthetic_catalog[:,3] < voxel.top_eccentricity)
+            & (synthetic_catalog[:,4] >= voxel.bottom_omega) & (synthetic_catalog[:,4] < voxel.top_omega) 
             ) 
     
     catalog_in_voxel = synthetic_catalog[mask]
 
-    return np.sum(voxel_grid.p_detection_interp(catalog_in_voxel[:,2],
-                                                catalog_in_voxel[:,0],
-                                                catalog_in_voxel[:,1],
-                                                catalog_in_voxel[:,3],
-                                                catalog_in_voxel[:,4]
-                                                )   
-                * voxel_grid.p_transit_interp(catalog_in_voxel[:,2],
-                                              catalog_in_voxel[:,0],
-                                              catalog_in_voxel[:,1],
-                                              catalog_in_voxel[:,3],
-                                              catalog_in_voxel[:,4]
-                                              )  
+    points = np.column_stack([
+        catalog_in_voxel[:,2],  # radius
+        catalog_in_voxel[:,0],  # period
+        catalog_in_voxel[:,1],  # mass
+        catalog_in_voxel[:,3],  # ecc
+        catalog_in_voxel[:,4]   # omega
+    ])
+
+    return np.sum(voxel_grid.p_detection_interp(points)   
+                * voxel_grid.p_transit_interp(points)  
                   )
