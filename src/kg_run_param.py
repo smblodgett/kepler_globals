@@ -89,7 +89,7 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_likelihood, backend=backend, args=(voxel_grid,stellar_df,) )#,pool=pool)
+                                    kg_likelihood.parametric_log_probability, backend=backend, args=(voxel_grid,stellar_df,) )#,pool=pool)
     
     timer(runprops["timer"],"emcee setup")
 

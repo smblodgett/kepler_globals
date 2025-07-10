@@ -22,6 +22,15 @@ def parametric_log_prior(params):
     lp = 0.0 
     for parameter_name, i in zip(prior_args.keys(), range(len(params))):
         mu, sigma, type = prior_args[parameter_name]
+        
+        print("length of params[i]: ", len(params[i]))
+        input()
+        
+        if parameter_name == "C":
+            print("C: ", params[i])
+            if params[i] < 0:
+                return -np.inf
+
         if type == "lnN":
             if params[i] <= 0:
                 return -np.inf
@@ -38,7 +47,7 @@ def parametric_log_prior(params):
 
 
 def parametric_log_likelihood(params,voxel_grid,stellar_df):
-    print("IN LLINKELIHOOODDDFSDFS")
+
     Gamma0 = params[0]
     grid_sum = 0.0
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid = get_probability_distributions(params)
@@ -54,4 +63,5 @@ def parametric_log_likelihood(params,voxel_grid,stellar_df):
 
 def parametric_log_probability(params):
 
-    return parametric_log_prior(params) + parametric_log_likelihood(params)
+    prior = parametric_log_prior(params)
+    return prior + parametric_log_likelihood(params) if prior != -np.inf else -np.inf

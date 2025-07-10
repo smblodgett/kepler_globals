@@ -90,3 +90,19 @@ name 'pool' is not defined Model: 0
 scale < 0 Model: 0
 scale < 0 Model: 0
 The truth value of an array with more than one element is ambiguous. Use a.any() or a.all() Model: 0
+name 'm_pdf' is not defined Model: 0
+scale < 0 Model: 0
+scale < 0 Model: 0
+module 'numpy' has no attribute 'mode' Model: 0
+Sigma must be positive, but got sigma = [-1.17863277e+01 -5.08221411e-02 -1.26640753e+02 ... -1.04771778e+01
+ -1.49531140e+00 -3.95998739e-01] Model: 0
+Sigma must be positive, but got sigma = [-0.0190094  -0.01675677 -0.01897216 ... -0.01768646 -0.01842522
+ -3.20928682] Model: 0
+Sigma must be positive, but got sigma = [-3.20482664e+01 -1.82630557e+00 -1.22984146e+00 ... -1.69957212e-02
+ -1.49832778e+01 -2.50969501e+00] Model: 0
+Sigma must be positive, but got sigma = [-0.01069898 -0.00684941 -0.06526395 ... -0.00875192 -0.27650358
+ -0.009356  ] Model: 0
+probabilities contain NaN Model: 0
+Sigma must be positive, but got sigma = [-0.00254935 -0.00250738 -0.002559   ... -0.00252832 -0.00253973
+ -0.00255617] Model: 0
+parametric_log_probability() takes 1 positional argument but 3 were given Model: 0

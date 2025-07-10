@@ -76,7 +76,9 @@ class MassDistribution:
         Returns the probability density function of the mass distribution.
         Uses a log-normal distribution.
         """
-        return (m_pdf:=lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=np.exp(self.μ))) / np.trapezoid(m_pdf,self.mass_fine_grid)
+        m_pdf = lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=np.exp(self.μ))
+        # input()
+        return (m_pdf) / np.trapezoid(m_pdf,self.mass_fine_grid)
     
     def mass_pdf_area(self,low_mass,high_mass):
         """
@@ -135,10 +137,19 @@ class RadiusDistribution:
 
         mu = self.mu_total(masses)
         sigma = mu * self.sigma_total(masses)
-        if np.any(sigma) < 0:
-            print("mu: ", mu)
-            # print("")
-            raise ValueError("Sigma must be positive, but got sigma = {}".format(sigma))
+        print("sigma: ", sigma)
+        print("mu: ", mu)
+        if not np.all(sigma > 0):
+            print("self.γ0",self.γ0)
+            print("self.γ1",self.γ1)
+            print("self.γ2",self.γ2)
+            print("self.mass_break_1",self.mass_break_1)
+            print("self.mass_break_2",self.mass_break_2)
+            print("self.σ0",self.σ0)
+            print("self.σ1",self.σ1)
+            print("self.σ2",self.σ2)
+            print("self.C",self.C) 
+        assert np.all(sigma > 0), "Sigma must be positive, but got sigma = {}".format(sigma)
         radii = np.random.normal(mu, sigma)
         mask = radii < 0.25
         i =0
@@ -147,6 +158,9 @@ class RadiusDistribution:
             mask = radii < 0.25
             if i%10 ==0:
                 print(i," iterations to get radii > 0.25")
+            if i%100 == 0:
+                print("len of mass < 0.1: ", len(masses[masses < 0.1]))
+                print(masses)
             i += 1
             
         # for i,mass in enumerate(masses):
@@ -303,10 +317,17 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
     # print("np.sum(p_Period): ", np.sum(p_Period))
     print("begin generating fake catalog...")
     fake_catalog[:,0] = np.random.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
+
     fake_catalog[:,1] = np.random.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
+    mask = fake_catalog[:,1] < 0.1
+    while np.any(mask):
+        print("Some masses are less than 0.1 M_E, regenerating...")
+        fake_catalog[:,1][mask] = np.random.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
+    
     print("make radius distribution...")
     fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).radius_pdf(fake_catalog[:,1])  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
+    
     fake_catalog[:,3] = np.random.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
     fake_catalog[:,4] = np.random.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
     fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter)
@@ -354,10 +375,10 @@ def get_probability_distributions(params):
     eccentricity_grid = np.linspace(0,1,10000)
     pdf_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e).eccentricity_pdf(eccentricity_grid)
     p_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_grid)
-    print("p_ecc: ", p_ecc)
-    print("alpha: ", α)
-    print("lambda: ", λ)
-    print("sigma_e: ", σ_e)
+    # print("p_ecc: ", p_ecc)
+    # print("alpha: ", α)
+    # print("lambda: ", λ)
+    # print("sigma_e: ", σ_e)
     print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
 
     return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid
@@ -375,11 +396,11 @@ def normalize_pdf_to_pmf(pdf, grid):
         np.ndarray: A PMF (probability weights) that sums to 1.
     """
     dx = np.diff(grid)
-    print("dx: ", dx)
+    # print("dx: ", dx)
     dx = np.append(dx, dx[-1])  # Extend last interval to preserve length
     pmf = pdf * dx
     pmf /= np.sum(pmf)
-    print("pmf: ", pmf)
+    # print("pmf: ", pmf)
     if np.isnan(pmf).any():
         print("Warning: PMF contains NaN values. This may indicate an issue with the PDF or grid.")
     return pmf
