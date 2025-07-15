@@ -95,6 +95,8 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr
 
     p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
     
+    print("initial guess shape: ", p0.shape)
+    assert p0.shape == (runprops["nwalkers"], runprops["ndim"])
 
     if runprops["verbose"]: print('sampler created. Beginning run.')
     

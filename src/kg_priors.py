@@ -2,7 +2,7 @@ import numpy as np
 
 # Format for prior arguments:
 # 'parameter_name': (mu, sigma, type)  should try using parameters.csv instead?
-#                   lower, upper
+#                   (lower, upper, type) for uniform distribution
 prior_args = {
         'Gamma_0': (0, 1,"lnN"),  # lnN(0,1)
         'gamma_0': (0,0.1,"N"),

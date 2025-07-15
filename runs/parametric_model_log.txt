@@ -106,3 +106,17 @@ probabilities contain NaN Model: 0
 Sigma must be positive, but got sigma = [-0.00254935 -0.00250738 -0.002559   ... -0.00252832 -0.00253973
  -0.00255617] Model: 0
 parametric_log_probability() takes 1 positional argument but 3 were given Model: 0
+object of type 'builtin_function_or_method' has no len() Model: 0
+object of type 'numpy.float64' has no len() Model: 0
+object of type 'numpy.float64' has no len() Model: 0
+object of type 'numpy.float64' has no len() Model: 0
+object of type 'numpy.float64' has no len() Model: 0
+object of type 'numpy.float64' has no len() Model: 0
+Unknown prior type: U for parameter alpha_e Model: 0
+Radii must be above 0.25, but got radii = [ 5.7124656   0.9081567  26.02881446 ...  0.05640928  0.24233253
+  0.06289589] Model: 0
+Radii must be above 0.25, but got radii = [  0.55507169   9.60205275   2.19183009 ...   0.45791263   0.45010001
+ 177.575744  ] Model: 0
+Radii must be above 0.25, but got radii = [ 0.3102807   0.15685118  0.15174704 ... 27.82796703  0.15953777
+  0.1373095 ] Model: 0
+Radii must be above 0.25, but got radii = [0.19834425 0.22631057 0.20706355 ... 0.22466329 0.20183137 0.20784025] Model: 0

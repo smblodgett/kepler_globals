@@ -3,10 +3,11 @@ from scipy.integrate import quad
 from scipy.optimize import root_scalar
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
-from scipy.stats import lognorm
+from scipy.stats import lognorm, truncnorm
 from scipy.special import gamma
-from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
 
+from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
+from kg_utilities import radius_given_density_mass
 
 
 class PeriodDistribution:
@@ -150,18 +151,36 @@ class RadiusDistribution:
             print("self.σ2",self.σ2)
             print("self.C",self.C) 
         assert np.all(sigma > 0), "Sigma must be positive, but got sigma = {}".format(sigma)
-        radii = np.random.normal(mu, sigma)
-        mask = radii < 0.25
-        i =0
-        while np.any(mask):
-            radii[mask] = np.random.normal(mu[mask], sigma[mask])
-            mask = radii < 0.25
-            if i%10 ==0:
-                print(i," iterations to get radii > 0.25")
-            if i%100 == 0:
-                print("len of mass < 0.1: ", len(masses[masses < 0.1]))
-                print(masses)
-            i += 1
+        lower_density_bound = radius_given_density_mass(10, masses) # this is the upper density limit of 10 g/cm^3
+        a = (lower_density_bound - mu) / sigma
+        b = np.full_like(a, np.inf)
+        radii = truncnorm.rvs(a,b, loc=mu, scale=sigma)
+        if not np.all(radii > 0.25):
+            bad_places = np.where(radii <= 0.25)
+            print("radii: ", radii)
+            print("mu[bad_places]: ", mu[bad_places])
+            print("sigma[bad_places]: ", sigma[bad_places])
+            print("lower_density_bound[bad_places]: ", lower_density_bound[bad_places])
+            # print("radiis[np.where(radii <= 0.25)]: ", radii[np.where(radii <= 0.25)])
+            raise ValueError("Radii must be above 0.25, but got radii = {}".format(radii))
+        # assert np.all(radii > 0.25), "Radii must be above 0.25, but got radii = {}".format(radii)
+        # radii = np.random.normal(mu, sigma)
+        # mask = radii < 0.25
+        # i = 0
+        # while np.any(mask):
+        #     radii[mask] = np.random.normal(mu[mask], sigma[mask])
+        #     mask = radii < 0.25
+        #     if i%10 ==0:
+        #         print("mu[mask]: ", mu[mask])
+        #         print("sigma[mask]: ", sigma[mask])
+        #         print("radii[mask]: ", radii[mask])
+        #         print(i," iterations to get radii > 0.25")
+        #         print("len(radii[mask]): ", len(radii[mask]))
+        #     if i%100 == 0:
+        #         print("len of mass < 0.1: ", len(masses[masses < 0.1]))
+        #         print(masses)
+        #         print("radii : ", radii)
+        #     i += 1
             
         # for i,mass in enumerate(masses):
         #     # if (radius := pure_silicate_radius(mass)) < 1.6 and mass < 100:

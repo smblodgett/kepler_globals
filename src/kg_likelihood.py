@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.special import gamma
-from scipy.stats import norm, lognorm
+from scipy.stats import norm, lognorm, uniform
 from kg_priors import prior_args
 from kg_constants import N_PHODYMM_STARS
 
@@ -18,27 +18,36 @@ def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
 
 
 def parametric_log_prior(params):
-    assert len(params) == len(prior_args.keys), "Number of parameters must match the number of priors!"
+    assert len(params) == len(prior_args.keys()), "Number of parameters must match the number of priors!"
+    print("params.shape: ", params.shape)
     lp = 0.0 
     for parameter_name, i in zip(prior_args.keys(), range(len(params))):
-        mu, sigma, type = prior_args[parameter_name]
+        mu, sigma, prior_type = prior_args[parameter_name]
         
-        print("length of params[i]: ", len(params[i]))
-        input()
+        print("parameter_name: ", parameter_name)
+        print("params[i]: ", params[i])
+        # print("length of params[i]: ", len(params[i]))
+        # input()
         
-        if parameter_name == "C":
-            print("C: ", params[i])
-            if params[i] < 0:
-                return -np.inf
+        match parameter_name:
+            case "C":
+                if params[i] < 0:
+                    return -np.inf
+            case "mu_M":              ### the mean of the mass distribution shouldn't be beneath the lower mass limit of the catalog...
+                if np.exp(params[i]) < 0.1:
+                    return -np.inf
 
-        if type == "lnN":
-            if params[i] <= 0:
-                return -np.inf
-            lp += lognorm.logpdf(params[i], s=sigma, scale=np.exp(mu))
-        elif type == "N":
-            lp += norm.logpdf(params[i], loc=mu, scale=sigma)
-        else:
-            raise ValueError(f"Unknown prior type: {type} for parameter {parameter_name}")
+        match prior_type:
+            case "lnN":
+                if params[i] <= 0:
+                    return -np.inf
+                lp += lognorm.logpdf(params[i], s=sigma, scale=np.exp(mu))
+            case "N":
+                lp += norm.logpdf(params[i], loc=mu, scale=sigma)
+            case "U":
+                lp += uniform.logpdf(params[i], loc=mu, scale=sigma-mu)
+            case _:
+                raise ValueError(f"Unknown prior type: {type} for parameter {parameter_name}")
         
         if np.isnan(lp) or np.isinf(lp):
             return -np.inf
@@ -54,14 +63,15 @@ def parametric_log_likelihood(params,voxel_grid,stellar_df):
     synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid)
     for voxel in voxel_grid.voxel_array.flat:
         print("likelihood df: ",voxel.df)
-        voxel_num_data = len(voxel.df) if not voxel.df.empty else 0
+        voxel_num_data = len(voxel.df) / 1000 if not voxel.df.empty else 0
+        print("voxel_num_data: ", voxel_num_data)
         # input()
         model_count = voxel_model_count(voxel_grid,voxel,synthetic_catalog)
         grid_sum += (model_count * np.log(voxel_num_data) - voxel_num_data - np.log(gamma(model_count+1)))
     return Gamma0 * grid_sum
 
 
-def parametric_log_probability(params):
+def parametric_log_probability(params,voxel_grid,stellar_df):
 
     prior = parametric_log_prior(params)
-    return prior + parametric_log_likelihood(params) if prior != -np.inf else -np.inf
+    return prior + parametric_log_likelihood(params,voxel_grid,stellar_df) if prior != -np.inf else -np.inf
