@@ -120,3 +120,17 @@ Radii must be above 0.25, but got radii = [  0.55507169   9.60205275   2.1918300
 Radii must be above 0.25, but got radii = [ 0.3102807   0.15685118  0.15174704 ... 27.82796703  0.15953777
   0.1373095 ] Model: 0
 Radii must be above 0.25, but got radii = [0.19834425 0.22631057 0.20706355 ... 0.22466329 0.20183137 0.20784025] Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+Probability function returned NaN Model: 0
+grid_sum is NaN, check your model or data! Model: 0
+grid_sum here is NaN, check your model or data! Model: 0
+grid_sum here is NaN, check your model or data! Model: 0

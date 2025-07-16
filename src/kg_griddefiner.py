@@ -251,11 +251,11 @@ class RPMeoVoxel(RPMVoxel):
     
     def __str__(self):
         """Returns a string representation of the voxel."""
-        return (f"RPM_Voxel(id: {self.id_number}, R: {self.bottom_radius} - {self.top_radius}, "
+        return (f"RPMeo_Voxel(id: {self.id_number}, R: {self.bottom_radius} - {self.top_radius}, "
                 f"P: {self.bottom_period} - {self.top_period}, "
-                f"M: {self.bottom_mass} - {self.top_mass}), "
+                f"M: {self.bottom_mass} - {self.top_mass}, "
                 f"e: {self.bottom_eccentricity} - {self.top_eccentricity}, "
-                f"omega: {self.bottom_omega} - {self.top_omega}, "
+                f"omega: {self.bottom_omega} - {self.top_omega}) "
                 f"number of data points: {self.num_data()}") 
 
     

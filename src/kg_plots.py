@@ -39,7 +39,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
-import matplotlib.ticker as ticker
+from matplotlib.ticker import ScalarFormatter
 
 from PIL import Image
 
@@ -467,7 +467,76 @@ def corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uniform_
                 f"M: {voxel.bottom_mass} - {voxel.top_mass})",fontsize=7)
     
     corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
-        
+
+
+def MES_grid_plot(detection_interp,transit_interp,save_path="../results/plots/completeness/"):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array,omega_grid_array = detection_interp.grid
+    mass_fixed = 1.0
+    ecc_fixed = 0.0
+    omega_fixed = 0.0
+
+    X1, X2 = np.meshgrid(radius_grid_array, period_grid_array, indexing='ij')
+
+    pts = np.column_stack([X1.ravel(), X2.ravel(), np.full(X1.size, mass_fixed),
+                           np.full(X1.size, ecc_fixed), np.full(X1.size, omega_fixed)])
+    
+    Z1 = detection_interp(pts).reshape(X1.shape)
+    Z2 = transit_interp(pts).reshape(X1.shape)
+
+    filled_levels = np.linspace(0, 1, 100)
+    contour_levels = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75,1.0]
+
+    # plt.figure()
+    # cf = plt.contourf(X2,X1, Z1*Z2, levels=filled_levels, cmap='Grays')
+    # cs = plt.contour(X2,X1, Z1*Z2, levels=contour_levels, colors='g', linewidths=0.5)
+    # plt.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='g',inline_spacing=3)
+    # cbar = plt.colorbar(cf)
+    # cbar.set_label('Completeness') 
+    # cbar.set_ticks(contour_levels)
+
+    # plt.ylabel('Radius [R⊕]')
+    # plt.xlabel('Period [days]')
+    # plt.xlim([0,20])
+    # # plt.semilogx()
+    # # plt.semilogy()
+    # plt.title('MES Detection Probability')
+    # plt.savefig(save_path + 'MES_detection_probability.png', dpi=300)
+
+    fig, ax = plt.subplots()
+
+    cf = ax.contourf(X2, X1, Z1 * Z2, levels=filled_levels, cmap='Greys_r')
+    cs = ax.contour(X2, X1, Z1 * Z2, levels=contour_levels, colors='green', linewidths=0.5)
+    ax.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='green', inline_spacing=3)
+
+    # Set log scales
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+    # Set custom ticks
+    ax.set_xticks([0.3, 0.5, 1, 2, 5, 10, 20, 50, 100])
+    ax.set_yticks([0.3, 0.5, 1, 2, 5, 10, 20])
+
+    # Format ticks to use normal decimal (not scientific notation)
+    ax.get_xaxis().set_major_formatter(ScalarFormatter())
+    ax.get_yaxis().set_major_formatter(ScalarFormatter())
+
+    # Ensure minor ticks are shown
+    ax.minorticks_off()
+
+    # Axis labels and title
+    ax.set_xlabel('Period [days]')
+    ax.set_ylabel('Radius [R⊕]')
+    ax.set_title('MES Detection Probability')
+
+    # Colorbar with matching contour levels
+    cbar = plt.colorbar(cf, ax=ax)
+    cbar.set_label('Completeness')
+    cbar.set_ticks(contour_levels)
+
+    plt.tight_layout()
+    plt.savefig(save_path + 'MES_detection_probability.png', dpi=300)
+
 
 def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/grid/backend_30",make_gifs=True):
     """

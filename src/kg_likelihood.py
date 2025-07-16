@@ -67,11 +67,20 @@ def parametric_log_likelihood(params,voxel_grid,stellar_df):
         print("voxel_num_data: ", voxel_num_data)
         # input()
         model_count = voxel_model_count(voxel_grid,voxel,synthetic_catalog)
+        if model_count == 0 and voxel_num_data == 0:
+            continue
         grid_sum += (model_count * np.log(voxel_num_data) - voxel_num_data - np.log(gamma(model_count+1)))
+        
+        if np.isnan(grid_sum):
+            print("model_count: ", model_count)
+            print("voxel_num_data: ", voxel_num_data)
+            print("voxel: ", voxel)
+            raise ValueError("grid_sum here is NaN, check your model or data!")
     return Gamma0 * grid_sum
 
 
 def parametric_log_probability(params,voxel_grid,stellar_df):
 
     prior = parametric_log_prior(params)
+
     return prior + parametric_log_likelihood(params,voxel_grid,stellar_df) if prior != -np.inf else -np.inf
