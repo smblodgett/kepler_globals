@@ -83,32 +83,32 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr
 
     # print("HERE?")
 
-    with MPIPool() as pool:
-        if not pool.is_master():
-            pool.wait()
-            sys.exit(0)
+    # with MPIPool() as pool:
+    #     if not pool.is_master():
+    #         pool.wait()
+    #         sys.exit(0)
 
-        # Create the emcee sampler.
-        sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                        kg_likelihood.parametric_log_probability, backend=backend, args=(voxel_grid,stellar_df,) )#,pool=pool)
-        
-        timer(runprops["timer"],"emcee setup")
+    # Create the emcee sampler.
+    sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
+                                    kg_likelihood.parametric_log_probability, backend=backend, args=(voxel_grid,stellar_df,) )#,pool=pool)
+    
+    timer(runprops["timer"],"emcee setup")
 
-        p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
-        
-        print("initial guess shape: ", p0.shape)
-        assert p0.shape == (runprops["nwalkers"], runprops["ndim"])
+    p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
+    
+    print("initial guess shape: ", p0.shape)
+    assert p0.shape == (runprops["nwalkers"], runprops["ndim"])
 
-        if runprops["verbose"]: print('sampler created. Beginning run.')
-        
-        if runprops['thin_run']:
-            state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True, thin=runprops["nthinning"])
-        else:
-            state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True)
+    if runprops["verbose"]: print('sampler created. Beginning run.')
+    
+    if runprops['thin_run']:
+        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True, thin=runprops["nthinning"])
+    else:
+        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True)
 
-        with open(runprops["log_filename"], "a") as file:
-            file.write("success: Model "+str(model_id)+"\n")
-        timer(runprops["timer"],"emcee run")
+    with open(runprops["log_filename"], "a") as file:
+        file.write("success: Model "+str(model_id)+"\n")
+    timer(runprops["timer"],"emcee run")
 
 
 def main(model_id): 

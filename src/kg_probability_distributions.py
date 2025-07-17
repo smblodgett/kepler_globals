@@ -235,6 +235,8 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     # stellar_df["u1"] = stellar_df['limbdark_coeff1'] #-1.93 * 10**-4 * stellar_df['teff'] + 1.5169
     # stellar_df["u2"] = stellar_df['limbdark_coeff2'] #1.25 * 10**-4 * stellar_df['teff'] - 0.4601
 
+
+
     stellar_df["u1"] = -1.93 * 10**-4 * stellar_df['teff'] + 1.5169
     stellar_df["u2"] = 1.25 * 10**-4 * stellar_df['teff'] - 0.4601
 
@@ -250,6 +252,7 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     k_rp = (RETORS*radius) / np.median(stellar_df['radius'])
     
     n_tr = np.median(stellar_df["dataspan"]) / period
+
 
     def get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis):
         # print("np.mean(stellar_df['radius']): ",np.median(stellar_df['radius']))
@@ -305,6 +308,8 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     print("transit duration x 24 : ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24)
 
     print("n_tr: ",n_tr)
+    print("int(np.round(n_tr)): ", int(np.round(n_tr)))
+    # input()
 
     print("c0: ",np.median(stellar_df["c0"]))
 
@@ -313,15 +318,31 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     print("CDPP: ",find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))
     
 
-    return (get_depth(stellar_df,k_rp)*10**6 / (find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))) * 1.003 * n_tr**0.5
+    return (get_depth(stellar_df,k_rp)*10**6 / (find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))) * 1.003 * n_tr**0.5, int(np.round(n_tr))
                
 
 def get_transit_probability(stellar_df, mass, radius, period, ecc, omega):
     a = (G * (period*24*3600)**2 * (np.median(stellar_df["mass"])*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
-    return ((np.median(stellar_df["radius"])*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2)) 
+    return ((np.median(stellar_df["radius"])*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))
 
 
 def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):
+    def integrand(x):
+        return (c / (b**a * gamma(a)) ) * x**(a-1) * np.exp(-x/b)
+    return quad(integrand, 0, MES)
+
+def get_detection_probability_hsu(MES,n_transits):
+    match n_transits:
+        case 3: a,b,c = 33.3884,0.264472,0.699093 
+        case 4: a,b,c = 32.8860,0.269577,0.768366
+        case 5: a,b,c = 31.5196,0.282741,0.833673
+        case 6: a,b,c =	30.9919,0.286979,0.859865
+        case _ if 7 <= n_transits <= 9: a,b,c = 30.1906,0.294688,0.875042
+        case _ if 10 <= n_transits <= 18: a,b,c = 31.6342,0.279425,0.886144
+        case _ if 19 <= n_transits <= 36: a,b,c = 32.6448,0.268898,0.889724
+        case _ if 37 <= n_transits: a,b,c = 27.8185,0.32432,0.945075
+        case _: raise ValueError("n_transits is messed up...")
+    
     def integrand(x):
         return (c / (b**a * gamma(a)) ) * x**(a-1) * np.exp(-x/b)
     return quad(integrand, 0, MES)
