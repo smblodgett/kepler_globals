@@ -2,21 +2,16 @@
 
 #SBATCH --time=24:00:00
 #SBATCH --ntasks=1000
-#SBATCH --mem-per-cpu=1024M
+#SBATCH --mem=20G
 #SBATCH -J "kepler_globals_param"
 #SBATCH --qos=physics
 
+mamba activate kepler_globals
 
 rm ../runs/param_model_log.txt
 
 mpiexec -n $SLURM_NTASKS python kg_run_param.py 0
 
-# python kg_run_param.py "$i" # && \python kg_plots.py "$i" trace && \python kg_plots.py "$i" corner
+count=$(find . -type f -name "myfile.txt" | wc -l)
 
-# #python kg_plots.py 0 heatmap
-
-# duration=$((SECONDS-start))
-# let "hours=duration/3600"
-# let "minutes=(duration%3600)/60"
-# let "seconds=(duration%3600)%60"
-# echo "Parametric Model completed in $hours hour(s), $minutes minute(s) and $seconds second(s)" 
+cp ../results/param_backend/param_model_0.h5 ../results/param_backend/param_model_0_$(date +%Y%m%d)_$count.h5

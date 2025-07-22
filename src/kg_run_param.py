@@ -53,10 +53,8 @@ def number_of_singles_in_voxel(voxel, expanded_dr_df):
     return len(expanded_dr_df.loc[mask])
 
 
-def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
+def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
     """Configures and runs the emcee MCMC sampler."""
-
-
 
     # # Get DR25 catalog.
     # dr_df = pd.read_csv(dr_path)
@@ -81,58 +79,29 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,dr_path="../data/q1_q17_dr
 
     timer(runprops["timer"],"backend setup")
 
-    # print("HERE?")
-
-    # with MPIPool() as pool:
-    #     if not pool.is_master():
-    #         pool.wait()
-    #         sys.exit(0)
-
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
                                     kg_likelihood.parametric_log_probability, backend=backend, args=(voxel_grid,stellar_df,) )#,pool=pool)
-    
+
     timer(runprops["timer"],"emcee setup")
 
     p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
-    
+
     print("initial guess shape: ", p0.shape)
     assert p0.shape == (runprops["nwalkers"], runprops["ndim"])
 
     if runprops["verbose"]: print('sampler created. Beginning run.')
-    
+
     if runprops['thin_run']:
         state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True, thin=runprops["nthinning"])
     else:
         state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True)
 
-    with open(runprops["log_filename"], "a") as file:
-        file.write("success: Model "+str(model_id)+"\n")
     timer(runprops["timer"],"emcee run")
 
 
-def main(model_id): 
 
-    # Verify the correct path script is being run from. 
-    cwd = os.getcwd()
-    print(cwd)        
-
-    # Find the runprops file path. 
-    if 'src' in cwd:
-        runprops_filename = "../runs/param_runprops.txt"
-    elif 'runs' in cwd:
-        runprops_filename = "param_runprops.txt"
-    elif 'results' in cwd:
-        runprops_filename = "param_runprops.txt"
-    else:
-        print('you are not starting from a proper directory. you should run kg_run_param.py from a src, runs, or a results directory.')
-        sys.exit(1)
-    
-    # Get runprops loaded in, find the initial guess file.
-    getData = ReadJson(runprops_filename)
-    runprops = getData.outProps()
-
-    timer(runprops["timer"],"start (& runprops read)")
+def main(model_id, pool, runprops): 
 
     use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
 
@@ -178,7 +147,6 @@ def main(model_id):
         stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
 
 
-
     stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
     stellar_df = stellar_df[(stellar_df["logg"]>4)]
 
@@ -187,14 +155,10 @@ def main(model_id):
     MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
     if runprops["verbose"]: print("MES grid has been set up!")
 
-
-    # Partition the Hsu et al. weights by mass. ??? do we need hsu in the parametric models? I don't think so...
-    # voxel_grid.make_mass_divided_weights(voxel_id,runprops["voxel_data_folder"],use_cache)
-
     # timer(runprops["timer"],"weight partition")
 
     try:        
-        run_emcee(voxel_grid,model_id,runprops,stellar_df)
+        run_emcee(voxel_grid,model_id,runprops,stellar_df,pool)
         sys.exit(0)
     except Exception as e:
         print("Error occurred..." + str(e))
@@ -206,15 +170,40 @@ def main(model_id):
 
 
 if __name__ == "__main__":
-    old_time = time.time()
-    start_time = old_time
-    if len(sys.argv) != 2:
-        print("invalid input. Enter which mixture model you want to run.")
-        sys.exit(1)
+    with MPIPool() as pool:
+        if not pool.is_master():
+            pool.wait()
+            sys.exit(0)
+        old_time = time.time()
+        start_time = old_time
+        if len(sys.argv) != 2:
+            print("invalid input. Enter which mixture model you want to run.")
+            sys.exit(1)
+            
+        model_id = int(sys.argv[1])
         
-    model_id = int(sys.argv[1])
-    main(model_id)
+        # Verify the correct path script is being run from. 
+        cwd = os.getcwd()
+        print(cwd)        
+
+        # Find the runprops file path. 
+        if 'src' in cwd:
+            runprops_filename = "../runs/param_runprops.txt"
+        elif 'runs' in cwd:
+            runprops_filename = "param_runprops.txt"
+        elif 'results' in cwd:
+            runprops_filename = "param_runprops.txt"
+        else:
+            print('you are not starting from a proper directory. you should run kg_run_param.py from a src, runs, or a results directory.')
+            sys.exit(1)
         
+        # Get runprops loaded in, find the initial guess file.
+        getData = ReadJson(runprops_filename)
+        runprops = getData.outProps()
+        main(model_id,pool,runprops)
+
+    with open(runprops["log_filename"], "a") as file:
+        file.write("success: Model "+str(model_id)+"\n")
     
 
 # figure out a way to visualize this...maybe show it before setup? then again after doing emcee? figure 

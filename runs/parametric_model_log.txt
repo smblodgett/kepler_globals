@@ -134,3 +134,4 @@ Probability function returned NaN Model: 0
 grid_sum is NaN, check your model or data! Model: 0
 grid_sum here is NaN, check your model or data! Model: 0
 grid_sum here is NaN, check your model or data! Model: 0
+Tried to create an MPI pool, but there was only one MPI process available. Need at least two. Model: 0

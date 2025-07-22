@@ -1,8 +1,9 @@
 {
     # What kinds of plots should be made?
-    "plottype": "corner", # possible types: all, heatmap, trace, corner, residual
+    "plottype": "param_corner", # possible types: all, heatmap, trace, corner, residual
     "upper_rho_prior" : 10, # what the upper limit of the density prior is
     "uniform_densities" : true, # if the densities (and masses) are uniform (typically no, but is an option for visualization purposes)
+    "model_id" : 0, # which kind of parametric model is being run
 
     "nburnin" : 100, # number of burnin steps the emcee run took (should match whatever runprops has for this value)
 
@@ -12,6 +13,7 @@
     "input_data_filename": "../data/thinned/all_thin.csv",  # PhoDyMM thinned posteriors (with calculated values)
     "results_folder":"../results",                          # where the results go
     "backend_path": "../results/grid/backend_",                  # the emcee backend location
+    "param_result_filename": "param_model_0_2025722.h5",
     
     # Additional options
     "verbose" : true,             # Enables print statements within the code

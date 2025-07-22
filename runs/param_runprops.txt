@@ -28,6 +28,7 @@
     "voxel_data_folder": "../data/thinned/voxel_data_param",  # location of cached voxel dataframes (for faster runs)
     "results_folder":"../results",                            # where the results go 
     "completeness_plot_folder":"../results/plots/completeness/", 
+    "param_result_filename": "param_model_0_20250721.h5",
 
     # Additional options
     "verbose" : true,			    # Enables print statements within the code

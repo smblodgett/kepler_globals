@@ -437,7 +437,55 @@ def find_h5_file(voxel_id,sampler_backend_folder):
     return h5_path
 
 
-def corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uniform_density=False):
+def param_corner_plot(results_folder,model_id,nburnin,filename):
+    corner_plot_folder = os.path.join(results_folder,"plots","corners",f"param_{model_id}")
+    os.makedirs(corner_plot_folder, exist_ok=True)
+    sampler_backend_folder = results_folder + f"/param_backend"
+
+    file_path = os.path.join(sampler_backend_folder, filename)
+
+    reader = emcee.backends.HDFBackend(file_path)
+
+    samples = reader.get_chain()
+    samples = samples[nburnin:,:,:]
+
+    print("Chain shape:", samples.shape)
+
+    n_steps, n_walkers, n_dim = samples.shape
+    samples = np.array(samples)
+
+    samples_2d = samples.reshape(-1, samples.shape[-1])
+
+    labels = ['Gamma_0',
+        'gamma_0',
+        'gamma_1',  
+        'gamma_2',  
+        'sigma_0',  
+        'sigma_1',   
+        'sigma_2',  
+        'Mbreak1',  
+        'Mbreak2',   
+        'C',
+        'mu_M',  
+        'sigma_M',  
+        'Beta1',  
+        'Beta2',  
+        'Beta3',
+        'Pbreak1',   
+        'Pbreak2',
+        'alpha_e',
+        'lambda_e',
+        'sigma_e']
+    
+    corner_plot = corner.corner(samples_2d,labels=labels,show_titles=True)
+    # plt.suptitle("         Corner Plot") ????
+    plt.suptitle(f"Model {model_id}",fontsize=200)
+    
+    corner_plot.savefig(corner_plot_folder+f"/{model_id}_corner.png",dpi=150)
+
+
+
+def grid_corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uniform_density=False):
     """Makes the corner plot for an individual voxel's Rmrp value."""
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
     voxel = voxel_grid.find_voxel_by_id(voxel_id)
@@ -747,6 +795,8 @@ def main(voxel_id,plottype):
     is_plot_ids = plotprops.get("is_plot_ids")
     heatmap_plot_type = plotprops.get("heatmap_plot_type")
     residual_plot_type = plotprops.get("residual_plot_type")
+    model_id = plotprops.get("model_id")
+    param_result_filename = plotprops.get("param_result_filename")
     print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
@@ -763,26 +813,31 @@ def main(voxel_id,plottype):
         assert voxel_id is not None, "You need to input the voxel you want to run trace plots on!"
         trace_plot(voxel_id,results_folder,nburnin,upper_rho_limit=upper_rho_prior,is_uniform_density=is_uniform_density)
         
-    if plottype == "corner":
+    if plottype == "grid_corner":
         assert voxel_id is not None, "You need to input the voxel you want to run corner plots on!"
-        corner_plot(voxel_id, results_folder,nburnin,upper_rho_limit=upper_rho_prior,is_uniform_density=is_uniform_density)
+        grid_corner_plot(voxel_id, results_folder,nburnin,upper_rho_limit=upper_rho_prior,is_uniform_density=is_uniform_density)
         
+    if plottype == "param_corner":
+        param_corner_plot(results_folder,model_id,nburnin,param_result_filename)
     
 if __name__ == "__main__":# Default to False if not specified
    
-    # Read the first argument as the voxel to plot.
+    # Read the second argument as the type of plot.
     if len(sys.argv) > 1:
-        voxel_id = int(sys.argv[1])
+        plottype = sys.argv[1]
+        voxel_id = 0
+        assert plottype == "trace" or plottype == "param_corner" or plottype == "grid_corner" or plottype == "heatmap" or plottype == "residual", "Only valid plottypes are residual, heatmap, trace, and grid_ or param_corner."
     else:
-        print("Indicate which voxel to run kg_plots.py on!")
+        print("Indicate what type of plot to create. Valid plottypes are residual, heatmap, trace, and grid_ or param_ corner.")
         sys.exit(1)
 
-    # Read the second argument as the type of plot.
+
+    # Read the first argument as the voxel to plot.
     if len(sys.argv) > 2:
-        plottype = sys.argv[2]
-        assert plottype == "trace" or plottype == "corner" or plottype == "heatmap" or plottype == "residual", "Only valid plottypes are residual, heatmap, trace, and corner."
+        voxel_id = int(sys.argv[3])
     else:
-        print("Indicate what type of plot to create. Valid plottypes are residual, heatmap, trace, and corner.")
-        sys.exit(1)
+        print("No voxel specified...")
+
+
         
     main(voxel_id,plottype)

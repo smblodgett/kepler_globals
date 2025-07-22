@@ -43,6 +43,7 @@ def get_initial_guess_from_priors(parameter_name, nwalkers):
         case "U":
             return np.random.uniform(mu,sigma,nwalkers)
         
+        
 def apply_priors_to_params(params):
     
     return params

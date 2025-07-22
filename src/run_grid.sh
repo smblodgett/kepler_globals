@@ -4,11 +4,11 @@ rm ../runs/grid_model_log.txt
 
 for i in $(seq 2000 3419); do
     python kg_run_grid.py "$i" && \
-    python kg_plots.py "$i" trace && \
-    python kg_plots.py "$i" corner
+    python kg_plots.py trace "$i" && \
+    python kg_plots.py grid_corner "$i" 
 done
 
-python kg_plots.py 0 heatmap
+python kg_plots.py heatmap 0
 
 duration=$((SECONDS-start))
 let "hours=duration/3600"

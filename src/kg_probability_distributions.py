@@ -138,8 +138,8 @@ class RadiusDistribution:
 
         mu = self.mu_total(masses)
         sigma = mu * self.sigma_total(masses)
-        print("sigma: ", sigma)
-        print("mu: ", mu)
+        # print("sigma: ", sigma)
+        # print("mu: ", mu)
         if not np.all(sigma > 0):
             print("self.γ0",self.γ0)
             print("self.γ1",self.γ1)
@@ -298,24 +298,24 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
 
 
     
-    print("depth: ",get_depth(stellar_df,k_rp)*10**6)
+    # print("depth: ",get_depth(stellar_df,k_rp)*10**6)
     assert get_depth(stellar_df,k_rp)*10**6 > 0, "Depth must be greater than 0"
     assert sm_axis > (RSCM/100)*np.median(stellar_df['radius']), "Semi-major axis must be greater than stellar radius"
     
-    print("i: ",i)
+    # print("i: ",i)
 
-    print("transit duration: ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis))
-    print("transit duration x 24 : ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24)
+    # print("transit duration: ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis))
+    # print("transit duration x 24 : ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24)
 
-    print("n_tr: ",n_tr)
-    print("int(np.round(n_tr)): ", int(np.round(n_tr)))
-    # input()
+    # print("n_tr: ",n_tr)
+    # print("int(np.round(n_tr)): ", int(np.round(n_tr)))
+    # # input()
 
-    print("c0: ",np.median(stellar_df["c0"]))
+    # print("c0: ",np.median(stellar_df["c0"]))
 
-    print("omega: ",np.median(stellar_df["omega"]))
+    # print("omega: ",np.median(stellar_df["omega"]))
 
-    print("CDPP: ",find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))
+    # print("CDPP: ",find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))
     
 
     return (get_depth(stellar_df,k_rp)*10**6 / (find_CDPP(get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis)*24))) * 1.003 * n_tr**0.5, int(np.round(n_tr))
@@ -355,7 +355,7 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
     fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),6))
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
-    print("begin generating fake catalog...")
+    # print("begin generating fake catalog...")
     fake_catalog[:,0] = np.random.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
 
     fake_catalog[:,1] = np.random.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
@@ -364,14 +364,14 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
         print("Some masses are less than 0.1 M_E, regenerating...")
         fake_catalog[:,1][mask] = np.random.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
     
-    print("make radius distribution...")
+    # print("make radius distribution...")
     fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).radius_pdf(fake_catalog[:,1])  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     
     fake_catalog[:,3] = np.random.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
     fake_catalog[:,4] = np.random.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
     fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter)
-    print("fake catalog has been created!")
+    # print("fake catalog has been created!")
     return fake_catalog
 
 
@@ -419,7 +419,7 @@ def get_probability_distributions(params):
     # print("alpha: ", α)
     # print("lambda: ", λ)
     # print("sigma_e: ", σ_e)
-    print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
+    # print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
 
     return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid
 
