@@ -16,3 +16,4 @@ __pycache__/
 *.pyd
 *.jld2
 *.h5
+*voxel_grid.json

@@ -12,7 +12,10 @@ import sys
 import os
 import emcee
 import time
+from datetime import datetime
+import json
 from schwimmbad import MPIPool
+from mpi4py import MPI
 
 import kg_likelihood
 from kg_griddefiner import *
@@ -39,22 +42,49 @@ def timer(is_timer,benchmark_message_string,mode='benchmark'):
         old_time = new_time
     
 
-def number_of_singles_in_voxel(voxel, expanded_dr_df):
-    """Returns the number of singles in a given voxel."""
-    mask = ((expanded_dr_df["radius"] < voxel.top_radius) &
-            (expanded_dr_df["radius"] > voxel.bottom_radius) &
-            (expanded_dr_df["period"] < voxel.top_period) &
-            (expanded_dr_df["period"] > voxel.bottom_period) &
-            (expanded_dr_df["mass"] < voxel.top_mass) &
-            (expanded_dr_df["mass"] > voxel.bottom_mass)
-            )
+# def number_of_singles_in_voxel(voxel, expanded_dr_df):
+#     """Returns the number of singles in a given voxel."""
+#     mask = ((expanded_dr_df["radius"] < voxel.top_radius) &
+#             (expanded_dr_df["radius"] > voxel.bottom_radius) &
+#             (expanded_dr_df["period"] < voxel.top_period) &
+#             (expanded_dr_df["period"] > voxel.bottom_period) &
+#             (expanded_dr_df["mass"] < voxel.top_mass) &
+#             (expanded_dr_df["mass"] > voxel.bottom_mass)
+#             )
     
-    print("singles length: ",len(expanded_dr_df.loc[mask]))
-    return len(expanded_dr_df.loc[mask])
+#     print("singles length: ",len(expanded_dr_df.loc[mask]))
+#     return len(expanded_dr_df.loc[mask])
+
+def save_best_model(best_guess_filename,backend):
+    samples = backend.get_chain(flat=True)
+    log_prob = backend.get_log_prob(flat=True)
+
+    # === FIND BEST SAMPLE IN CURRENT BACKEND ===
+    best_idx = np.argmax(log_prob)
+    best_logp = log_prob[best_idx]
+    best_params = samples[best_idx].tolist()  # convert to list for JSON
+
+    # === LOAD EXISTING BEST GUESS, IF IT EXISTS ===
+    if os.path.exists(best_guess_filename):
+        with open(best_guess_filename, "r") as f:
+            saved = json.load(f)
+        saved_logp = saved["log_prob"]
+        saved_params = saved["params"]
+    else:
+        saved_logp = -np.inf
+        saved_params = None
+
+    # === COMPARE AND UPDATE IF BETTER ===
+    if best_logp > saved_logp:
+        with open(best_guess_filename, "w") as f:
+            json.dump({"log_prob": best_logp, "params": best_params}, f, indent=2)
+        print("New best parameters saved.")
+    else:
+        print("Existing best parameters are better. No update made.")
 
 
 def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
-    """Configures and runs the emcee MCMC sampler."""
+    """Configures and runs the emcee MCMC sampler.""" # DON"T FORGET POOL
 
     # # Get DR25 catalog.
     # dr_df = pd.read_csv(dr_path)
@@ -67,7 +97,13 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q
     
     # timer(runprops["timer"],"other readin")
 
-    
+    best_guess_filename = runprops["best_guess_filename"] + f'_{model_id}.json'
+
+    initial_guess_filename = best_guess_filename if runprops["initial_guess_method"] == "previous_best" else ""
+
+    p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
+
+
     # Create the emcee backend.
     backend_folder = runprops["results_folder"] + "/param_backend/"
     os.makedirs(backend_folder, exist_ok=True)
@@ -81,11 +117,10 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability, backend=backend, args=(voxel_grid,stellar_df,) )#,pool=pool)
+                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool, args=(voxel_grid,stellar_df,) )#,pool=pool)
 
     timer(runprops["timer"],"emcee setup")
 
-    p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id) # take randomly from a normal distribution, choose the hsu error bounds for stdev... #### this probably needs to be changed based off of what the expected should actually be??
 
     print("initial guess shape: ", p0.shape)
     assert p0.shape == (runprops["nwalkers"], runprops["ndim"])
@@ -99,63 +134,153 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q
 
     timer(runprops["timer"],"emcee run")
 
+    save_best_model(best_guess_filename,backend)
 
 
-def main(model_id, pool, runprops): 
 
-    use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
+def main(model_id, pool, runprops):  ## don't forget pool!
 
-    if not runprops["suppress_warnings"]: 
-        if not use_cache:
-            print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
-            print("Only run this way if your voxel data hasn't yet been cached.")
+    # use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
+
+    # if not runprops["suppress_warnings"]: 
+    #     if not use_cache:
+    #         print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
+    #         print("Only run this way if your voxel data hasn't yet been cached.")
     
-    # If the voxels don't have their data cached, then read in everything.
-    if not use_cache:
-        df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
-        if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
-        # input()
-        print("now we're caching it!")
-        df = df[["R_pE","Period_days","M_pE","e","omega"]]#,"p_trans","MES_rowe"]]
-        #df = create_probability_weighted(df)
-        df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
-        if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
-        # input()
-    # Otherwise, you can just read in 1 voxel that has its data cached.    
-    else:
-        df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv",index_col=0,engine='pyarrow')
-        if runprops["verbose"]: print("read in cached df")
+    # # If the voxels don't have their data cached, then read in everything.
+    # if not use_cache:
+    #     df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
+    #     if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
+    #     # input()
+    #     print("now we're caching it!")
+    #     df = df[["R_pE","Period_days","M_pE","e","omega"]]#,"p_trans","MES_rowe"]]
+    #     #df = create_probability_weighted(df)
+    #     df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
+    #     if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
+    #     # input()
+    # # Otherwise, you can just read in 1 voxel that has its data cached.    
+    # else:
+    #     df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv",index_col=0,engine='pyarrow')
+    #     if runprops["verbose"]: print("read in cached df")
+
+    # print("full data df: ",df)
     
-    timer(runprops["timer"],"data readin")
+    # timer(runprops["timer"],"data readin")
 
-    # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
-    voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
-    voxel_grid.setup_dataframes(df.columns)
-    voxel_grid.add_data(df)
+    # # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
+    # voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
+    # voxel_grid.setup_dataframes(df.columns)
+    # voxel_grid.add_data(df)
 
-    gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
-    gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
+    # gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
+    # gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
 
-    stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow')
-    stellar_df = stellar_df[stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
-    stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
-
-
-    stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
-
-    for old_col,new_col in zip(["teff","mass","radius"],["Teff","Mass","Rad"]):
-        stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
+    # stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow')
+    # stellar_df = stellar_df[stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+    # stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
 
 
-    stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
-    stellar_df = stellar_df[(stellar_df["logg"]>4)]
+    # stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
 
-    stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
-    voxel_grid.setup_completeness_grid(stellar_df) # this is the kepler stellar catalog, which has the stellar radii and masses
-    MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
-    if runprops["verbose"]: print("MES grid has been set up!")
+    # for old_col,new_col in zip(["teff","mass","radius"],["Teff","Mass","Rad"]):
+    #     stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
+
+
+    # stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
+    # stellar_df = stellar_df[(stellar_df["logg"]>4)]
+
+    # stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
+    # voxel_grid.setup_completeness_grid(stellar_df) # this is the kepler stellar catalog, which has the stellar radii and masses
+    # MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
+    # if runprops["verbose"]: print("MES grid has been set up!")
 
     # timer(runprops["timer"],"weight partition")
+
+    def grid_object_hook(dct):
+        # 1) RPMeoVoxel: has eccentricity & omega bounds
+        keys = set(dct)
+        if {
+            "bottom_radius","top_radius",
+            "bottom_period","top_period",
+            "bottom_mass","top_mass",
+            "bottom_eccentricity","top_eccentricity",
+            "bottom_omega","top_omega"
+        }.issubset(keys):
+            v = RPMeoVoxel(
+                dct["bottom_radius"], dct["top_radius"],
+                dct["bottom_period"], dct["top_period"],
+                dct["bottom_mass"],  dct["top_mass"],
+                dct["bottom_eccentricity"], dct["top_eccentricity"],
+                dct["bottom_omega"], dct["top_omega"],
+            )
+            v.id_number = dct.get("id_number", -1)
+            if "df" in dct:
+                v.df = pd.DataFrame(dct["df"])
+                v.is_add_data = True
+            return v
+
+        # 2) RPMeoGrid: must have all five edge arrays + voxel_array + the two prob arrays + id_array
+        if {
+            "radius_grid_array","period_grid_array","mass_grid_array",
+            "eccentricity_grid_array","omega_grid_array",
+            "voxel_array","p_detection_array","p_transit_array","id_array"
+        }.issubset(keys):
+
+            # 2a) Reconstruct the grid object
+            grid = RPMeoGrid(
+                dct["radius_grid_array"],
+                dct["period_grid_array"],
+                dct["mass_grid_array"],
+                dct["eccentricity_grid_array"],
+                dct["omega_grid_array"],
+            )
+            # 2b) Overwrite its raw arrays
+            grid.voxel_array         = np.array(dct["voxel_array"],    dtype=object)
+            grid.p_detection_array   = np.array(dct["p_detection_array"])
+            grid.p_transit_array     = np.array(dct["p_transit_array"])
+            grid.id_array            = np.array(dct["id_array"])
+
+            # 2c) Rebuild the interpolators so .p_detection_interp exists
+            grid.p_detection_interp = RegularGridInterpolator(
+                (grid.radius_grid_array,
+                grid.period_grid_array,
+                grid.mass_grid_array,
+                grid.eccentricity_grid_array,
+                grid.omega_grid_array),
+                grid.p_detection_array
+            )
+            grid.p_transit_interp = RegularGridInterpolator(
+                (grid.radius_grid_array,
+                grid.period_grid_array,
+                grid.mass_grid_array,
+                grid.eccentricity_grid_array,
+                grid.omega_grid_array),
+                grid.p_transit_array
+            )
+
+            return grid
+
+        # fallback: leave dict alone
+        return dct
+
+
+    with open(runprops["voxel_json_filename"], "r") as f:
+        voxel_grid = json.load(f,object_hook=grid_object_hook)
+    
+    with open('../data/dataframe_column_names.json', "r") as f:
+        df_columns = json.load(f)
+
+    voxel_grid.assign_column_names(df_columns)
+
+    print(type(voxel_grid))
+    time.sleep(5)
+    print(voxel_grid)
+    time.sleep(10)
+
+    for voxel in voxel_grid.voxel_array.flat:
+        print(voxel)
+    
+    stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
 
     try:        
         run_emcee(voxel_grid,model_id,runprops,stellar_df,pool)
@@ -172,8 +297,12 @@ def main(model_id, pool, runprops):
 if __name__ == "__main__":
     with MPIPool() as pool:
         if not pool.is_master():
-            pool.wait()
-            sys.exit(0)
+            try:
+                pool.wait()
+            except Exception as e:
+                print(f"Worker {MPI.COMM_WORLD.Get_rank()} failed: {e}", flush=True)
+                raise
+
         old_time = time.time()
         start_time = old_time
         if len(sys.argv) != 2:
@@ -200,10 +329,12 @@ if __name__ == "__main__":
         # Get runprops loaded in, find the initial guess file.
         getData = ReadJson(runprops_filename)
         runprops = getData.outProps()
-        main(model_id,pool,runprops)
+        main(model_id,pool,runprops)# goes in middle
 
     with open(runprops["log_filename"], "a") as file:
-        file.write("success: Model "+str(model_id)+"\n")
+        now = datetime.now().isoformat()
+
+        file.write("success: Model "+str(model_id)+ now + "\n")
     
 
 # figure out a way to visualize this...maybe show it before setup? then again after doing emcee? figure 

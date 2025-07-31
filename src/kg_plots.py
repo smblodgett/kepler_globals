@@ -30,10 +30,8 @@ Created on 2025-04-02
 
 import corner
 import emcee
-import h5py
 import os
 import sys
-import commentjson as json
 import re
 import numpy as np
 import seaborn as sns
@@ -47,6 +45,45 @@ from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_g
 from kg_griddefiner import RPMGrid, RPMVoxel
 from kg_constants import *
 from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
+
+plt.rcParams['lines.linewidth']   = 2.5
+plt.rcParams['axes.linewidth']    = 1.5
+plt.rcParams['xtick.major.width'] =2
+plt.rcParams['ytick.major.width'] =2
+plt.rcParams['xtick.minor.width'] =1.5
+plt.rcParams['ytick.minor.width'] =1.5
+plt.rcParams['ytick.labelsize'] = 13
+plt.rcParams['xtick.labelsize'] = 13
+plt.rcParams['axes.labelsize'] = 18
+plt.rcParams['legend.numpoints'] = 1
+plt.rcParams['axes.labelweight']='semibold'
+plt.rcParams['mathtext.fontset']='stix'
+plt.rcParams['font.weight'] = 'semibold'
+plt.rcParams['axes.titleweight']='semibold'
+plt.rcParams['axes.titlesize']=12
+
+
+param_labels = ['$Γ_0$',
+                '$γ_0$',
+                '$γ_1$',  
+                '$γ_2$',  
+                '$σ_0$',  
+                '$σ_1$',   
+                '$σ_2$',  
+                'M_{break,1}',  
+                'M_{break,2}',   
+                'C',
+                '$μ_M$',  
+                '$σ_M$',  
+                '$β_1$',
+                '$β_2$',  
+                '$β_3$',
+                'P_{break,1}',   
+                'P_{break,2}',
+                '$α_e$',
+                '$λ_e$',
+                '$σ_e$'
+                ]
 
 
 def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend",upper_rho_prior=30,is_uniform_density=False):
@@ -455,33 +492,39 @@ def param_corner_plot(results_folder,model_id,nburnin,filename):
     samples = np.array(samples)
 
     samples_2d = samples.reshape(-1, samples.shape[-1])
-
-    labels = ['Gamma_0',
-        'gamma_0',
-        'gamma_1',  
-        'gamma_2',  
-        'sigma_0',  
-        'sigma_1',   
-        'sigma_2',  
-        'Mbreak1',  
-        'Mbreak2',   
-        'C',
-        'mu_M',  
-        'sigma_M',  
-        'Beta1',  
-        'Beta2',  
-        'Beta3',
-        'Pbreak1',   
-        'Pbreak2',
-        'alpha_e',
-        'lambda_e',
-        'sigma_e']
     
-    corner_plot = corner.corner(samples_2d,labels=labels,show_titles=True)
+    corner_plot = corner.corner(samples_2d,labels=param_labels,show_titles=True)
     # plt.suptitle("         Corner Plot") ????
     plt.suptitle(f"Model {model_id}",fontsize=200)
     
     corner_plot.savefig(corner_plot_folder+f"/{model_id}_corner.png",dpi=150)
+
+
+def param_trace_plot(results_folder,model_id,nburnin,filename):
+    trace_plot_folder = os.path.join(results_folder,"plots","traces",f"param_{model_id}")
+    os.makedirs(trace_plot_folder, exist_ok=True)
+    sampler_backend_folder = results_folder + f"/param_backend"
+
+    file_path = os.path.join(sampler_backend_folder, filename)
+
+    reader = emcee.backends.HDFBackend(file_path)
+
+    samples = reader.get_chain()
+    samples = samples[nburnin:,:,:]
+
+    n_steps, n_walkers, n_params = samples.shape
+
+    for i in range(n_params):
+        fig, ax = plt.subplots(figsize=(10, 2.5))
+        for walker in range(n_walkers):
+            ax.plot(samples[:, walker, i], alpha=0.5, lw=0.8)
+        label = param_labels[i]
+        # ax.set_title(f"Trace plot for {label}")
+        ax.set_xlabel("Step")
+        ax.set_ylabel(label)
+        plt.tight_layout()
+
+    plt.savefig(trace_plot_folder+f"/{model_id}_corner.png",dpi=150)
 
 
 

@@ -1,10 +1,10 @@
 import numpy as np
 from scipy.integrate import quad
-from scipy.optimize import root_scalar
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
-from scipy.stats import lognorm, truncnorm
+from scipy.stats import lognorm, truncnorm #, gaussian_kde
 from scipy.special import gamma
+
 
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
 from kg_utilities import radius_given_density_mass
@@ -133,7 +133,7 @@ class RadiusDistribution:
                 + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
                 )
 
-    def radius_pdf(self,masses):
+    def sample_radius_given_mass(self,masses):
         radii = np.empty_like(masses)
 
         mu = self.mu_total(masses)
@@ -279,7 +279,6 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
         
         cpdds = [np.median(stellar_df[col]) for col in stellar_df.columns if col.startswith('rrmscdpp')]
         durations = [1.5,2,2.5,3,3.5,4.5,5,6,7.5,9,10.5,12,12.5,15]
-        # cdpp_f = UnivariateSpline(durations,cpdds,s=0)
         cdpp_f = PchipInterpolator(durations,cpdds,extrapolate=False)
 
 
@@ -352,10 +351,10 @@ def get_detection_probability_hsu(MES,n_transits):
 
 
 def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid):
-    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),6))
+    # print("begin generating fake catalog...")
+    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),5)) # change if including impact parameter or other dimension!
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
-    # print("begin generating fake catalog...")
     fake_catalog[:,0] = np.random.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
 
     fake_catalog[:,1] = np.random.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
@@ -365,13 +364,24 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
         fake_catalog[:,1][mask] = np.random.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
     
     # print("make radius distribution...")
-    fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).radius_pdf(fake_catalog[:,1])  # Radius
+    fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1])  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     
     fake_catalog[:,3] = np.random.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
     fake_catalog[:,4] = np.random.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
-    fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter)
+    # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
+    
     # print("fake catalog has been created!")
+
+    # subsample_indices = np.random.choice(fake_catalog.shape[1], size=10000, replace=False)
+    # fake_catalog = fake_catalog[:, subsample_indices]
+
+    # implement a kde of the fake catalog...
+    # fake_catalog_kde = gaussian_kde(fake_catalog)
+    # print("end making fake catalog!")
+    # print(fake_catalog_kde)
+    # input()
+
     return fake_catalog
 
 
@@ -421,7 +431,16 @@ def get_probability_distributions(params):
     # print("sigma_e: ", σ_e)
     # print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
 
-    return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid
+    
+    if (is_nan_in_pmfs := (np.isnan(p_ecc).any() or np.isnan(p_Period).any() or np.isnan(p_mass).any())):
+        print("Warning: PMFs contain NaN. This parameter draw is bad, let's skip it!")
+
+    if (is_inf_in_pmfs := (not np.isfinite(p_ecc).any() or not np.isfinite(p_Period).any() or not np.isfinite(p_mass).any())):
+        print("Warning: PMFs contain inf. This parameter draw is bad, let's skip it!")
+
+
+
+    return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid, is_nan_in_pmfs, is_inf_in_pmfs
 
 
 def normalize_pdf_to_pmf(pdf, grid):
@@ -447,8 +466,10 @@ def normalize_pdf_to_pmf(pdf, grid):
 
 
 
-def voxel_model_count(voxel_grid,voxel,synthetic_catalog):
-    
+def voxel_model_count(voxel_grid,voxel,synthetic_catalog,len_stellar_df):
+    # print("begin voxel model count!")
+
+
     mask = ((synthetic_catalog[:,0] >= voxel.bottom_period) & (synthetic_catalog[:,0] < voxel.top_period) 
             & (synthetic_catalog[:,1] >= voxel.bottom_mass) & (synthetic_catalog[:,1] < voxel.top_mass) 
             & (synthetic_catalog[:,2] >= voxel.bottom_radius) & (synthetic_catalog[:,2] < voxel.top_radius)
@@ -466,6 +487,53 @@ def voxel_model_count(voxel_grid,voxel,synthetic_catalog):
         catalog_in_voxel[:,4]   # omega
     ])
 
+    # print("end voxel model count!")
+
     return np.sum(voxel_grid.p_detection_interp(points)   
                 * voxel_grid.p_transit_interp(points)  
                   )
+
+
+    # print("begin kde integration")
+
+    # n_resample = int(4e7)
+
+    # # print(synthetic_catalog_kde.dataset.shape)
+    # # print(synthetic_catalog_kde.d)
+
+    # synthetic_catalog_kde_resampled = synthetic_catalog_kde.resample(n_resample)
+
+    # # print("synthetic_catalog_kde_resampled: ",synthetic_catalog_kde_resampled)
+    # # print("synthetic_catalog_kde_resampled.shape: ",synthetic_catalog_kde_resampled.shape)
+
+
+    
+
+    # mask = ((synthetic_catalog_kde_resampled[0,:] >= voxel.bottom_period) & (synthetic_catalog_kde_resampled[0,:] < voxel.top_period) 
+    #             & (synthetic_catalog_kde_resampled[1,:] >= voxel.bottom_mass) & (synthetic_catalog_kde_resampled[1,:] < voxel.top_mass) 
+    #             & (synthetic_catalog_kde_resampled[2,:] >= voxel.bottom_radius) & (synthetic_catalog_kde_resampled[2,:] < voxel.top_radius)
+    #             & (synthetic_catalog_kde_resampled[3,:] >= voxel.bottom_eccentricity) & (synthetic_catalog_kde_resampled[3,:] < voxel.top_eccentricity)
+    #             & (synthetic_catalog_kde_resampled[4,:] >= voxel.bottom_omega) & (synthetic_catalog_kde_resampled[4,:] < voxel.top_omega) 
+    #             ) 
+
+    # voxel_kde_count = synthetic_catalog_kde_resampled[:,mask].shape[1] / n_resample    # PMReo
+    
+    
+    ####### KDE INTEGRATION #######
+    # voxel_kde_count = synthetic_catalog_kde.integrate_box(voxel.get_lower_bounds(),voxel.get_upper_bounds())
+    # print("end kde integration")
+
+    # voxel_model_count = voxel_kde_count * len_stellar_df
+
+    # centroid = voxel.get_centroid_coordinate()
+    # centroid_coords_for_interpolators = (centroid[2],centroid[0],centroid[1],centroid[3],centroid[4]) # voxel centroid MES - a way to do this better?
+    #                                                                                                   # like could we multiply the kde by the interpolated grid?
+    # p_detection = voxel_grid.p_detection_interp(centroid_coords_for_interpolators)
+    # p_transit = voxel_grid.p_transit_interp(centroid_coords_for_interpolators)
+
+    # print("end voxel model count!")
+    # return voxel_model_count * p_detection * p_transit
+    
+    ###################################
+    
+

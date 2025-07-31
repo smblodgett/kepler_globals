@@ -1,5 +1,7 @@
 import numpy as np
 import time
+from tqdm import tqdm
+from mpi4py import MPI
 from scipy.special import gammaln
 from scipy.stats import norm, lognorm, uniform
 from kg_priors import prior_args
@@ -21,7 +23,7 @@ def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
 def parametric_log_prior(params):
     start_time = time.time()
     assert len(params) == len(prior_args.keys()), "Number of parameters must match the number of priors!"
-    print("params.shape: ", params.shape)
+    # print("params.shape: ", params.shape)
     lp = 0.0 
     for parameter_name, i in zip(prior_args.keys(), range(len(params))):
         mu, sigma, prior_type = prior_args[parameter_name]
@@ -59,29 +61,55 @@ def parametric_log_prior(params):
 
 def parametric_log_likelihood(params,voxel_grid,stellar_df):
     start_time = time.time()
+    len_stellar_df = len(stellar_df)
     Gamma0 = params[0]
     grid_sum = 0.0
-    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid = get_probability_distributions(params)
-    synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid)
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs = get_probability_distributions(params)
+    
+    if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
+        print("nan in pmfs!")
+        return -np.inf
+    
+    if is_inf_in_pmfs:
+        print("inf in pmfs!")
+        return -np.inf
+    
+    synthetic_catalog_kde = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid)
+    
     for voxel in voxel_grid.voxel_array.flat:
         # print("likelihood df: ",voxel.df)
         voxel_num_data = len(voxel.df) / 1000 if not voxel.df.empty else 0
+        # print("voxel: ", voxel)
         # print("voxel_num_data: ", voxel_num_data)
         # input()
-        model_count = voxel_model_count(voxel_grid,voxel,synthetic_catalog)
+        model_count = voxel_model_count(voxel_grid,voxel,synthetic_catalog_kde,len_stellar_df)
+        # print("model count: ", model_count)
         
-        if model_count <= 0 and voxel_num_data <= 0:
+        if model_count == 0 and voxel_num_data == 0: # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
             continue
-        elif voxel_num_data <= 0:
+        elif voxel_num_data < 0: # there should never be a negative voxel number of data... (could be a raise or warning statement?)
+            print("negative voxel count!")
             return -np.inf
-        elif model_count < 0:
+        elif model_count < 0: # there should never be a negative model count number
+            print("negative model count!")
             return -np.inf
-        elif np.isnan(model_count):
+        elif model_count == 0 and voxel_num_data > 0: # if the model predicts nothing and the data has something, 
+            # print("model=0, voxel > 0 !")
+            model_count = 1e-8
+
+            # grid_sum -= voxel_num_data * 10**5
+            # continue
+
+            # return -np.inf
+        elif np.isnan(model_count) or np.isnan(voxel_num_data): # if nans are somehow generated, the model should be rejected
+            print("nan in voxel or model count!")
             return -np.inf
         
-        grid_sum += (model_count * np.log(voxel_num_data) - voxel_num_data - gammaln(model_count+1))
+        # grid_sum += (model_count * np.log(voxel_num_data) - voxel_num_data - gammaln(model_count+1))
+        grid_sum += (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+        # print("grid sum: ",grid_sum)
         
-        if np.isnan(grid_sum) or np.isnan(voxel_num_data):
+        if np.isnan(grid_sum) or np.isnan(voxel_num_data): # if we're still getting nans here, we are in some serious trouble...
             fail_number = "grid_sum" if np.isnan(grid_sum) else "voxel_num_data"
             print("model_count: ", model_count)
             print("voxel_num_data: ", voxel_num_data)
@@ -90,7 +118,10 @@ def parametric_log_likelihood(params,voxel_grid,stellar_df):
         
         
     end_time = time.time()
-    # print("log_likelihood eval time: ",end_time-start_time)
+    # print("evaluated normally")
+    rank = MPI.COMM_WORLD.Get_rank()
+    if rank == 0:
+        print("log_likelihood eval time: ",end_time-start_time)
     logL = Gamma0 * grid_sum
     return logL if np.isfinite(logL) else -np.inf
 
@@ -99,4 +130,4 @@ def parametric_log_probability(params,voxel_grid,stellar_df):
 
     prior = parametric_log_prior(params)
 
-    return prior + parametric_log_likelihood(params,voxel_grid,stellar_df) if prior != -np.inf else -np.inf
+    return prior + parametric_log_likelihood(params,voxel_grid,stellar_df) if np.isfinite(prior) else -np.inf

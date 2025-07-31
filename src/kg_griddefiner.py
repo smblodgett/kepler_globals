@@ -249,6 +249,22 @@ class RPMeoVoxel(RPMVoxel):
                 and eccentricity >= self.bottom_eccentricity and eccentricity < self.top_eccentricity
                 and omega >= self.bottom_omega and omega < self.top_omega)
     
+    def get_lower_bounds(self):
+        return self.bottom_period, self.bottom_mass, self.bottom_radius, self.bottom_eccentricity, self.bottom_omega
+    
+    def get_upper_bounds(self):
+        return self.top_period, self.top_mass, self.top_radius, self.top_eccentricity, self.top_omega
+    
+    def get_centroid_coordinate(self):
+        coords = tuple((lower+upper)/2 for lower,upper in zip(self.get_lower_bounds(), self.get_upper_bounds()))
+        return coords
+    
+    def add_column_name(self, columns):
+        if hasattr(self, "df") and len(self.df) > 0:
+            self.df.columns = columns
+        else:
+            self.df = pd.DataFrame(columns=columns)
+    
     def __str__(self):
         """Returns a string representation of the voxel."""
         return (f"RPMeo_Voxel(id: {self.id_number}, R: {self.bottom_radius} - {self.top_radius}, "
@@ -320,6 +336,10 @@ class RPMGrid:
         else:
             for voxel in self.voxel_array.flat:
                 voxel.setup_dataframe(columns)
+    
+    def assign_column_names(self,columns):
+        for voxel in self.voxel_array.flat:
+            voxel.add_column_name(columns)
                         
     def add_data(self,df):
         
@@ -580,6 +600,8 @@ class RPMeoGrid(RPMGrid):
             print("mass input: ", self.mass_grid_array[k])
             print("radius input: ", self.radius_grid_array[i])
             print("period input: ", self.period_grid_array[j])
+            print("hdfhsdafhsdfhsdsdaasdfadsf")
+            print("self.eccentricity_grid_array[l]: ", self.eccentricity_grid_array[l])
             print("eccentricity input: ", self.eccentricity_grid_array[l])
             print("omega input: ", self.omega_grid_array[m])
             MES,n_transits = get_MES(stellar_df, self.mass_grid_array[k],
@@ -607,6 +629,7 @@ class RPMeoGrid(RPMGrid):
                                                   self.omega_grid_array),self.p_detection_array
                                                   )
         
+        
         self.p_transit_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
                                                   self.mass_grid_array,self.eccentricity_grid_array,
                                                   self.omega_grid_array),self.p_transit_array
@@ -630,3 +653,18 @@ class RPMeoGrid(RPMGrid):
             if voxel.within(radius,period,mass,eccentricity,omega):
                 return voxel
                         
+
+    def __str__(self):
+        total = self.r_len * self.p_len * self.m_len * self.e_len* self.o_len
+        
+        # count how many voxels actually have data
+        filled = sum(1 for voxel in self.voxel_array.flat
+                       if hasattr(voxel, "num_data") and voxel.num_data() > 0)
+
+        return (
+            f"RPMeoGrid:\n"
+            f"  dimensions: {self.r_len} R × {self.p_len} P × "
+            f"{self.m_len} M × {self.e_len} e × {self.o_len} ω\n"
+            f"  total voxels: {total}\n"
+            f"  filled voxels: {filled}\n"
+        )
