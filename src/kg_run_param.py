@@ -83,7 +83,7 @@ def save_best_model(best_guess_filename,backend):
         print("Existing best parameters are better. No update made.")
 
 
-def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
+def run_emcee(model_id,runprops,pool,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
     """Configures and runs the emcee MCMC sampler.""" # DON"T FORGET POOL
 
     # # Get DR25 catalog.
@@ -115,9 +115,13 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q
 
     timer(runprops["timer"],"backend setup")
 
+    
+    print("type(pool): ",type(pool))
+    print("pool: ",pool)
+
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool, args=(voxel_grid,stellar_df,) )#,pool=pool)
+                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool, args=())#,pool=pool)
 
     timer(runprops["timer"],"emcee setup")
 
@@ -138,7 +142,7 @@ def run_emcee(voxel_grid,model_id,runprops,stellar_df,pool,dr_path="../data/q1_q
 
 
 
-def main(model_id, pool, runprops):  ## don't forget pool!
+def main(model_id, runprops):  ## don't forget pool!
 
     # use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
 
@@ -267,69 +271,74 @@ def main(model_id, pool, runprops):  ## don't forget pool!
     with open(runprops["voxel_json_filename"], "r") as f:
         voxel_grid = json.load(f,object_hook=grid_object_hook)
     
+    
     with open('../data/dataframe_column_names.json', "r") as f:
         df_columns = json.load(f)
 
     voxel_grid.assign_column_names(df_columns)
 
-    print(type(voxel_grid))
-    time.sleep(5)
-    print(voxel_grid)
-    time.sleep(10)
+    # print(type(voxel_grid))
+    # # time.sleep(5)
+    # print(voxel_grid)
+    # # time.sleep(10)
 
-    for voxel in voxel_grid.voxel_array.flat:
-        print(voxel)
+    # for voxel in voxel_grid.voxel_array.flat:
+    #     print(voxel)
     
-    stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
+    kg_likelihood.voxel_grid = voxel_grid
 
-    try:        
-        run_emcee(voxel_grid,model_id,runprops,stellar_df,pool)
-        sys.exit(0)
-    except Exception as e:
-        print("Error occurred..." + str(e))
-        with open(runprops["log_filename"], "a") as file:
-            file.write(str(e)+" Model: "+str(model_id)+"\n")
-    finally:
-        timer(runprops["timer"],"",mode="final")
+    kg_likelihood.stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
+
+    with MPIPool() as pool:
+        if not pool.is_master():
+            pool.wait()
+            sys.exit(0)
+
+        try:        
+            run_emcee(model_id,runprops,pool)
+            sys.exit(0)
+        except Exception as e:
+            print("Error occurred..." + str(e))
+            with open(runprops["log_filename"], "a") as file:
+                file.write(str(e)+" Model: "+str(model_id)+"\n")
+        finally:
+            timer(runprops["timer"],"",mode="final")
     
 
 
 if __name__ == "__main__":
-    with MPIPool() as pool:
-        if not pool.is_master():
-            try:
-                pool.wait()
-            except Exception as e:
-                print(f"Worker {MPI.COMM_WORLD.Get_rank()} failed: {e}", flush=True)
-                raise
 
-        old_time = time.time()
-        start_time = old_time
-        if len(sys.argv) != 2:
-            print("invalid input. Enter which mixture model you want to run.")
-            sys.exit(1)
-            
-        model_id = int(sys.argv[1])
-        
-        # Verify the correct path script is being run from. 
-        cwd = os.getcwd()
-        print(cwd)        
+    rank = MPI.COMM_WORLD.Get_rank()
+    size = MPI.COMM_WORLD.Get_size()
+    print(f"[Rank {rank}/{size}] starting up")
 
-        # Find the runprops file path. 
-        if 'src' in cwd:
-            runprops_filename = "../runs/param_runprops.txt"
-        elif 'runs' in cwd:
-            runprops_filename = "param_runprops.txt"
-        elif 'results' in cwd:
-            runprops_filename = "param_runprops.txt"
-        else:
-            print('you are not starting from a proper directory. you should run kg_run_param.py from a src, runs, or a results directory.')
-            sys.exit(1)
+    old_time = time.time()
+    start_time = old_time
+    if len(sys.argv) != 2:
+        print("invalid input. Enter which mixture model you want to run.")
+        sys.exit(1)
         
-        # Get runprops loaded in, find the initial guess file.
-        getData = ReadJson(runprops_filename)
-        runprops = getData.outProps()
-        main(model_id,pool,runprops)# goes in middle
+    model_id = int(sys.argv[1])
+    
+    # Verify the correct path script is being run from. 
+    cwd = os.getcwd()
+    print(cwd)        
+
+    # Find the runprops file path. 
+    if 'src' in cwd:
+        runprops_filename = "../runs/param_runprops.txt"
+    elif 'runs' in cwd:
+        runprops_filename = "param_runprops.txt"
+    elif 'results' in cwd:
+        runprops_filename = "param_runprops.txt"
+    else:
+        print('you are not starting from a proper directory. you should run kg_run_param.py from a src, runs, or a results directory.')
+        sys.exit(1)
+    
+    # Get runprops loaded in, find the initial guess file.
+    getData = ReadJson(runprops_filename)
+    runprops = getData.outProps()
+    main(model_id,runprops)
 
     with open(runprops["log_filename"], "a") as file:
         now = datetime.now().isoformat()

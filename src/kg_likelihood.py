@@ -1,13 +1,17 @@
+import os
 import numpy as np
 import time
 from tqdm import tqdm
 from mpi4py import MPI
-from scipy.special import gammaln
+from scipy.special import gamma, gammaln
 from scipy.stats import norm, lognorm, uniform
 from kg_priors import prior_args
 from kg_constants import N_PHODYMM_STARS
 
 from kg_probability_distributions import voxel_model_count, generate_catalog, get_probability_distributions
+
+stellar_df = None
+voxel_grid = None
 
 def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
     R_mrp = params[0]
@@ -59,7 +63,15 @@ def parametric_log_prior(params):
     return lp
 
 
-def parametric_log_likelihood(params,voxel_grid,stellar_df):
+def parametric_log_likelihood(params):
+
+    global voxel_grid, stellar_df
+
+    rank = MPI.COMM_WORLD.Get_rank()
+    print(f"[log-prob on rank {rank}]", flush=True)
+    print(os.getpid())
+
+
     start_time = time.time()
     len_stellar_df = len(stellar_df)
     Gamma0 = params[0]
@@ -119,15 +131,13 @@ def parametric_log_likelihood(params,voxel_grid,stellar_df):
         
     end_time = time.time()
     # print("evaluated normally")
-    rank = MPI.COMM_WORLD.Get_rank()
-    if rank == 0:
-        print("log_likelihood eval time: ",end_time-start_time)
+
     logL = Gamma0 * grid_sum
     return logL if np.isfinite(logL) else -np.inf
 
 
-def parametric_log_probability(params,voxel_grid,stellar_df):
+def parametric_log_probability(params):
 
     prior = parametric_log_prior(params)
 
-    return prior + parametric_log_likelihood(params,voxel_grid,stellar_df) if np.isfinite(prior) else -np.inf
+    return prior + parametric_log_likelihood(params) if np.isfinite(prior) else -np.inf

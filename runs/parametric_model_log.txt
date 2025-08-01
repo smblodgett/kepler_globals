@@ -12,3 +12,5 @@ can't multiply sequence by non-int of type 'float' Model: 0
 success: Model 02025-07-30T12:43:28.676690
 scale < 0 Model: 0
 success: Model 02025-07-30T12:49:20.130420
+name 'voxel_grid' is not defined Model: 0
+success: Model 02025-08-01T12:11:50.044340

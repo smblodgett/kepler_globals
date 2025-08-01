@@ -1,13 +1,13 @@
 #!/bin/bash --login
 
-#SBATCH --time=24:00:00
-#SBATCH --ntasks=2000
-#SBATCH --mem=20G
+#SBATCH --time=12:00:00
+#SBATCH --ntasks=20
+#SBATCH --mem-per-cpu=1G
 #SBATCH -J "kepler_globals_param"
 
 mamba activate kepler_globals
 
-rm ../runs/param_model_log.txt
+#rm ../runs/param_model_log.txt
 
 mpiexec -n $SLURM_NTASKS python kg_run_param.py 0
 
