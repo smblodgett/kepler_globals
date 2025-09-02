@@ -38,7 +38,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.ticker import ScalarFormatter
-
 from PIL import Image
 
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
@@ -70,16 +69,16 @@ param_labels = ['$Γ_0$',
                 '$σ_0$',  
                 '$σ_1$',   
                 '$σ_2$',  
-                'M_{break,1}',  
-                'M_{break,2}',   
+                '$M_{break,1}$',  
+                '$M_{break,2}$',   
                 'C',
                 '$μ_M$',  
                 '$σ_M$',  
                 '$β_1$',
                 '$β_2$',  
                 '$β_3$',
-                'P_{break,1}',   
-                'P_{break,2}',
+                '$P_{break,1}$',   
+                '$P_{break,2}$',
                 '$α_e$',
                 '$λ_e$',
                 '$σ_e$'
@@ -475,6 +474,7 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 
 def param_corner_plot(results_folder,model_id,nburnin,filename):
+    ############ this needs to be fixed somehow, i think there might be a dimension mismatch between the corner and the h5 file...
     corner_plot_folder = os.path.join(results_folder,"plots","corners",f"param_{model_id}")
     os.makedirs(corner_plot_folder, exist_ok=True)
     sampler_backend_folder = results_folder + f"/param_backend"
@@ -868,6 +868,8 @@ if __name__ == "__main__":# Default to False if not specified
     # Read the second argument as the type of plot.
     if len(sys.argv) > 1:
         plottype = sys.argv[1]
+        print("plottype: ", plottype)
+
         voxel_id = 0
         assert plottype == "trace" or plottype == "param_corner" or plottype == "grid_corner" or plottype == "heatmap" or plottype == "residual", "Only valid plottypes are residual, heatmap, trace, and grid_ or param_corner."
     else:

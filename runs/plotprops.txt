@@ -5,7 +5,7 @@
     "uniform_densities" : true, # if the densities (and masses) are uniform (typically no, but is an option for visualization purposes)
     "model_id" : 0, # which kind of parametric model is being run
 
-    "nburnin" : 100, # number of burnin steps the emcee run took (should match whatever runprops has for this value)
+    "nburnin" : 10, # number of burnin steps the emcee run took (should match whatever runprops has for this value)
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",

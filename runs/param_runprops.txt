@@ -8,10 +8,10 @@
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
 
     # Run properties/parameters
-    "nwalkers" : 80,           # number of walkers in emcee ensemble
+    "nwalkers" : 60,           # number of walkers in emcee ensemble
     "nburnin" : 50,            # length of burn in
     "ndim" : 20,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 2000,           # number of steps for sampling
+    "nsteps" : 500,           # number of steps for sampling
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction

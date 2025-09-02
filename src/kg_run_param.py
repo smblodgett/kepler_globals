@@ -144,62 +144,6 @@ def run_emcee(model_id,runprops,pool,dr_path="../data/q1_q17_dr25.csv",expanded_
 
 def main(model_id, runprops):  ## don't forget pool!
 
-    # use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
-
-    # if not runprops["suppress_warnings"]: 
-    #     if not use_cache:
-    #         print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
-    #         print("Only run this way if your voxel data hasn't yet been cached.")
-    
-    # # If the voxels don't have their data cached, then read in everything.
-    # if not use_cache:
-    #     df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
-    #     if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
-    #     # input()
-    #     print("now we're caching it!")
-    #     df = df[["R_pE","Period_days","M_pE","e","omega"]]#,"p_trans","MES_rowe"]]
-    #     #df = create_probability_weighted(df)
-    #     df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
-    #     if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
-    #     # input()
-    # # Otherwise, you can just read in 1 voxel that has its data cached.    
-    # else:
-    #     df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv",index_col=0,engine='pyarrow')
-    #     if runprops["verbose"]: print("read in cached df")
-
-    # print("full data df: ",df)
-    
-    # timer(runprops["timer"],"data readin")
-
-    # # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
-    # voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
-    # voxel_grid.setup_dataframes(df.columns)
-    # voxel_grid.add_data(df)
-
-    # gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
-    # gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
-
-    # stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow')
-    # stellar_df = stellar_df[stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
-    # stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
-
-
-    # stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
-
-    # for old_col,new_col in zip(["teff","mass","radius"],["Teff","Mass","Rad"]):
-    #     stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
-
-
-    # stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
-    # stellar_df = stellar_df[(stellar_df["logg"]>4)]
-
-    # stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
-    # voxel_grid.setup_completeness_grid(stellar_df) # this is the kepler stellar catalog, which has the stellar radii and masses
-    # MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
-    # if runprops["verbose"]: print("MES grid has been set up!")
-
-    # timer(runprops["timer"],"weight partition")
-
     def grid_object_hook(dct):
         # 1) RPMeoVoxel: has eccentricity & omega bounds
         keys = set(dct)
@@ -267,16 +211,6 @@ def main(model_id, runprops):  ## don't forget pool!
         # fallback: leave dict alone
         return dct
 
-
-    with open(runprops["voxel_json_filename"], "r") as f:
-        voxel_grid = json.load(f,object_hook=grid_object_hook)
-    
-    
-    with open('../data/dataframe_column_names.json', "r") as f:
-        df_columns = json.load(f)
-
-    voxel_grid.assign_column_names(df_columns)
-
     # print(type(voxel_grid))
     # # time.sleep(5)
     # print(voxel_grid)
@@ -284,10 +218,29 @@ def main(model_id, runprops):  ## don't forget pool!
 
     # for voxel in voxel_grid.voxel_array.flat:
     #     print(voxel)
+    voxel_grid = None
+    stellar_df = None
+
+    comm = MPI.COMM_WORLD
+    if comm.Get_rank() == 0:
+        print("[Rank 0] reading csv and voxel grid")
+        with open(runprops["voxel_json_filename"], "r") as f:
+            voxel_grid = json.load(f,object_hook=grid_object_hook)
+        with open('../data/dataframe_column_names.json', "r") as f:
+            df_columns = json.load(f)
+        voxel_grid.assign_column_names(df_columns)
+        MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
+        stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
+    
+
+
+    voxel_grid = comm.bcast(voxel_grid,root=0)
+    stellar_df = comm.bcast(stellar_df, root=0)
+    
     
     kg_likelihood.voxel_grid = voxel_grid
+    kg_likelihood.stellar_df = stellar_df
 
-    kg_likelihood.stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
 
     with MPIPool() as pool:
         if not pool.is_master():
@@ -308,23 +261,24 @@ def main(model_id, runprops):  ## don't forget pool!
 
 if __name__ == "__main__":
 
+    # rank initialization signature
     rank = MPI.COMM_WORLD.Get_rank()
     size = MPI.COMM_WORLD.Get_size()
     print(f"[Rank {rank}/{size}] starting up")
 
+    # for timing purposes
     old_time = time.time()
     start_time = old_time
+
+    # needs to specify which model is being run (so far, only 0 is supported)
     if len(sys.argv) != 2:
         print("invalid input. Enter which mixture model you want to run.")
         sys.exit(1)
-        
     model_id = int(sys.argv[1])
     
     # Verify the correct path script is being run from. 
     cwd = os.getcwd()
     print(cwd)        
-
-    # Find the runprops file path. 
     if 'src' in cwd:
         runprops_filename = "../runs/param_runprops.txt"
     elif 'runs' in cwd:
@@ -338,17 +292,12 @@ if __name__ == "__main__":
     # Get runprops loaded in, find the initial guess file.
     getData = ReadJson(runprops_filename)
     runprops = getData.outProps()
+
+    # run the main script
     main(model_id,runprops)
 
+    # log a successful run
     with open(runprops["log_filename"], "a") as file:
         now = datetime.now().isoformat()
 
         file.write("success: Model "+str(model_id)+ now + "\n")
-    
-
-# figure out a way to visualize this...maybe show it before setup? then again after doing emcee? figure 
-
-# run MCMC on each cell in the voxel grid:
-# any voxel that is outside of the density prior should not even be run through emcee...
-# if we have an empty voxel, then skip and output a list of voxels, flagging empty ones based on why they're empty
-# for the impossibly heavy planets, we could absolutely put a prior for density

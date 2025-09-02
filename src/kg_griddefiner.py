@@ -541,6 +541,7 @@ class RPMeoGrid(RPMGrid):
         self.id_array=np.empty((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len))
         self.p_detection_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
         self.p_transit_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
+        self.likelihood_array=np.zeros((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len,2))
 
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
         for id_number in range(self.r_len * self.p_len * self.m_len * self.e_len * self.o_len):
@@ -588,10 +589,8 @@ class RPMeoGrid(RPMGrid):
             # self.voxel_array[r, p, m, e].create_probability_weighted()
     
     def setup_completeness_grid(self,stellar_df,N_SAMPLE_STARS=100):
-        
 
         stellar_df=stellar_df.sample(n=N_SAMPLE_STARS,random_state=41)
-
 
         it = np.nditer(self.p_detection_array, flags=['multi_index'], op_flags=['writeonly'])
         for grid_edgepoint_number in range((self.r_len+1) * (self.p_len+1) * (self.m_len+1) * (self.e_len+1) * (self.o_len+1)):
@@ -636,6 +635,13 @@ class RPMeoGrid(RPMGrid):
                                                   )
 
         
+    def setup_likelihood_grid(self):
+        """Creates a grid that includes the necessary information for the likelihood evaluation to improve runtime."""
+        it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
+        for voxel_values in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
+            i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
+            self.likelihood_array[i, j, k, l, m, 0] = len(self.voxel_array[i,j,k,l,m].df) # assign the length of the voxel data to the 0th index of the likelihood function computing grid
+            it.iternext()
 
 
     def find_voxel_by_id(self,voxel_id):
@@ -653,6 +659,17 @@ class RPMeoGrid(RPMGrid):
             if voxel.within(radius,period,mass,eccentricity,omega):
                 return voxel
                         
+    def get_voxel_grid_indices(self,radius,period,mass,eccentricity,omega):
+        """Gets the i, j, k, l, m values for the grid from a given coordinate."""
+        it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
+        for voxels in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
+            i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
+            # print("self.voxel_array[i][j][k][l][m]: ",self.voxel_array[i][j][k][l][m])
+            # print("type(self.voxel_array[i][j][k][l][m]): ",self.voxel_array[i][j][k][l][m])
+            if self.voxel_array[i][j][k][l][m].within(radius,period,mass,eccentricity,omega):
+                return i,j,k,l,m
+            it.iternext()
+
 
     def __str__(self):
         total = self.r_len * self.p_len * self.m_len * self.e_len* self.o_len

@@ -1,4 +1,6 @@
 import numpy as np
+from numba import njit
+import time
 from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
@@ -465,75 +467,185 @@ def normalize_pdf_to_pmf(pdf, grid):
     return pmf
 
 
-
-def voxel_model_count(voxel_grid,voxel,synthetic_catalog,len_stellar_df):
-    # print("begin voxel model count!")
-
-
-    mask = ((synthetic_catalog[:,0] >= voxel.bottom_period) & (synthetic_catalog[:,0] < voxel.top_period) 
-            & (synthetic_catalog[:,1] >= voxel.bottom_mass) & (synthetic_catalog[:,1] < voxel.top_mass) 
-            & (synthetic_catalog[:,2] >= voxel.bottom_radius) & (synthetic_catalog[:,2] < voxel.top_radius)
-            & (synthetic_catalog[:,3] >= voxel.bottom_eccentricity) & (synthetic_catalog[:,3] < voxel.top_eccentricity)
-            & (synthetic_catalog[:,4] >= voxel.bottom_omega) & (synthetic_catalog[:,4] < voxel.top_omega) 
-            ) 
-    
-    catalog_in_voxel = synthetic_catalog[mask]
-
-    points = np.column_stack([
-        catalog_in_voxel[:,2],  # radius
-        catalog_in_voxel[:,0],  # period
-        catalog_in_voxel[:,1],  # mass
-        catalog_in_voxel[:,3],  # ecc
-        catalog_in_voxel[:,4]   # omega
-    ])
-
-    # print("end voxel model count!")
-
-    return np.sum(voxel_grid.p_detection_interp(points)   
-                * voxel_grid.p_transit_interp(points)  
-                  )
-
-
-    # print("begin kde integration")
-
-    # n_resample = int(4e7)
-
-    # # print(synthetic_catalog_kde.dataset.shape)
-    # # print(synthetic_catalog_kde.d)
-
-    # synthetic_catalog_kde_resampled = synthetic_catalog_kde.resample(n_resample)
-
-    # # print("synthetic_catalog_kde_resampled: ",synthetic_catalog_kde_resampled)
-    # # print("synthetic_catalog_kde_resampled.shape: ",synthetic_catalog_kde_resampled.shape)
+def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
+    synthetic_catalog = synthetic_catalog[:, [1, 2, 0, 3, 4]]
+    # print(synthetic_catalog)
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:, 0] < np.min(voxel_grid.radius_grid_array)) |
+        (synthetic_catalog[:, 0] > np.max(voxel_grid.radius_grid_array)))
+        ]
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,1] < np.min(voxel_grid.period_grid_array)) |
+        (synthetic_catalog[:,1] > np.max(voxel_grid.period_grid_array)))
+        ]
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,2] < np.min(voxel_grid.mass_grid_array)) |
+        (synthetic_catalog[:,2] > np.max(voxel_grid.mass_grid_array)))
+        ]  
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,3] < np.min(voxel_grid.eccentricity_grid_array)) |
+        (synthetic_catalog[:,3] > np.max(voxel_grid.eccentricity_grid_array)))
+        ]      
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,4] < np.min(voxel_grid.omega_grid_array)) |
+        (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
+        ]    # print("bad radii are " ,bad_radii)
+    # print("len of bad radii are ", len(bad_radii))
+    # print("len of synthetic catalog is ", len(synthetic_catalog))
+    p_d = voxel_grid.p_detection_interp(synthetic_catalog)
+    p_t = voxel_grid.p_transit_interp(synthetic_catalog)
+    completeness = p_d * p_t
+    return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)
+    # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
 
 
-    
+def pack_points_vectorized(cat, voxel_grid, completeness):
+    """
+    Assumes voxel_grid exposes bin edges for each axis, e.g.:
+      voxel_grid.r_edges  length r_len+1
+      voxel_grid.p_edges  length p_len+1
+      voxel_grid.m_edges  length m_len+1
+      voxel_grid.e_edges  length e_len+1
+      voxel_grid.o_edges  length o_len+1
 
-    # mask = ((synthetic_catalog_kde_resampled[0,:] >= voxel.bottom_period) & (synthetic_catalog_kde_resampled[0,:] < voxel.top_period) 
-    #             & (synthetic_catalog_kde_resampled[1,:] >= voxel.bottom_mass) & (synthetic_catalog_kde_resampled[1,:] < voxel.top_mass) 
-    #             & (synthetic_catalog_kde_resampled[2,:] >= voxel.bottom_radius) & (synthetic_catalog_kde_resampled[2,:] < voxel.top_radius)
-    #             & (synthetic_catalog_kde_resampled[3,:] >= voxel.bottom_eccentricity) & (synthetic_catalog_kde_resampled[3,:] < voxel.top_eccentricity)
-    #             & (synthetic_catalog_kde_resampled[4,:] >= voxel.bottom_omega) & (synthetic_catalog_kde_resampled[4,:] < voxel.top_omega) 
-    #             ) 
+    And likelihood_array has shape (r_len, p_len, m_len, e_len, o_len, something)
+    We accumulate into likelihood_array[..., 1].
+    """
+    # coordinates
+    r = cat[:,0]
+    p = cat[:,1]
+    m = cat[:,2]
+    e = cat[:,3]
+    o = cat[:,4]
 
-    # voxel_kde_count = synthetic_catalog_kde_resampled[:,mask].shape[1] / n_resample    # PMReo
-    
-    
-    ####### KDE INTEGRATION #######
-    # voxel_kde_count = synthetic_catalog_kde.integrate_box(voxel.get_lower_bounds(),voxel.get_upper_bounds())
-    # print("end kde integration")
+    # digitize -> returns bin indices in [1..len(edges)-1], convert to 0-based
+    r_idx = np.digitize(r, voxel_grid.radius_grid_array) - 1
+    p_idx = np.digitize(p, voxel_grid.period_grid_array) - 1
+    m_idx = np.digitize(m, voxel_grid.mass_grid_array) - 1
+    e_idx = np.digitize(e, voxel_grid.eccentricity_grid_array) - 1
+    o_idx = np.digitize(o, voxel_grid.omega_grid_array) - 1
 
-    # voxel_model_count = voxel_kde_count * len_stellar_df
+    # # mask valid (inside grid)
+    # valid = (
+    #     (r_idx >= 0) & (r_idx < voxel_grid.r_len) &
+    #     (p_idx >= 0) & (p_idx < voxel_grid.p_len) &
+    #     (m_idx >= 0) & (m_idx < voxel_grid.m_len) &
+    #     (e_idx >= 0) & (e_idx < voxel_grid.e_len) &
+    #     (o_idx >= 0) & (o_idx < voxel_grid.o_len)
+    # )
+    # if not np.any(valid):
+    #     return
 
-    # centroid = voxel.get_centroid_coordinate()
-    # centroid_coords_for_interpolators = (centroid[2],centroid[0],centroid[1],centroid[3],centroid[4]) # voxel centroid MES - a way to do this better?
-    #                                                                                                   # like could we multiply the kde by the interpolated grid?
-    # p_detection = voxel_grid.p_detection_interp(centroid_coords_for_interpolators)
-    # p_transit = voxel_grid.p_transit_interp(centroid_coords_for_interpolators)
+    # r_idx = r_idx[valid]; p_idx = p_idx[valid]; m_idx = m_idx[valid]
+    # e_idx = e_idx[valid]; o_idx = o_idx[valid]
+    # w = completeness[valid]
 
-    # print("end voxel model count!")
-    # return voxel_model_count * p_detection * p_transit
-    
-    ###################################
-    
+    # flatten the multi-index to 1D
+    shape = (voxel_grid.r_len, voxel_grid.p_len, voxel_grid.m_len,
+             voxel_grid.e_len, voxel_grid.o_len)
+    flat_idx = np.ravel_multi_index((r_idx, p_idx, m_idx, e_idx, o_idx), shape)
 
+    # sum weights per flat index
+    total_voxels = np.prod(shape)
+    sums = np.bincount(flat_idx, weights=completeness, minlength=total_voxels)
+
+    # reshape and add into likelihood array's last index (1)
+    sums = sums.reshape(shape)
+    # assumes likelihood_array[..., 1] exists and matches shape
+    voxel_grid.likelihood_array[:,:,:,:,:, 1] += sums
+
+    return voxel_grid
+
+
+def pack_points_fast(cat, voxel_grid, completeness):
+    n = cat.shape[0]
+    for i in range(n):
+        c0 = cat[i, 0]  # radius
+        c1 = cat[i, 1]  # period
+        c2 = cat[i, 2]  # mass
+        c3 = cat[i, 3]  # ecc
+        c4 = cat[i, 4]  # omega
+        # print("c0: ",c0)
+        # print("c1: ",c1)
+        # print("c2: ",c2)
+        # print("c3: ",c3)
+        # print("c4: ",c4)
+        # print("voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4): ", voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4))
+        # print("type(voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4)) :",type(voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4)))
+        indices = (*voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4) , 1)
+        voxel_grid.likelihood_array[indices] += completeness[i]
+
+    return voxel_grid
+
+@njit(fastmath=True)
+def pack_points(cat,
+                p_lo, p_hi,
+                m_lo, m_hi,
+                r_lo, r_hi,
+                e_lo, e_hi,
+                w_lo, w_hi,
+                out_points):
+    """
+    Scan catalog row by row, check voxel bounds, and if row is inside,
+    write directly into out_points with reordered columns.
+    Returns number of rows written.
+    """
+    j = 0
+    n = cat.shape[0]
+    for i in range(n):
+        c0 = cat[i, 0]  # period
+        c1 = cat[i, 1]  # mass
+        c2 = cat[i, 2]  # radius
+        c3 = cat[i, 3]  # ecc
+        c4 = cat[i, 4]  # omega
+
+        if (c0 >= p_lo and c0 < p_hi and
+            c1 >= m_lo and c1 < m_hi and
+            c2 >= r_lo and c2 < r_hi and
+            c3 >= e_lo and c3 < e_hi and
+            c4 >= w_lo and c4 < w_hi):
+            # 
+            out_points[j, 0] = c2  # radius
+            out_points[j, 1] = c0  # period
+            out_points[j, 2] = c1  # mass
+            out_points[j, 3] = c3  # ecc
+            out_points[j, 4] = c4  # omega
+            j += 1
+    return j
+
+
+def voxel_model_count(voxel_grid, voxel, synthetic_catalog, points_buf=None):
+    # pre_packing_time = time.time()
+    n = synthetic_catalog.shape[0]
+
+    # Preallocate reusable buffer if not provided
+    if points_buf is None or points_buf.shape[0] < n:
+        points_buf = np.empty((n, 5), dtype=synthetic_catalog.dtype)
+
+    # One-pass filtering + packing
+    n_points = pack_points(
+        synthetic_catalog,
+        voxel.bottom_period, voxel.top_period,
+        voxel.bottom_mass, voxel.top_mass,
+        voxel.bottom_radius, voxel.top_radius,
+        voxel.bottom_eccentricity, voxel.top_eccentricity,
+        voxel.bottom_omega, voxel.top_omega,
+        points_buf
+    )
+
+    # if n_points == 0:
+    #     return 0.0
+    # print("packing time is ", time.time() - pre_packing_time)
+
+    # pre_interp_time = time.time()
+    # Slice down to the valid rows
+    points = points_buf[:n_points]
+    # print(points)
+    # time.sleep(5)
+
+    # Call vectorized interpolators
+    pd = voxel_grid.p_detection_interp(points)
+    pt = voxel_grid.p_transit_interp(points)
+    # print("interp time is ", time.time() - pre_interp_time)
+
+    return float(np.sum(pd * pt, dtype=np.float64)), points_buf
