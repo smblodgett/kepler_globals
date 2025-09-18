@@ -34,17 +34,28 @@ import os
 import sys
 import re
 import numpy as np
+import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.ticker import ScalarFormatter
 from PIL import Image
+from scipy.stats import lognorm
 
-from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array
-from kg_griddefiner import RPMGrid, RPMVoxel
+from kg_param_boundary_arrays import (
+    radius_grid_array as radius_param_grid_array,
+    period_grid_array as period_param_grid_array,
+    mass_grid_array as mass_param_grid_array,
+    eccentricity_grid_array as eccentricity_param_grid_array,
+    omega_grid_array as omega_param_grid_array
+)
+
+from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array 
+from kg_griddefiner import RPMGrid, RPMeoGrid
 from kg_constants import *
 from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
 
+# Set good-looking plot options
 plt.rcParams['lines.linewidth']   = 2.5
 plt.rcParams['axes.linewidth']    = 1.5
 plt.rcParams['xtick.major.width'] =2
@@ -61,7 +72,7 @@ plt.rcParams['font.weight'] = 'semibold'
 plt.rcParams['axes.titleweight']='semibold'
 plt.rcParams['axes.titlesize']=12
 
-
+# This will need to change based on adding new parameters...maybe this should be in the utility file?
 param_labels = ['$Γ_0$',
                 '$γ_0$',
                 '$γ_1$',  
@@ -473,8 +484,121 @@ def find_h5_file(voxel_id,sampler_backend_folder):
     return h5_path
 
 
+
+def param_analysis_plots(results_folder,model_id,nburnin,filename,voxel_grid,kmdc_filename):
+
+    df = pd.read_csv(kmdc_filename,index_col=0)    
+    voxel_grid.setup_dataframes(df.columns)
+    voxel_grid.add_data(df)
+
+    visualization_plot_folder = os.path.join(results_folder,"plots","model_visualization",f"param_{model_id}")
+    os.makedirs(visualization_plot_folder, exist_ok=True)
+    sampler_backend_folder = results_folder + f"/param_backend"
+    
+    file_path = os.path.join(sampler_backend_folder, filename)
+
+    reader = emcee.backends.HDFBackend(file_path)
+
+    log_prob = reader.get_log_prob(discard=nburnin, flat=True)
+    samples = reader.get_chain(discard=nburnin, flat=True)
+
+    top_idx = np.argsort(log_prob)[-1000:] 
+
+    top_samples = samples[top_idx]
+    top_log_prob = log_prob[top_idx]
+
+    print("max top log prob: ",max(top_log_prob))
+    print("max log prob: ",max(log_prob))
+
+        # Sort by likelihood descending
+    order = np.argsort(top_log_prob)[::-1]
+    top_samples = top_samples[order]
+    top_log_prob = top_log_prob[order]
+
+    print(top_samples)
+    print(top_log_prob)
+    print("max top log prob: ",max(top_log_prob),"top log prob[0]: ",top_log_prob[0])
+
+
+
+
+    γ0 = top_samples[:,1]
+    γ1 = top_samples[:,2]
+    γ2 = top_samples[:,3]
+    σ0 = top_samples[:,4]
+    σ1 = top_samples[:,5]
+    σ2 = top_samples[:,6]
+    mass_break_1 = top_samples[:,7]
+    mass_break_2 = top_samples[:,8]
+    C = top_samples[:,9]
+    μM = top_samples[:,10]
+    σM = top_samples[:,11]
+    β1 = top_samples[:,12]
+    β2 = top_samples[:,13]
+    β3 = top_samples[:,14]
+    Period_break_1 = top_samples[:,15]
+    Period_break_2 = top_samples[:,16]
+    α = top_samples[:,17]
+    λ = top_samples[:,18]
+    σ_e = top_samples[:,19]
+
+    def rayleigh_exponential(alpha,lamb,sigma,e):
+        return (alpha*((lamb*np.exp(-lamb*e))/(1-np.exp(-lamb))) + 
+                (1-alpha)*((2*e*(1/(2*sigma**2))*np.exp(-1*e**2/(2*sigma**2)))/(1-np.exp(-1/(2*sigma**2)))))
+    
+    ecc = np.linspace(0,1,900)
+    plt.figure(dpi=300,facecolor="w")
+    for n in range(len(top_samples)):
+        plt.plot(ecc,rayleigh_exponential(α[n],λ[n],σ_e[n],ecc),alpha=0.01,linewidth=1, c='b')
+    plt.plot(ecc,rayleigh_exponential(α[0],λ[0],σ_e[0],ecc),alpha=0.5, c='r',label="best fit")
+    
+    data_ecc = np.array([])
+    for voxel in voxel_grid.voxel_array.flat:
+        data_ecc = np.append(data_ecc,voxel.df["e"])
+    
+    plt.hist(data_ecc,bins=1000,density=True)
+
+    plt.xlabel("eccentricity",fontsize=10)
+    plt.legend()
+    plt.title('Close-in Exoplanet Eccentricity Distribution')
+    plt.savefig("../results/plots/model_visualization/param_0/model_ecc.png")
+
+
+
+    data_mass = np.array([])
+    for voxel in voxel_grid.voxel_array.flat:
+        data_mass = np.append(data_mass,voxel.df["M_pE"])
+
+    masses = np.logspace(-1,2.2,10000)
+    plt.figure(dpi=300,facecolor="w")
+    for n in range(len(top_samples)):
+        plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(μM[n]),scale=np.exp(σM[n])),alpha=0.01,linewidth=1.1, c="b")
+    plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(μM[0]),scale=np.exp(σM[0])),alpha=0.5, c='r',label="best fit")
+    plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(1.00),scale=np.exp(1.65)),alpha=0.5, c='g',label="N&R 2020") ### wtfreak logs? 
+   
+    # Compute histogram counts manually
+    counts, bins = np.histogram(data_mass, bins=10000, density=True)
+
+    # Log-transform the counts (avoid log(0))
+    log_counts = np.log10(counts + 1)   # +1 avoids log(0)
+
+    # Plot as a bar plot on the same axes
+    bin_centers = 0.5 * (bins[:-1] + bins[1:])
+    plt.bar(bin_centers, counts, width=(bins[1]-bins[0]), alpha=0.5, label="log histogram")
+
+    plt.ylim([1e-3,1.2])
+    plt.xlim([0,100])
+    plt.xlabel("Mass [$M_{⊕}$]",fontsize=10)
+    plt.legend()
+    plt.title('Close-in Exoplanet Mass Distribution')
+    plt.savefig("../results/plots/model_visualization/param_0/model_mass.png")
+
+    print("best fit mu_M:",μM[0] )
+    print("best fit sigma_M:",σM[0] )
+
+
+
 def param_corner_plot(results_folder,model_id,nburnin,filename):
-    ############ this needs to be fixed somehow, i think there might be a dimension mismatch between the corner and the h5 file...
     corner_plot_folder = os.path.join(results_folder,"plots","corners",f"param_{model_id}")
     os.makedirs(corner_plot_folder, exist_ok=True)
     sampler_backend_folder = results_folder + f"/param_backend"
@@ -509,22 +633,55 @@ def param_trace_plot(results_folder,model_id,nburnin,filename):
 
     reader = emcee.backends.HDFBackend(file_path)
 
+    print("reader.accepted / reader.rejected: ", reader.accepted / reader.iteration)
+
+
+
     samples = reader.get_chain()
     samples = samples[nburnin:,:,:]
-
+    
     n_steps, n_walkers, n_params = samples.shape
 
-    for i in range(n_params):
-        fig, ax = plt.subplots(figsize=(10, 2.5))
-        for walker in range(n_walkers):
-            ax.plot(samples[:, walker, i], alpha=0.5, lw=0.8)
-        label = param_labels[i]
-        # ax.set_title(f"Trace plot for {label}")
-        ax.set_xlabel("Step")
-        ax.set_ylabel(label)
-        plt.tight_layout()
+    
 
-    plt.savefig(trace_plot_folder+f"/{model_id}_corner.png",dpi=150)
+      # Determine grid layout
+    n_cols = 4
+    n_rows = int(np.ceil(n_params / n_cols))
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(8*n_cols, 2.5*n_rows), sharex=True)
+    axes = axes.flatten()  # flatten in case of a grid
+
+    for i in range(n_params):
+        ax = axes[i]
+        for walker in range(n_walkers):
+            ax.plot(samples[:, walker, i], alpha=0.1, lw=0.8)
+        ax.set_ylabel(param_labels[i], fontsize=8)
+        ax.tick_params(axis='both', which='major', labelsize=7)
+
+    # Remove any unused subplots
+    for j in range(n_params, len(axes)):
+        fig.delaxes(axes[j])
+
+    axes[-1].set_xlabel("Step")
+    # plt.tight_layout()
+    fig.savefig(os.path.join(trace_plot_folder, f"{model_id}_trace.png"), dpi=150)
+    plt.close(fig)
+
+    # n_steps, n_walkers, n_params = samples.shape
+    # print("n_params:", n_params)
+    # print("samples: ", samples)
+
+    # for i in range(n_params):
+    #     fig, ax = plt.subplots(figsize=(10, 2.5))
+    #     for walker in range(n_walkers):
+    #         ax.plot(samples[:, walker, i], alpha=0.1, lw=0.8)
+    #     label = param_labels[i]
+    #     # ax.set_title(f"Trace plot for {label}")
+    #     ax.set_xlabel("Step")
+    #     ax.set_ylabel(label)
+    #     plt.tight_layout()
+
+    # plt.savefig(trace_plot_folder+f"/{model_id}_trace.png",dpi=150)
 
 
 
@@ -612,13 +769,15 @@ def MES_grid_plot(detection_interp,transit_interp,save_path="../results/plots/co
     ax.get_xaxis().set_major_formatter(ScalarFormatter())
     ax.get_yaxis().set_major_formatter(ScalarFormatter())
 
+    ax.tick_params(axis='x', labelsize=9)
+    
     # Ensure minor ticks are shown
     ax.minorticks_off()
 
     # Axis labels and title
     ax.set_xlabel('Period [days]')
     ax.set_ylabel('Radius [R⊕]')
-    ax.set_title('MES Detection Probability')
+    ax.set_title('Kepler Detection Probability')
 
     # Colorbar with matching contour levels
     cbar = plt.colorbar(cf, ax=ax)
@@ -843,6 +1002,7 @@ def main(voxel_id,plottype):
     print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
+    voxel_grid_param = RPMeoGrid(radius_param_grid_array, period_param_grid_array, mass_param_grid_array, eccentricity_param_grid_array, omega_param_grid_array)
 # Default to False if not specified
     # Actually make the plots.
     if plottype == "residual":
@@ -863,6 +1023,13 @@ def main(voxel_id,plottype):
     if plottype == "param_corner":
         param_corner_plot(results_folder,model_id,nburnin,param_result_filename)
     
+    if plottype == "param_trace":
+        param_trace_plot(results_folder,model_id,nburnin,param_result_filename)
+
+    if plottype == "param_analysis":
+        param_analysis_plots(results_folder,model_id,nburnin,param_result_filename,voxel_grid,input_data_filename)
+
+    
 if __name__ == "__main__":# Default to False if not specified
    
     # Read the second argument as the type of plot.
@@ -871,7 +1038,7 @@ if __name__ == "__main__":# Default to False if not specified
         print("plottype: ", plottype)
 
         voxel_id = 0
-        assert plottype == "trace" or plottype == "param_corner" or plottype == "grid_corner" or plottype == "heatmap" or plottype == "residual", "Only valid plottypes are residual, heatmap, trace, and grid_ or param_corner."
+        assert plottype == "trace" or plottype == "param_analysis" or plottype == "param_corner" or plottype == "param_trace" or plottype == "grid_corner" or plottype == "heatmap" or plottype == "residual", "Only valid plottypes are residual, heatmap, trace, and grid_ or param_corner."
     else:
         print("Indicate what type of plot to create. Valid plottypes are residual, heatmap, trace, and grid_ or param_ corner.")
         sys.exit(1)

@@ -22,7 +22,7 @@ prior_args = {
         'Pbreak1': (2, 1,"lnN"),   # lnN(2,1)
         'Pbreak2':(5,1.5,"lnN"),
         'alpha_e': (0,1,"U"),
-        'lambda_e': (3,2,"N"),
+        'lambda_e': (0,120,"U"),
         'sigma_e':(0,1,"U")
         }
 

@@ -506,16 +506,16 @@ class RPMeoGrid(RPMGrid):
       A list of the mass values denoting the voxel boundaries of the grid.
     eccentricity_grid_array : list(float)
       A list of the eccentricity values denoting the voxel boundaries of the grid.
+    omega_grid_array : list(float)
+      A list of the argument of perihelion values denoting the voxel boundaries of the grid.
     
     Attributes
     ----------
     Inherits all attributes from RPMGrid.
-    
+  
     """
     def __init__(self,radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array,omega_grid_array):
-        """
-        Initializes the RPMeGRID with the given radius, period, mass, and eccentricity grid arrays.
-        """
+        """ Initializes the RPMeoGRID with the given radius, period, mass, and eccentricity grid arrays."""
         self.radius_grid_array = radius_grid_array
         self.period_grid_array = period_grid_array
         self.mass_grid_array = mass_grid_array
@@ -643,7 +643,6 @@ class RPMeoGrid(RPMGrid):
             self.likelihood_array[i, j, k, l, m, 0] = len(self.voxel_array[i,j,k,l,m].df) # assign the length of the voxel data to the 0th index of the likelihood function computing grid
             it.iternext()
 
-
     def find_voxel_by_id(self,voxel_id):
         """Finds the voxel represented by a given id number."""
         location = np.argwhere(self.id_array == voxel_id)
@@ -669,7 +668,6 @@ class RPMeoGrid(RPMGrid):
             if self.voxel_array[i][j][k][l][m].within(radius,period,mass,eccentricity,omega):
                 return i,j,k,l,m
             it.iternext()
-
 
     def __str__(self):
         total = self.r_len * self.p_len * self.m_len * self.e_len* self.o_len

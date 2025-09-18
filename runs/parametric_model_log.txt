@@ -14,3 +14,7 @@ scale < 0 Model: 0
 success: Model 02025-07-30T12:49:20.130420
 name 'voxel_grid' is not defined Model: 0
 success: Model 02025-08-01T12:11:50.044340
+It is unadvisable to use a red-blue move with fewer walkers than twice the number of dimensions. Model: 0
+success: Model 02025-09-12T04:44:24.372617
+name 'best_likelihood' is not defined Model: 0
+success: Model 02025-09-17T18:33:39.521110

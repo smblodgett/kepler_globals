@@ -17,7 +17,7 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
         best_params = get_initial_guess_from_previous(previous_filename)
         assert len(best_params) == ndim, "Mismatch between loaded best params and expected ndim!"
 
-        scale = 1e-5 * np.abs(best_params)
+        scale = 1e-2 * np.abs(best_params)
         p0 = np.random.normal(best_params,scale=scale,size=(nwalkers,len(best_params)))
         print("using previous best initialization method")
     else:
@@ -32,6 +32,7 @@ def get_initial_guess_from_previous(filename):
     previous_best = ReadJson(filename).outProps()
     print("previous_best['params']: ", previous_best["params"])
     print("type(previous_best['params']): ",type(previous_best["params"]))
+    # previous_best_likelihood = previous_best["log_prob"]
 
     return np.array(previous_best["params"])
 

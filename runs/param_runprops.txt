@@ -3,7 +3,7 @@
     "first_run": true,
     "date": "today",
     "time": "now",
-    "user": "autogenerate",
+    "user": "Steven",
     "RunGoal" : "Kepler Occurrence Rate Fitting",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
 
@@ -11,17 +11,17 @@
     "nwalkers" : 60,           # number of walkers in emcee ensemble
     "nburnin" : 50,            # length of burn in
     "ndim" : 20,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 500,           # number of steps for sampling
+    "nsteps" : 2000,           # number of steps for sampling
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction
     "thin_run" : false,       # whether a run should be thinned
-    "initial_guess_method": "previous_best",  # can also be priors
+    "initial_guess_method": "previous_best",  # can also be priors (possible add manual guess mode)
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
     "priors_filename": "../runs/init_priors.csv",
-    "log_filename": "../runs/parametric_model_log.txt", 
+    "log_filename": "model_log.txt", 
     "input_data_folder": "../data/thinned",                   # where the KMDC is.
     "stellar_data_filename": "../data/keplerstellar.csv",     # where keplerstellar.csv is located
     "processed_stellar_data_filename": "../data/keplerstellar_with_cuts.csv", 
@@ -32,11 +32,12 @@
     "results_folder":"../results",                            # where the results go 
     "completeness_plot_folder":"../results/plots/completeness/", 
     "best_guess_filename":"../runs/best_model", 
+    "model_run_output_folder":"../results/param_runs/model_", 
 
     # Additional options
     "verbose" : true,			    # Enables print statements within the code
     "suppress_warnings" : false,    # Suppresses warning statements (things that will print even when not verbose)
     "timer" : true,                # Prints timing of the elements of the script 
-    "updatebestfitfile" : true,		# Writes to a file when new best fit is found ??
+    "updatebestfitfile" : true		# Writes to a file when new best fit is found ??
 
 }

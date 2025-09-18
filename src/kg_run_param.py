@@ -83,7 +83,7 @@ def save_best_model(best_guess_filename,backend):
         print("Existing best parameters are better. No update made.")
 
 
-def run_emcee(model_id,runprops,pool,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
+def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
     """Configures and runs the emcee MCMC sampler.""" # DON"T FORGET POOL
 
     # # Get DR25 catalog.
@@ -105,9 +105,9 @@ def run_emcee(model_id,runprops,pool,dr_path="../data/q1_q17_dr25.csv",expanded_
 
 
     # Create the emcee backend.
-    backend_folder = runprops["results_folder"] + "/param_backend/"
+    backend_folder = model_run_dir
     os.makedirs(backend_folder, exist_ok=True)
-    backend_filename = backend_folder + "param_model_" + str(model_id) + ".h5"
+    backend_filename = backend_folder + "/model_" + str(model_id) +".h5"
     if os.path.exists(backend_filename):
         os.remove(backend_filename)
     backend = emcee.backends.HDFBackend(backend_filename)
@@ -132,9 +132,9 @@ def run_emcee(model_id,runprops,pool,dr_path="../data/q1_q17_dr25.csv",expanded_
     if runprops["verbose"]: print('sampler created. Beginning run.')
 
     if runprops['thin_run']:
-        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True, thin=runprops["nthinning"])
+        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, progress_kwargs={'file':sys.stdout},store = True, thin=runprops["nthinning"])
     else:
-        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, store = True)
+        state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, progress_kwargs={'file':sys.stdout}, store = True)
 
     timer(runprops["timer"],"emcee run")
 
@@ -187,6 +187,7 @@ def main(model_id, runprops):  ## don't forget pool!
             grid.p_detection_array   = np.array(dct["p_detection_array"])
             grid.p_transit_array     = np.array(dct["p_transit_array"])
             grid.id_array            = np.array(dct["id_array"])
+            grid.likelihood_array    = np.array(dct["likelihood_array"])
 
             # 2c) Rebuild the interpolators so .p_detection_interp exists
             grid.p_detection_interp = RegularGridInterpolator(
@@ -231,11 +232,22 @@ def main(model_id, runprops):  ## don't forget pool!
         voxel_grid.assign_column_names(df_columns)
         MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
+
+        if runprops["date"] == "today":
+            runprops["date"] = datetime.now().date().isoformat()
+        if runprops["time"] == "now":
+            runprops["time"] = datetime.now().time().isoformat()
+
+        model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{datetime.now().isoformat(timespec='minutes')}"
+        os.mkdir(model_run_dir)
+
+        with open(model_run_dir + "/runprops.json", "w", encoding="utf-8") as f:
+            json.dump(runprops, f, indent=2)
     
 
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
-    stellar_df = comm.bcast(stellar_df, root=0)
+    stellar_df = comm.bcast(stellar_df,root=0)
     
     
     kg_likelihood.voxel_grid = voxel_grid
@@ -248,12 +260,13 @@ def main(model_id, runprops):  ## don't forget pool!
             sys.exit(0)
 
         try:        
-            run_emcee(model_id,runprops,pool)
+            run_emcee(model_id,runprops,pool,model_run_dir)
             sys.exit(0)
         except Exception as e:
             print("Error occurred..." + str(e))
-            with open(runprops["log_filename"], "a") as file:
-                file.write(str(e)+" Model: "+str(model_id)+"\n")
+            with open(model_run_dir + '/' + runprops["log_filename"], "a") as file:
+                file.write(str(e)+" Model id: "+str(model_id)+"\n")
+                file.write(f"errored at {datetime.now().isoformat()}!")
         finally:
             timer(runprops["timer"],"",mode="final")
     
@@ -275,6 +288,8 @@ if __name__ == "__main__":
         print("invalid input. Enter which mixture model you want to run.")
         sys.exit(1)
     model_id = int(sys.argv[1])
+
+
     
     # Verify the correct path script is being run from. 
     cwd = os.getcwd()
@@ -300,4 +315,4 @@ if __name__ == "__main__":
     with open(runprops["log_filename"], "a") as file:
         now = datetime.now().isoformat()
 
-        file.write("success: Model "+str(model_id)+ now + "\n")
+        file.write("success: Model id "+str(model_id) + now + "\n")

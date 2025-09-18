@@ -13,6 +13,7 @@ from kg_probability_distributions import synthetic_catalog_to_grid, generate_cat
 
 stellar_df = None
 voxel_grid = None
+# current_best_logL = None
 
 def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
     R_mrp = params[0]
@@ -45,6 +46,9 @@ def parametric_log_prior(params):
             case "mu_M":              ### the mean of the mass distribution shouldn't be beneath the lower mass limit of the catalog...
                 if np.exp(params[i]) < 0.1:
                     return -np.inf
+            case "lambda_e":
+                if params[i] < 0:
+                    return -np.inf
 
         match prior_type:
             case "lnN":
@@ -71,8 +75,8 @@ def parametric_log_likelihood(params):
     global voxel_grid, stellar_df
 
     rank = MPI.COMM_WORLD.Get_rank()
-    print(f"[log-prob on rank {rank}]", flush=True)
-    print(os.getpid())
+    # print(f"[log-prob on rank {rank}]", flush=True)
+    # print(os.getpid())
 
 
     len_stellar_df = len(stellar_df)
@@ -105,12 +109,19 @@ def parametric_log_likelihood(params):
         voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
         model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
 
-        # print("voxel_num_data.shape",voxel_num_data.shape)
-        # print("model_count.shape",model_count.shape)
+        print("voxel_num_data.shape",voxel_num_data.shape)
+        print("model_count.shape",model_count.shape)
 
-        if np.any(voxel_num_data < 0 | np.isnan(voxel_num_data)):
+        print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
+
+        print("voxel_num_data",np.ravel(voxel_num_data))
+        # print("model_count",model_count)
+
+        if np.any((voxel_num_data < 0) | (np.isnan(voxel_num_data))):
+            print("aaaaa")
             return -np.inf
-        elif np.any(model_count < 0 | np.isnan(model_count)):
+        elif np.any((model_count < 0) | (np.isnan(model_count))):
+            print("aaaaaaaaaaa")
             return -np.inf
         
 
@@ -119,7 +130,7 @@ def parametric_log_likelihood(params):
         model_count = model_count[~zero_mask] 
 
         no_model_mask = (model_count == 0) & (voxel_num_data > 0)
-        model_count[no_model_mask] = 1e-8
+        model_count[no_model_mask] = 1e-3
 
         # elif voxel_num_data < 0: # there should never be a negative voxel number of data... (could be a raise or warning statement?)
         #     print("negative voxel count!")
@@ -140,7 +151,9 @@ def parametric_log_likelihood(params):
         #     return -np.inf
     
         grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+        # print("grid_sum: ",grid_sum)
         grid_sum = np.sum(grid_sum)
+        print("grid_sum after summing: ", grid_sum)
 
     else: 
         
@@ -207,13 +220,16 @@ def parametric_log_likelihood(params):
     # print("loop eval time is ", end_time - pre_loop_time)
     if method == "new faster way": 
         print("1 eval time (new faster way) is ", end_time - start_time)
-    else:
-        print("1 eval time (old way) is ", end_time - start_time)
+    # else:
+        # print("1 eval time (old way) is ", end_time - start_time)
     # sys.exit(0)
     # print("evaluated normally")
     ##################### ^ old implementation
 
     logL = Gamma0 * grid_sum
+
+    print("logL: ",logL)
+
     return logL if np.isfinite(logL) else -np.inf
 
 
