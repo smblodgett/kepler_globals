@@ -13,7 +13,8 @@
     "input_data_filename": "../data/thinned/KMDC_RPMeo.csv",  # PhoDyMM thinned posteriors (with calculated values)
     "results_folder":"../results",                          # where the results go
     "backend_path": "../results/grid/backend_",                  # the emcee backend location
-    "param_result_filename": "param_model_0.h5",
+    "param_result_filename": "model_0.h5",
+    "model_run_folder": "2025-09-24T17_41",
     
     # Additional options
     "verbose" : true,             # Enables print statements within the code

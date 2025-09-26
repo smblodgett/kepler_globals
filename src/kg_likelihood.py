@@ -1,8 +1,5 @@
-import os
-import sys
 import numpy as np
 import time
-from tqdm import tqdm
 from mpi4py import MPI
 from scipy.special import gamma, gammaln
 from scipy.stats import norm, lognorm, uniform
@@ -219,7 +216,7 @@ def parametric_log_likelihood(params):
     # print("the other thing ", )
     # print("loop eval time is ", end_time - pre_loop_time)
     if method == "new faster way": 
-        print("1 eval time (new faster way) is ", end_time - start_time)
+        print("1 eval time (new faster way) is ", end_time - start_time,flush=True)
     # else:
         # print("1 eval time (old way) is ", end_time - start_time)
     # sys.exit(0)
@@ -228,7 +225,7 @@ def parametric_log_likelihood(params):
 
     logL = Gamma0 * grid_sum
 
-    print("logL: ",logL)
+    print("logL: ",logL,flush=True)
 
     return logL if np.isfinite(logL) else -np.inf
 

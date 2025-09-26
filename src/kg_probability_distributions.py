@@ -1,6 +1,5 @@
 import numpy as np
 from numba import njit
-import time
 from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit

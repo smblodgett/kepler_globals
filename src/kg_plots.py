@@ -485,17 +485,16 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 
 
-def param_analysis_plots(results_folder,model_id,nburnin,filename,voxel_grid,kmdc_filename):
+def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filename,voxel_grid,kmdc_filename):
 
     df = pd.read_csv(kmdc_filename,index_col=0)    
     voxel_grid.setup_dataframes(df.columns)
     voxel_grid.add_data(df)
 
-    visualization_plot_folder = os.path.join(results_folder,"plots","model_visualization",f"param_{model_id}")
+    visualization_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(visualization_plot_folder, exist_ok=True)
-    sampler_backend_folder = results_folder + f"/param_backend"
     
-    file_path = os.path.join(sampler_backend_folder, filename)
+    file_path = os.path.join(visualization_plot_folder, filename)
 
     reader = emcee.backends.HDFBackend(file_path)
 
@@ -561,7 +560,7 @@ def param_analysis_plots(results_folder,model_id,nburnin,filename,voxel_grid,kmd
     plt.xlabel("eccentricity",fontsize=10)
     plt.legend()
     plt.title('Close-in Exoplanet Eccentricity Distribution')
-    plt.savefig("../results/plots/model_visualization/param_0/model_ecc.png")
+    plt.savefig(visualization_plot_folder+'/model_ecc.png')
 
 
 
@@ -591,19 +590,18 @@ def param_analysis_plots(results_folder,model_id,nburnin,filename,voxel_grid,kmd
     plt.xlabel("Mass [$M_{⊕}$]",fontsize=10)
     plt.legend()
     plt.title('Close-in Exoplanet Mass Distribution')
-    plt.savefig("../results/plots/model_visualization/param_0/model_mass.png")
+    plt.savefig(visualization_plot_folder+'/model_mass.png')
 
     print("best fit mu_M:",μM[0] )
     print("best fit sigma_M:",σM[0] )
 
 
 
-def param_corner_plot(results_folder,model_id,nburnin,filename):
-    corner_plot_folder = os.path.join(results_folder,"plots","corners",f"param_{model_id}")
+def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename):
+    corner_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(corner_plot_folder, exist_ok=True)
-    sampler_backend_folder = results_folder + f"/param_backend"
 
-    file_path = os.path.join(sampler_backend_folder, filename)
+    file_path = os.path.join(corner_plot_folder, filename)
 
     reader = emcee.backends.HDFBackend(file_path)
 
@@ -621,15 +619,14 @@ def param_corner_plot(results_folder,model_id,nburnin,filename):
     # plt.suptitle("         Corner Plot") ????
     plt.suptitle(f"Model {model_id}",fontsize=200)
     
-    corner_plot.savefig(corner_plot_folder+f"/{model_id}_corner.png",dpi=150)
+    corner_plot.savefig(corner_plot_folder+f"/model_corner.png",dpi=150)
 
 
-def param_trace_plot(results_folder,model_id,nburnin,filename):
-    trace_plot_folder = os.path.join(results_folder,"plots","traces",f"param_{model_id}")
+def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename):
+    trace_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(trace_plot_folder, exist_ok=True)
-    sampler_backend_folder = results_folder + f"/param_backend"
 
-    file_path = os.path.join(sampler_backend_folder, filename)
+    file_path = os.path.join(trace_plot_folder, filename)
 
     reader = emcee.backends.HDFBackend(file_path)
 
@@ -664,7 +661,7 @@ def param_trace_plot(results_folder,model_id,nburnin,filename):
 
     axes[-1].set_xlabel("Step")
     # plt.tight_layout()
-    fig.savefig(os.path.join(trace_plot_folder, f"{model_id}_trace.png"), dpi=150)
+    fig.savefig(os.path.join(trace_plot_folder, f"model_trace.png"), dpi=150)
     plt.close(fig)
 
     # n_steps, n_walkers, n_params = samples.shape
@@ -999,6 +996,7 @@ def main(voxel_id,plottype):
     residual_plot_type = plotprops.get("residual_plot_type")
     model_id = plotprops.get("model_id")
     param_result_filename = plotprops.get("param_result_filename")
+    model_run_folder = plotprops.get("model_run_folder")
     print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
@@ -1021,13 +1019,13 @@ def main(voxel_id,plottype):
         grid_corner_plot(voxel_id, results_folder,nburnin,upper_rho_limit=upper_rho_prior,is_uniform_density=is_uniform_density)
         
     if plottype == "param_corner":
-        param_corner_plot(results_folder,model_id,nburnin,param_result_filename)
+        param_corner_plot(results_folder,model_run_folder,model_id,nburnin,param_result_filename)
     
     if plottype == "param_trace":
-        param_trace_plot(results_folder,model_id,nburnin,param_result_filename)
+        param_trace_plot(results_folder,model_run_folder,model_id,nburnin,param_result_filename)
 
     if plottype == "param_analysis":
-        param_analysis_plots(results_folder,model_id,nburnin,param_result_filename,voxel_grid,input_data_filename)
+        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,param_result_filename,voxel_grid,input_data_filename)
 
     
 if __name__ == "__main__":# Default to False if not specified

@@ -5,25 +5,34 @@
 # developed by Steven Blodgett, with Darin Ragozzine, Dallin Spencer, and Daniel Jones
 # codebase drawn from Dallin Spencer's multi_moon
 
+from mpi4py import MPI
+import os
+
+# rank initialization signature
+rank = MPI.COMM_WORLD.Get_rank()
+size = MPI.COMM_WORLD.Get_size()
+print(f"[Rank {rank}/{size}] starting up")
+print(os.system("hostname"))
+# space out the walkers by a tenth of a second
+import random, time
+time.sleep(.1*rank) 
 
 import pandas as pd
 import numpy as np
 import sys
-import os
 import emcee
-import time
 from datetime import datetime
 import json
 from schwimmbad import MPIPool
-from mpi4py import MPI
 
 import kg_likelihood
 from kg_griddefiner import *
-from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 from kg_param_initial_guess import get_initial_guess
-from kg_utilities import ReadJson, create_probability_weighted
-from kg_probability_distributions import get_MES
+from kg_utilities import ReadJson
 from kg_plots import MES_grid_plot
+
+print(f"[Rank {rank}/{size}] finished imports")
+print(os.system("hostname"))
 
     
 def timer(is_timer,benchmark_message_string,mode='benchmark'):
@@ -231,24 +240,32 @@ def main(model_id, runprops):  ## don't forget pool!
             df_columns = json.load(f)
         voxel_grid.assign_column_names(df_columns)
         MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
+        print("[Rank 0 made mes grid plot!")
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
-
+        print("[Rank 0 read in stellar df]")
         if runprops["date"] == "today":
             runprops["date"] = datetime.now().date().isoformat()
         if runprops["time"] == "now":
             runprops["time"] = datetime.now().time().isoformat()
 
-        model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{datetime.now().isoformat(timespec='minutes')}"
-        os.mkdir(model_run_dir)
+        model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{datetime.now().isoformat(timespec='minutes').replace(':','_')}"
+        os.makedirs(model_run_dir,exist_ok=True)
 
         with open(model_run_dir + "/runprops.json", "w", encoding="utf-8") as f:
             json.dump(runprops, f, indent=2)
     
+    if comm.Get_rank() == 0:
+        import pickle
+        s = len(pickle.dumps(voxel_grid))
+        print("voxel_grid pickled size (bytes):", s, flush=True)
+
+
 
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
     
+    print("---BROADCAST HAS BEEN COMPLETED---")
     
     kg_likelihood.voxel_grid = voxel_grid
     kg_likelihood.stellar_df = stellar_df
@@ -261,6 +278,11 @@ def main(model_id, runprops):  ## don't forget pool!
 
         try:        
             run_emcee(model_id,runprops,pool,model_run_dir)
+                # log a successful run
+            with open(model_run_dir + '/' + runprops["log_filename"], "a") as file:
+                now = datetime.now().isoformat()
+                file.write("success: Model id "+str(model_id) + " " + now + "\n")
+            
             sys.exit(0)
         except Exception as e:
             print("Error occurred..." + str(e))
@@ -274,11 +296,6 @@ def main(model_id, runprops):  ## don't forget pool!
 
 if __name__ == "__main__":
 
-    # rank initialization signature
-    rank = MPI.COMM_WORLD.Get_rank()
-    size = MPI.COMM_WORLD.Get_size()
-    print(f"[Rank {rank}/{size}] starting up")
-
     # for timing purposes
     old_time = time.time()
     start_time = old_time
@@ -288,8 +305,6 @@ if __name__ == "__main__":
         print("invalid input. Enter which mixture model you want to run.")
         sys.exit(1)
     model_id = int(sys.argv[1])
-
-
     
     # Verify the correct path script is being run from. 
     cwd = os.getcwd()
@@ -310,9 +325,3 @@ if __name__ == "__main__":
 
     # run the main script
     main(model_id,runprops)
-
-    # log a successful run
-    with open(runprops["log_filename"], "a") as file:
-        now = datetime.now().isoformat()
-
-        file.write("success: Model id "+str(model_id) + now + "\n")
