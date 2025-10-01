@@ -73,7 +73,7 @@ plt.rcParams['axes.titleweight']='semibold'
 plt.rcParams['axes.titlesize']=12
 
 # This will need to change based on adding new parameters...maybe this should be in the utility file?
-param_labels = ['$Γ_0$',
+param_labels = ['$\text{log}_{10}(Γ_0)$',
                 '$γ_0$',
                 '$γ_1$',  
                 '$γ_2$',  
@@ -595,6 +595,10 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     print("best fit mu_M:",μM[0] )
     print("best fit sigma_M:",σM[0] )
 
+    param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename)
+
+    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename)
+
 
 
 def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename):
@@ -961,7 +965,7 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
     
 
     
-def main(voxel_id,plottype):
+def main(voxel_id,plottype,model_run_folder_argv):
     
     cwd = os.getcwd()
 
@@ -996,7 +1000,11 @@ def main(voxel_id,plottype):
     residual_plot_type = plotprops.get("residual_plot_type")
     model_id = plotprops.get("model_id")
     param_result_filename = plotprops.get("param_result_filename")
-    model_run_folder = plotprops.get("model_run_folder")
+    model_run_folder = plotprops.get("model_run_folder") 
+    
+    if model_run_folder_argv is not None:
+        model_run_folder = model_run_folder_argv
+    
     print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
@@ -1041,13 +1049,12 @@ if __name__ == "__main__":# Default to False if not specified
         print("Indicate what type of plot to create. Valid plottypes are residual, heatmap, trace, and grid_ or param_ corner.")
         sys.exit(1)
 
+    model_run_folder = None
 
     # Read the first argument as the voxel to plot.
     if len(sys.argv) > 2:
-        voxel_id = int(sys.argv[3])
-    else:
-        print("No voxel specified...")
+        voxel_id = int(sys.argv[2])
 
-
+    model_run_folder = ReadJson("model_run_folder.json")["model_run_folder"]
         
-    main(voxel_id,plottype)
+    main(voxel_id,plottype,model_run_folder)

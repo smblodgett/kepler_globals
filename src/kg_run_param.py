@@ -14,8 +14,8 @@ size = MPI.COMM_WORLD.Get_size()
 print(f"[Rank {rank}/{size}] starting up")
 print(os.system("hostname"))
 # space out the walkers by a tenth of a second
-import random, time
-time.sleep(.1*rank) 
+import time
+time.sleep(.05*rank) 
 
 import pandas as pd
 import numpy as np
@@ -130,7 +130,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
     # Create the emcee sampler.
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool, args=())#,pool=pool)
+                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool, args=())
 
     timer(runprops["timer"],"emcee setup")
 
@@ -248,19 +248,18 @@ def main(model_id, runprops):  ## don't forget pool!
         if runprops["time"] == "now":
             runprops["time"] = datetime.now().time().isoformat()
 
-        model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{datetime.now().isoformat(timespec='minutes').replace(':','_')}"
+        model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{(timestamp_folder:=datetime.now().isoformat(timespec='minutes').replace(':','_'))}"
         os.makedirs(model_run_dir,exist_ok=True)
 
         with open(model_run_dir + "/runprops.json", "w", encoding="utf-8") as f:
             json.dump(runprops, f, indent=2)
+
+        import kg_priors
+        prior_args_json = {k: list(v) for k,v in kg_priors.prior_args.items()}
+
+        with open(model_run_dir + "/priors.json", "w") as f:
+            json.dump(prior_args_json, f, indent=4)
     
-    if comm.Get_rank() == 0:
-        import pickle
-        s = len(pickle.dumps(voxel_grid))
-        print("voxel_grid pickled size (bytes):", s, flush=True)
-
-
-
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
@@ -278,11 +277,15 @@ def main(model_id, runprops):  ## don't forget pool!
 
         try:        
             run_emcee(model_id,runprops,pool,model_run_dir)
-                # log a successful run
+            
+            # log a successful run
             with open(model_run_dir + '/' + runprops["log_filename"], "a") as file:
                 now = datetime.now().isoformat()
                 file.write("success: Model id "+str(model_id) + " " + now + "\n")
             
+            with open("model_run_folder.json", "a") as f:
+                json.dump({"model_run_folder":timestamp_folder},f) # so that the plotting script can use this
+
             sys.exit(0)
         except Exception as e:
             print("Error occurred..." + str(e))

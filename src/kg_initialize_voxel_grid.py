@@ -7,8 +7,6 @@ import json
 from kg_utilities import ReadJson
 from kg_griddefiner import RPMeoGrid, RPMeoVoxel
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
-from kg_plots import MES_grid_plot
-
 
 
 import json

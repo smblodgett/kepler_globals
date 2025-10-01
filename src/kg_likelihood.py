@@ -46,6 +46,10 @@ def parametric_log_prior(params):
             case "lambda_e":
                 if params[i] < 0:
                     return -np.inf
+            case "Mbreak1":
+                if params[i] > params[i+1]: # if Mbreak1 is greater than Mbreak2
+                    return -np.inf
+            
 
         match prior_type:
             case "lnN":
@@ -71,13 +75,13 @@ def parametric_log_likelihood(params):
 
     global voxel_grid, stellar_df
 
-    rank = MPI.COMM_WORLD.Get_rank()
+    # rank = MPI.COMM_WORLD.Get_rank()
     # print(f"[log-prob on rank {rank}]", flush=True)
     # print(os.getpid())
 
 
-    len_stellar_df = len(stellar_df)
-    Gamma0 = params[0]
+    # len_stellar_df = len(stellar_df)
+    Gamma0 = 10**params[0]
     grid_sum = 0.0
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs = get_probability_distributions(params)
     
@@ -97,126 +101,51 @@ def parametric_log_likelihood(params):
     # print("catalog generation time is ", time.time() - pre_generation_time)
     # time.sleep(5)
 
-    method = "new faster way"
+    # method = "new faster way"
 
-    if method == "new faster way":
+    # if method == "new faster way":
     # puts the synthetic catalog into the voxel grid all at once.
-        voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
+    voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
-        voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-        model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
+    voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
+    model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
 
-        print("voxel_num_data.shape",voxel_num_data.shape)
-        print("model_count.shape",model_count.shape)
+    # print("voxel_num_data.shape",voxel_num_data.shape)
+    # print("model_count.shape",model_count.shape)
 
-        print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
+    # print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
 
-        print("voxel_num_data",np.ravel(voxel_num_data))
-        # print("model_count",model_count)
+    # print("voxel_num_data",np.ravel(voxel_num_data))
+    # print("model_count",model_count)
 
-        if np.any((voxel_num_data < 0) | (np.isnan(voxel_num_data))):
-            print("aaaaa")
-            return -np.inf
-        elif np.any((model_count < 0) | (np.isnan(model_count))):
-            print("aaaaaaaaaaa")
-            return -np.inf
-        
-
-        zero_mask = (model_count == 0) & (voxel_num_data == 0)
-        voxel_num_data = voxel_num_data[~zero_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
-        model_count = model_count[~zero_mask] 
-
-        no_model_mask = (model_count == 0) & (voxel_num_data > 0)
-        model_count[no_model_mask] = 1e-3
-
-        # elif voxel_num_data < 0: # there should never be a negative voxel number of data... (could be a raise or warning statement?)
-        #     print("negative voxel count!")
-        #     return -np.inf
-        # elif model_count < 0: # there should never be a negative model count number
-        #     print("negative model count!")
-        #     return -np.inf
-        # elif model_count == 0 and voxel_num_data > 0: # if the model predicts nothing and the data has something, 
-        #     # print("model=0, voxel > 0 !")
-        #     model_count = 1e-8
-
-            # grid_sum -= voxel_num_data * 10**5
-            # continue
-
-            # return -np.inf
-        # elif np.isnan(model_count) or np.isnan(voxel_num_data): # if nans are somehow generated, the model should be rejected
-        #     print("nan in voxel or model count!")
-        #     return -np.inf
+    if np.any((voxel_num_data < 0) | (np.isnan(voxel_num_data))):
+        print("aaaaa")
+        return -np.inf
+    elif np.any((model_count < 0) | (np.isnan(model_count))):
+        print("aaaaaaaaaaa")
+        return -np.inf
     
-        grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
-        # print("grid_sum: ",grid_sum)
-        grid_sum = np.sum(grid_sum)
-        print("grid_sum after summing: ", grid_sum)
 
-    else: 
-        
-        ########### old implementation
-        pre_loop_time = time.time()
-        total_model_count_time = 0
-        voxel_number = 0 ###
-        point_buffer = None
+    zero_mask = (model_count == 0) & (voxel_num_data == 0)
+    voxel_num_data = voxel_num_data[~zero_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    model_count = model_count[~zero_mask] 
 
-        for voxel in voxel_grid.voxel_array.flat:
-            # print("likelihood df: ",voxel.df)
-            # pre_data_count_time = time.time()
-            voxel_num_data = len(voxel.df) / 1000 if not voxel.df.empty else 0  # preload the len(voxel.df)
-            # print("data count time is ", time.time() - pre_data_count_time)
-            # print("voxel: ", voxel)
-            # print("voxel_num_data: ", voxel_num_data)
-            # input()
-            # model_count_time = time.time() ################
-            model_count, point_buffer = voxel_model_count(voxel_grid,voxel,synthetic_catalog,point_buffer) # can we do this for all voxels all at once? build in weights
-            # print("model count time is ", (model_count_time:=time.time() - model_count_time)) #############
-            # total_model_count_time += model_count_time
-            # print("model count: ", model_count)
-            
-            if model_count == 0 and voxel_num_data == 0: # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
-                voxel_number += 1
-                continue
-            elif voxel_num_data < 0: # there should never be a negative voxel number of data... (could be a raise or warning statement?)
-                print("negative voxel count!")
-                return -np.inf
-            elif model_count < 0: # there should never be a negative model count number
-                print("negative model count!")
-                return -np.inf
-            elif model_count == 0 and voxel_num_data > 0: # if the model predicts nothing and the data has something, 
-                # print("model=0, voxel > 0 !")
-                model_count = 1e-8
+    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    model_count[no_model_mask] = 1e-3
 
-                # grid_sum -= voxel_num_data * 10**5
-                # continue
 
-                # return -np.inf
-            elif np.isnan(model_count) or np.isnan(voxel_num_data): # if nans are somehow generated, the model should be rejected
-                print("nan in voxel or model count!")
-                return -np.inf
-            
-            pre_likelihood_function_time = time.time()
-            grid_sum += (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
-            # print("likelihood function time is ", time.time() - pre_likelihood_function_time)
-            
-            if np.isnan(grid_sum) or np.isnan(voxel_num_data): # if we're still getting nans here, we are in some serious trouble...
-                fail_number = "grid_sum" if np.isnan(grid_sum) else "voxel_num_data"
-                print("model_count: ", model_count)
-                print("voxel_num_data: ", voxel_num_data)
-                print("voxel: ", voxel)
-                raise ValueError(fail_number+" here is NaN, check your model or data!")
-            
-            voxel_number += 1
-
-        print(f"{voxel_number} voxels evaluated")
+    grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+    # print("grid_sum: ",grid_sum)
+    grid_sum = np.sum(grid_sum)
+    # print("grid_sum after summing: ", grid_sum)
     
     end_time = time.time()
     # print("total model count time is ", total_model_count_time)
     # print("average model count time is ", total_model_count_time / voxel_number)
     # print("the other thing ", )
     # print("loop eval time is ", end_time - pre_loop_time)
-    if method == "new faster way": 
-        print("1 eval time (new faster way) is ", end_time - start_time,flush=True)
+    # if method == "new faster way": 
+    # print("1 eval time (new faster way) is ", end_time - start_time,flush=True) ###
     # else:
         # print("1 eval time (old way) is ", end_time - start_time)
     # sys.exit(0)

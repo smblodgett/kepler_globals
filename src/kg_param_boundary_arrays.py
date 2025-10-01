@@ -14,4 +14,4 @@ mass_grid_array = [0.1,0.5,0.75,1.0,1.5,2.0,3.0,4.0,8.0,16.0,32.0,64.0,128.0,256
 eccentricity_grid_array = [0.0,0.01,0.03,0.05,0.1,0.2,0.3,0.5,0.99] # unitless  6
 # eccentricity_grid_array = [0.0,0.1,0.5,0.99] # TESTING
 
-omega_grid_array = [0.0,120.0,240.0,360.0] # degrees   2
+omega_grid_array = [0.0,360.0] # degrees   2
