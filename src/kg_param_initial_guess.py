@@ -9,6 +9,7 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
         for parameter_name, i in zip(prior_args.keys(),range(ndim)):
             p0[:,i] = get_initial_guess_from_priors(parameter_name, nwalkers)  # Fill each column with initial guesses from priors
         print("using priors initialization method")
+    
     elif method == "previous_best":
         assert previous_filename is not None, "Enter the filename of the run you want to take!"
 
@@ -17,14 +18,17 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
         best_params = get_initial_guess_from_previous(previous_filename)
         assert len(best_params) == ndim, "Mismatch between loaded best params and expected ndim!"
 
-        scale = 1e-2 * np.abs(best_params)
+        scale = 1e-3 * np.abs(best_params)
+        np.random.seed(42)
         p0 = np.random.normal(best_params,scale=scale,size=(nwalkers,len(best_params)))
         print("using previous best initialization method")
+    elif method == "custom":
+        pass
     else:
         raise ValueError("Unknown method for initial guess. Use 'priors'.")
 
     return p0    # This function should return an initial guess for the parametric model parameters.
-
+ 
 
 
 
@@ -33,6 +37,7 @@ def get_initial_guess_from_previous(filename):
     print("previous_best['params']: ", previous_best["params"])
     print("type(previous_best['params']): ",type(previous_best["params"]))
     # previous_best_likelihood = previous_best["log_prob"]
+    print("previous best: ",previous_best["params"])
 
     return np.array(previous_best["params"])
 

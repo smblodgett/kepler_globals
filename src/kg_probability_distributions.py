@@ -374,15 +374,7 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
     
     # print("fake catalog has been created!")
 
-    # subsample_indices = np.random.choice(fake_catalog.shape[1], size=10000, replace=False)
-    # fake_catalog = fake_catalog[:, subsample_indices]
-
-    # implement a kde of the fake catalog...
-    # fake_catalog_kde = gaussian_kde(fake_catalog)
-    # print("end making fake catalog!")
-    # print(fake_catalog_kde)
-    # input()
-
+    # print("fake catalog: ",fake_catalog)
     return fake_catalog
 
 
@@ -467,8 +459,8 @@ def normalize_pdf_to_pmf(pdf, grid):
 
 
 def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
-    synthetic_catalog = synthetic_catalog[:, [1, 2, 0, 3, 4]]
-    # print(synthetic_catalog)
+    synthetic_catalog = synthetic_catalog[:, [2, 0, 1, 3, 4]]
+    # print("rearranged catalog: ", synthetic_catalog)
     synthetic_catalog = synthetic_catalog[
         ~((synthetic_catalog[:, 0] < np.min(voxel_grid.radius_grid_array)) |
         (synthetic_catalog[:, 0] > np.max(voxel_grid.radius_grid_array)))
@@ -524,20 +516,27 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     e_idx = np.digitize(e, voxel_grid.eccentricity_grid_array) - 1
     o_idx = np.digitize(o, voxel_grid.omega_grid_array) - 1
 
-    # # mask valid (inside grid)
-    # valid = (
-    #     (r_idx >= 0) & (r_idx < voxel_grid.r_len) &
-    #     (p_idx >= 0) & (p_idx < voxel_grid.p_len) &
-    #     (m_idx >= 0) & (m_idx < voxel_grid.m_len) &
-    #     (e_idx >= 0) & (e_idx < voxel_grid.e_len) &
-    #     (o_idx >= 0) & (o_idx < voxel_grid.o_len)
-    # )
-    # if not np.any(valid):
-    #     return
+    # print("r_idx: ",r_idx)
+    # print("p_idx: ",p_idx)
+    # print("m_idx: ",m_idx)
+    # print("e_idx: ",e_idx)
+    # print("o_idx: ",o_idx)
 
-    # r_idx = r_idx[valid]; p_idx = p_idx[valid]; m_idx = m_idx[valid]
-    # e_idx = e_idx[valid]; o_idx = o_idx[valid]
-    # w = completeness[valid]
+
+    # # mask valid (inside grid)
+    valid = (
+        (r_idx >= 0) & (r_idx < voxel_grid.r_len) &
+        (p_idx >= 0) & (p_idx < voxel_grid.p_len) &
+        (m_idx >= 0) & (m_idx < voxel_grid.m_len) &
+        (e_idx >= 0) & (e_idx < voxel_grid.e_len) &
+        (o_idx >= 0) & (o_idx < voxel_grid.o_len)
+    )
+    if not np.any(valid):
+        return
+
+    r_idx = r_idx[valid]; p_idx = p_idx[valid]; m_idx = m_idx[valid]
+    e_idx = e_idx[valid]; o_idx = o_idx[valid]
+    w = completeness[valid]
 
     # flatten the multi-index to 1D
     shape = (voxel_grid.r_len, voxel_grid.p_len, voxel_grid.m_len,
@@ -546,12 +545,12 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
 
     # sum weights per flat index
     total_voxels = np.prod(shape)
-    sums = np.bincount(flat_idx, weights=completeness, minlength=total_voxels)
+    sums = np.bincount(flat_idx, weights=w, minlength=total_voxels)
 
     # reshape and add into likelihood array's last index (1)
     sums = sums.reshape(shape)
     # assumes likelihood_array[..., 1] exists and matches shape
-    voxel_grid.likelihood_array[:,:,:,:,:, 1] += sums
+    voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums
 
     return voxel_grid
 

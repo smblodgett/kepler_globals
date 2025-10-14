@@ -37,3 +37,5 @@ srun -n $SLURM_NTASKS --mpi=pmix python -u kg_run_param.py 0
 echo "finished MCMC. Beginning plotting!"
 
 python kg_plots.py param_analysis
+
+rm model_run_folder.json

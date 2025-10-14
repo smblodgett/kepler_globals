@@ -101,7 +101,18 @@ def process_dataframe(df,koi):
         final_system_df = rowe_table_attach(koi,final_system_df) # Add table from Lissauer et al.
         final_system_df = is_in_hsu(final_system_df)
         final_system_df = final_system_df.drop("Unnamed: 0", axis=1) # Get rid of read-in column.
-        final_system_df["kmdc_index"] = final_system_df["KOI"].astype(str) +"_"+ final_system_df["chisq_rank"].astype(int).astype(str) # create the "KMDC index" identifier 
+        id_number_identifier = final_system_df["chisq_rank"].astype(int)
+        match id_number_identifier:
+            case n if n < 10:   
+                leading_zeros_in_id = "000"
+            case n if n >= 10 and n < 100:
+                leading_zeros_in_id = "00"
+            case n if n >= 100 and n < 1000:
+                leading_zeros_in_id = "0"
+            case n if n == 1000:
+                leading_zeros_in_id = ""
+                    ####  remove the and the . in koi number
+        final_system_df["kmdc_index"] = final_system_df["KOI"].astype(str) + leading_zeros_in_id + id_number_identifier.astype(str) # create the "KMDC index" identifier 
         final_system_df["phodymm_index"] = final_system_df.index # Set PhoDyMM's assigned index to its own column
         final_system_df = final_system_df.reset_index(drop=True) # remove the PhoDyMM index and set to default range
         final_system_df = final_system_df[col_headers] # Rearrange columns to be more legible

@@ -59,7 +59,14 @@ def parametric_log_prior(params):
             case "N":
                 lp += norm.logpdf(params[i], loc=mu, scale=sigma)
             case "U":
-                lp += uniform.logpdf(params[i], loc=mu, scale=sigma-mu)
+                # print("prior matched: U")
+                # print("mu: ",mu)
+                # print("sigma: ",sigma)
+                # print("parameter name: ",parameter_name)
+                # # lp += uniform.logpdf(params[i], loc=mu, scale=sigma-mu)
+                if mu > params[i] or sigma < params[i]:
+                    lp = -np.inf
+                # print("lp: ", lp)
             case _:
                 raise ValueError(f"Unknown prior type: {type} for parameter {parameter_name}")
         
@@ -85,6 +92,7 @@ def parametric_log_likelihood(params):
     grid_sum = 0.0
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs = get_probability_distributions(params)
     
+    # print(params)
     # print("get probability distribution time is ", time.time() - start_time)
 
 
@@ -108,12 +116,14 @@ def parametric_log_likelihood(params):
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
+    model_count = Gamma0* voxel_grid.likelihood_array[:,:,:,:,:,1]
 
-    # print("voxel_num_data.shape",voxel_num_data.shape)
-    # print("model_count.shape",model_count.shape)
+    print("voxel_num_data.shape: ",voxel_num_data.shape)
+    print("model_count.shape: ",model_count.shape)
+    print("sum(model_count): ",np.sum(model_count))
 
-    # print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
+    print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
+    print("num of model_count > 0:", len(model_count[model_count > 0]))
 
     # print("voxel_num_data",np.ravel(voxel_num_data))
     # print("model_count",model_count)
@@ -133,11 +143,10 @@ def parametric_log_likelihood(params):
     no_model_mask = (model_count == 0) & (voxel_num_data > 0)
     model_count[no_model_mask] = 1e-3
 
-
     grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
     # print("grid_sum: ",grid_sum)
-    grid_sum = np.sum(grid_sum)
-    # print("grid_sum after summing: ", grid_sum)
+    total_grid_sum = np.sum(grid_sum)
+    print("grid_sum after summing: ", total_grid_sum)
     
     end_time = time.time()
     # print("total model count time is ", total_model_count_time)
@@ -152,7 +161,7 @@ def parametric_log_likelihood(params):
     # print("evaluated normally")
     ##################### ^ old implementation
 
-    logL = Gamma0 * grid_sum
+    logL = total_grid_sum
 
     print("logL: ",logL,flush=True)
 
@@ -162,5 +171,12 @@ def parametric_log_likelihood(params):
 def parametric_log_probability(params):
 
     prior = parametric_log_prior(params)
+
+    # print("prior: ",prior,flush=True)
+
+    if not np.isfinite(prior):
+        print("prior is not finite with this params!!!")
+        print("params: ", params)
+        
 
     return prior + parametric_log_likelihood(params) if np.isfinite(prior) else -np.inf

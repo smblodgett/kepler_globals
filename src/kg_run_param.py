@@ -64,7 +64,7 @@ def timer(is_timer,benchmark_message_string,mode='benchmark'):
 #     print("singles length: ",len(expanded_dr_df.loc[mask]))
 #     return len(expanded_dr_df.loc[mask])
 
-def save_best_model(best_guess_filename,backend):
+def save_best_model(best_guess_filename,model_run_dir,backend):
     samples = backend.get_chain(flat=True)
     log_prob = backend.get_log_prob(flat=True)
 
@@ -83,7 +83,10 @@ def save_best_model(best_guess_filename,backend):
         saved_logp = -np.inf
         saved_params = None
 
-    # === COMPARE AND UPDATE IF BETTER ===
+    with open(model_run_dir + '/best_fit.json', "w") as f:
+        json.dump({"log_prob": best_logp, "params": best_params}, f, indent=2)
+
+    # Compare and update if better
     if best_logp > saved_logp:
         with open(best_guess_filename, "w") as f:
             json.dump({"log_prob": best_logp, "params": best_params}, f, indent=2)
@@ -147,7 +150,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
     timer(runprops["timer"],"emcee run")
 
-    save_best_model(best_guess_filename,backend)
+    save_best_model(best_guess_filename,model_run_dir,backend)
 
 
 
@@ -251,6 +254,10 @@ def main(model_id, runprops):  ## don't forget pool!
         model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{(timestamp_folder:=datetime.now().isoformat(timespec='minutes').replace(':','_'))}"
         os.makedirs(model_run_dir,exist_ok=True)
 
+        with open("model_run_folder.json", "w") as f:
+            print("timestamp folder: ", timestamp_folder)
+            json.dump({"model_run_folder":timestamp_folder},f) # so that the plotting script can use this
+
         with open(model_run_dir + "/runprops.json", "w", encoding="utf-8") as f:
             json.dump(runprops, f, indent=2)
 
@@ -282,9 +289,6 @@ def main(model_id, runprops):  ## don't forget pool!
             with open(model_run_dir + '/' + runprops["log_filename"], "a") as file:
                 now = datetime.now().isoformat()
                 file.write("success: Model id "+str(model_id) + " " + now + "\n")
-            
-            with open("model_run_folder.json", "a") as f:
-                json.dump({"model_run_folder":timestamp_folder},f) # so that the plotting script can use this
 
             sys.exit(0)
         except Exception as e:

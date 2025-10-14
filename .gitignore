@@ -17,3 +17,4 @@ __pycache__/
 *.jld2
 *.h5
 *voxel_grid.json
+model_run_folder.json

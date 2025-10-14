@@ -4,19 +4,19 @@
     "date": "today",
     "time": "now",
     "user": "Steven",
-    "RunGoal" : "uniform priors, long run (to lock in good guesses)",
+    "RunGoal" : "uniform priors, long run (to hopefully lock in good guesses and do better than last time)",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
 
     # Run properties/parameters
-    "nwalkers" : 2000,           # number of walkers in emcee ensemble
+    "nwalkers" : 60,           # number of walkers in emcee ensemble
     "nburnin" : 200,            # length of burn in
     "ndim" : 20,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 5000,           # number of steps for sampling
+    "nsteps" : 400,           # number of steps for sampling
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction
     "thin_run" : false,       # whether a run should be thinned
-    "initial_guess_method": "priors",  # can also be priors (possible add manual guess mode)
+    "initial_guess_method": "previous_best",  # can also be priors (possible add manual guess mode)
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",

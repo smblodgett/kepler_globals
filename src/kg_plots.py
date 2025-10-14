@@ -595,9 +595,10 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     print("best fit mu_M:",μM[0] )
     print("best fit sigma_M:",σM[0] )
 
+    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename)
+
     param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename)
 
-    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename)
 
 
 
@@ -617,6 +618,8 @@ def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename)
     n_steps, n_walkers, n_dim = samples.shape
     samples = np.array(samples)
 
+    
+
     samples_2d = samples.reshape(-1, samples.shape[-1])
     
     corner_plot = corner.corner(samples_2d,labels=param_labels,show_titles=True)
@@ -634,8 +637,11 @@ def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename):
 
     reader = emcee.backends.HDFBackend(file_path)
 
-    print("reader.accepted / reader.rejected: ", reader.accepted / reader.iteration)
+    print("reader.iteration: ",  reader.iteration)
 
+    print("reader.accepted: ",  reader.accepted)
+
+    print("reader.accepted / reader.rejected: ", np.mean(reader.accepted / reader.iteration))
 
 
     samples = reader.get_chain()
@@ -1055,6 +1061,7 @@ if __name__ == "__main__":# Default to False if not specified
     if len(sys.argv) > 2:
         voxel_id = int(sys.argv[2])
 
-    model_run_folder = ReadJson("model_run_folder.json")["model_run_folder"]
+    if os.path.isfile("model_run_folder.json"):
+        model_run_folder = ReadJson("model_run_folder.json").outProps()["model_run_folder"]
         
     main(voxel_id,plottype,model_run_folder)
