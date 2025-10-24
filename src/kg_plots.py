@@ -33,6 +33,7 @@ import emcee
 import os
 import sys
 import re
+import json
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -54,6 +55,9 @@ from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_g
 from kg_griddefiner import RPMGrid, RPMeoGrid
 from kg_constants import *
 from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
+from kg_probability_distributions import get_probability_distributions, generate_catalog, synthetic_catalog_to_grid
+from kg_grid_object_hook import grid_object_hook
+
 
 # Set good-looking plot options
 plt.rcParams['lines.linewidth']   = 2.5
@@ -73,7 +77,7 @@ plt.rcParams['axes.titleweight']='semibold'
 plt.rcParams['axes.titlesize']=12
 
 # This will need to change based on adding new parameters...maybe this should be in the utility file?
-param_labels = ['$\text{log}_{10}(Γ_0)$',
+param_labels = ['$\mathrm{log}_{10}(Γ_0)$',
                 '$γ_0$',
                 '$γ_1$',  
                 '$γ_2$',  
@@ -485,7 +489,7 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 
 
-def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filename,voxel_grid,kmdc_filename):
+def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filename,voxel_grid,kmdc_filename,model_params,stellar_df):
 
     df = pd.read_csv(kmdc_filename,index_col=0)    
     voxel_grid.setup_dataframes(df.columns)
@@ -518,8 +522,12 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     print(top_log_prob)
     print("max top log prob: ",max(top_log_prob),"top log prob[0]: ",top_log_prob[0])
 
-
-
+    with open(model_run_folder+"rng_metadata.json") as f:
+        rng_metadata = json.load(f)
+    
+    master_seed = rng_metadata["master_seed"]
+    rank = rng_metadata["rank"]
+    time_seed = rng_metadata["time_seed"]
 
     γ0 = top_samples[:,1]
     γ1 = top_samples[:,2]
@@ -541,6 +549,17 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     λ = top_samples[:,18]
     σ_e = top_samples[:,19]
 
+
+    Gamma0 = 10**model_params[:,0]
+
+    
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs = get_probability_distributions(model_params)
+    synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed,time_seed)
+    voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
+
+    voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
+    model_count = Gamma0 * voxel_grid.likelihood_array[:,:,:,:,:,1]
+
     def rayleigh_exponential(alpha,lamb,sigma,e):
         return (alpha*((lamb*np.exp(-lamb*e))/(1-np.exp(-lamb))) + 
                 (1-alpha)*((2*e*(1/(2*sigma**2))*np.exp(-1*e**2/(2*sigma**2)))/(1-np.exp(-1/(2*sigma**2)))))
@@ -557,11 +576,15 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     
     plt.hist(data_ecc,bins=1000,density=True)
 
+    model_count_ecc = np.sum(model_count, axis=(0,1,2,4))
+    assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1 
+
+    plt.hist(model_count_ecc,bins=eccentricity_param_grid_array)
+
     plt.xlabel("eccentricity",fontsize=10)
     plt.legend()
     plt.title('Close-in Exoplanet Eccentricity Distribution')
     plt.savefig(visualization_plot_folder+'/model_ecc.png')
-
 
 
     data_mass = np.array([])
@@ -574,19 +597,28 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
         plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(μM[n]),scale=np.exp(σM[n])),alpha=0.01,linewidth=1.1, c="b")
     plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(μM[0]),scale=np.exp(σM[0])),alpha=0.5, c='r',label="best fit")
     plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(1.00),scale=np.exp(1.65)),alpha=0.5, c='g',label="N&R 2020") ### wtfreak logs? 
+
+
    
     # Compute histogram counts manually
     counts, bins = np.histogram(data_mass, bins=10000, density=True)
 
-    # Log-transform the counts (avoid log(0))
-    log_counts = np.log10(counts + 1)   # +1 avoids log(0)
+    model_count_mass = np.sum(model_count, axis=(0,1,3,4))
+    assert len(model_count_mass) == len(mass_param_grid_array) - 1 
+
+
+    counts_model, bins_model = np.histogram(model_count_mass,bins=mass_param_grid_array,density=True)
+
 
     # Plot as a bar plot on the same axes
     bin_centers = 0.5 * (bins[:-1] + bins[1:])
-    plt.bar(bin_centers, counts, width=(bins[1]-bins[0]), alpha=0.5, label="log histogram")
+    bin_centers_model = 0.5 * (bins_model[:-1] + bins_model[1:])
+    plt.bar(bin_centers, counts, width=(bins[1]-bins[0]), alpha=0.5, label="log histogram (observed data)")
+    plt.bar(bin_centers_model, counts_model, width=(bins_model[1]-bins_model[0]), alpha=0.5, label="log histogram (model)")
+
 
     plt.ylim([1e-3,1.2])
-    plt.xlim([0,100])
+    plt.xlim([0,200])
     plt.xlabel("Mass [$M_{⊕}$]",fontsize=10)
     plt.legend()
     plt.title('Close-in Exoplanet Mass Distribution')
@@ -630,8 +662,13 @@ def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename)
 
 
 def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename):
+    
+    
     trace_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(trace_plot_folder, exist_ok=True)
+
+    print("trace_plot_folder: ", trace_plot_folder)
+
 
     file_path = os.path.join(trace_plot_folder, filename)
 
@@ -905,6 +942,7 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
             upper = cumul_upper
             lower = cumul_lower
             
+
         bins = range(len(mean))  # len(mean) = N bins
         bin_edges = y_array      # N+1 edges for N bins
 
@@ -1007,6 +1045,10 @@ def main(voxel_id,plottype,model_run_folder_argv):
     model_id = plotprops.get("model_id")
     param_result_filename = plotprops.get("param_result_filename")
     model_run_folder = plotprops.get("model_run_folder") 
+    voxel_grid_json_object_filename = plotprops.get("voxel_json_filename")
+
+    best_guess_filename = plotprops["best_guess_filename"] + f'_{model_id}.json'
+
     
     if model_run_folder_argv is not None:
         model_run_folder = model_run_folder_argv
@@ -1014,7 +1056,19 @@ def main(voxel_id,plottype,model_run_folder_argv):
     print("Plotting: ", plottype)
     
     voxel_grid = RPMGrid(radius_grid_array,period_grid_array,mass_grid_array)
-    voxel_grid_param = RPMeoGrid(radius_param_grid_array, period_param_grid_array, mass_param_grid_array, eccentricity_param_grid_array, omega_param_grid_array)
+    with open(voxel_grid_json_object_filename, "r") as f:
+        voxel_grid_param = json.load(f,object_hook=grid_object_hook)
+    with open('../data/dataframe_column_names.json', "r") as f:
+        df_columns = json.load(f)
+    voxel_grid_param.assign_column_names(df_columns)
+    stellar_df = pd.read_csv(plotprops["processed_stellar_data_filename"])
+    
+    with open(best_guess_filename, "r") as f:
+        saved = json.load(f)
+        logp = saved["log_prob"]
+        params = saved["params"]
+
+
 # Default to False if not specified
     # Actually make the plots.
     if plottype == "residual":
@@ -1039,7 +1093,7 @@ def main(voxel_id,plottype,model_run_folder_argv):
         param_trace_plot(results_folder,model_run_folder,model_id,nburnin,param_result_filename)
 
     if plottype == "param_analysis":
-        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,param_result_filename,voxel_grid,input_data_filename)
+        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df)
 
     
 if __name__ == "__main__":# Default to False if not specified

@@ -30,6 +30,7 @@ from kg_griddefiner import *
 from kg_param_initial_guess import get_initial_guess
 from kg_utilities import ReadJson
 from kg_plots import MES_grid_plot
+from kg_grid_object_hook import grid_object_hook
 
 print(f"[Rank {rank}/{size}] finished imports")
 print(os.system("hostname"))
@@ -49,7 +50,8 @@ def timer(is_timer,benchmark_message_string,mode='benchmark'):
         benchmark = new_time - old_time
         print("time since "+benchmark_message_string+f": {benchmark} s")
         old_time = new_time
-    
+
+
 
 # def number_of_singles_in_voxel(voxel, expanded_dr_df):
 #     """Returns the number of singles in a given voxel."""
@@ -93,6 +95,18 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
         print("New best parameters saved.")
     else:
         print("Existing best parameters are better. No update made.")
+
+    for rng_metadata_file in os.listdir(model_run_dir+"/rank_metadata"):
+        with open(model_run_dir+"/rank_metadata/"+rng_metadata_file,'r') as f:
+            rng_metadata = json.load(f)
+        logP = rng_metadata["logProb"]
+        if logP == best_logp:
+            with open(model_run_dir+"/rng_metadata.json",'w') as f:
+                json.dump(rng_metadata, f)
+            print("yay! found the metadata for the best run!")
+            break
+
+            
 
 
 def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
@@ -156,74 +170,6 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
 def main(model_id, runprops):  ## don't forget pool!
 
-    def grid_object_hook(dct):
-        # 1) RPMeoVoxel: has eccentricity & omega bounds
-        keys = set(dct)
-        if {
-            "bottom_radius","top_radius",
-            "bottom_period","top_period",
-            "bottom_mass","top_mass",
-            "bottom_eccentricity","top_eccentricity",
-            "bottom_omega","top_omega"
-        }.issubset(keys):
-            v = RPMeoVoxel(
-                dct["bottom_radius"], dct["top_radius"],
-                dct["bottom_period"], dct["top_period"],
-                dct["bottom_mass"],  dct["top_mass"],
-                dct["bottom_eccentricity"], dct["top_eccentricity"],
-                dct["bottom_omega"], dct["top_omega"],
-            )
-            v.id_number = dct.get("id_number", -1)
-            if "df" in dct:
-                v.df = pd.DataFrame(dct["df"])
-                v.is_add_data = True
-            return v
-
-        # 2) RPMeoGrid: must have all five edge arrays + voxel_array + the two prob arrays + id_array
-        if {
-            "radius_grid_array","period_grid_array","mass_grid_array",
-            "eccentricity_grid_array","omega_grid_array",
-            "voxel_array","p_detection_array","p_transit_array","id_array"
-        }.issubset(keys):
-
-            # 2a) Reconstruct the grid object
-            grid = RPMeoGrid(
-                dct["radius_grid_array"],
-                dct["period_grid_array"],
-                dct["mass_grid_array"],
-                dct["eccentricity_grid_array"],
-                dct["omega_grid_array"],
-            )
-            # 2b) Overwrite its raw arrays
-            grid.voxel_array         = np.array(dct["voxel_array"],    dtype=object)
-            grid.p_detection_array   = np.array(dct["p_detection_array"])
-            grid.p_transit_array     = np.array(dct["p_transit_array"])
-            grid.id_array            = np.array(dct["id_array"])
-            grid.likelihood_array    = np.array(dct["likelihood_array"])
-
-            # 2c) Rebuild the interpolators so .p_detection_interp exists
-            grid.p_detection_interp = RegularGridInterpolator(
-                (grid.radius_grid_array,
-                grid.period_grid_array,
-                grid.mass_grid_array,
-                grid.eccentricity_grid_array,
-                grid.omega_grid_array),
-                grid.p_detection_array
-            )
-            grid.p_transit_interp = RegularGridInterpolator(
-                (grid.radius_grid_array,
-                grid.period_grid_array,
-                grid.mass_grid_array,
-                grid.eccentricity_grid_array,
-                grid.omega_grid_array),
-                grid.p_transit_array
-            )
-
-            return grid
-
-        # fallback: leave dict alone
-        return dct
-
     # print(type(voxel_grid))
     # # time.sleep(5)
     # print(voxel_grid)
@@ -233,6 +179,7 @@ def main(model_id, runprops):  ## don't forget pool!
     #     print(voxel)
     voxel_grid = None
     stellar_df = None
+    model_run_dir = None
 
     comm = MPI.COMM_WORLD
     if comm.Get_rank() == 0:
@@ -254,9 +201,10 @@ def main(model_id, runprops):  ## don't forget pool!
         model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{(timestamp_folder:=datetime.now().isoformat(timespec='minutes').replace(':','_'))}"
         os.makedirs(model_run_dir,exist_ok=True)
 
+
         with open("model_run_folder.json", "w") as f:
             print("timestamp folder: ", timestamp_folder)
-            json.dump({"model_run_folder":timestamp_folder},f) # so that the plotting script can use this
+            json.dump({"model_run_folder":timestamp_folder},f) # so that the scp and plotting script can use this
 
         with open(model_run_dir + "/runprops.json", "w", encoding="utf-8") as f:
             json.dump(runprops, f, indent=2)
@@ -270,11 +218,13 @@ def main(model_id, runprops):  ## don't forget pool!
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
+    model_run_dir = comm.bcast(model_run_dir,root=0)
     
     print("---BROADCAST HAS BEEN COMPLETED---")
     
     kg_likelihood.voxel_grid = voxel_grid
     kg_likelihood.stellar_df = stellar_df
+    kg_likelihood.model_run_dir = model_run_dir
 
 
     with MPIPool() as pool:

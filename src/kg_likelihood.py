@@ -1,5 +1,7 @@
 import numpy as np
 import time
+import os
+import json
 from mpi4py import MPI
 from scipy.special import gamma, gammaln
 from scipy.stats import norm, lognorm, uniform
@@ -10,7 +12,8 @@ from kg_probability_distributions import synthetic_catalog_to_grid, generate_cat
 
 stellar_df = None
 voxel_grid = None
-# current_best_logL = None
+model_run_dir = None
+local_best_logProb = -np.inf
 
 def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
     R_mrp = params[0]
@@ -24,7 +27,7 @@ def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
 
 
 def parametric_log_prior(params):
-    start_time = time.time()
+    # start_time = time.time()
     assert len(params) == len(prior_args.keys()), "Number of parameters must match the number of priors!"
     # print("params.shape: ", params.shape)
     lp = 0.0 
@@ -82,7 +85,7 @@ def parametric_log_likelihood(params):
 
     global voxel_grid, stellar_df
 
-    # rank = MPI.COMM_WORLD.Get_rank()
+    rank = MPI.COMM_WORLD.Get_rank()
     # print(f"[log-prob on rank {rank}]", flush=True)
     # print(os.getpid())
 
@@ -105,9 +108,10 @@ def parametric_log_likelihood(params):
         return -np.inf
     
     # pre_generation_time = time.time()
-    synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
+    ######## implement making sure that the random generated one 
+    
     # print("catalog generation time is ", time.time() - pre_generation_time)
-    # time.sleep(5)
 
     # method = "new faster way"
 
@@ -165,18 +169,35 @@ def parametric_log_likelihood(params):
 
     print("logL: ",logL,flush=True)
 
-    return logL if np.isfinite(logL) else -np.inf
+    return (logL if np.isfinite(logL) else -np.inf, rng_metadata, rank)
 
 
 def parametric_log_probability(params):
 
+    global model_run_dir
+    global local_best_logProb
+
     prior = parametric_log_prior(params)
+
+    logL, rng_metadata, rank = parametric_log_likelihood(params)
 
     # print("prior: ",prior,flush=True)
 
     if not np.isfinite(prior):
         print("prior is not finite with this params!!!")
         print("params: ", params)
+
+    logProb = prior + logL if np.isfinite(prior) else -np.inf
+
+    rng_metadata |= {"logProb":logProb}
+
+
+    if logProb > local_best_logProb:
+        local_best_logProb = logProb
+        
+        os.makedirs(model_run_dir+"/rank_metadata",exist_ok=True)
+        with open(model_run_dir+f"/rank_metadata/{rank}.json", "w") as f:
+            json.dump(rng_metadata,f)
         
 
-    return prior + parametric_log_likelihood(params) if np.isfinite(prior) else -np.inf
+    return logProb

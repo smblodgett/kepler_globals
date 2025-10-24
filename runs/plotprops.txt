@@ -5,7 +5,7 @@
     "uniform_densities" : false, # if the densities (and masses) are uniform (typically no, but is an option for visualization purposes)
     "model_id" : 0, # which kind of parametric model is being run
 
-    "nburnin" : 200, # number of burnin steps the emcee run took (should match whatever runprops has for this value)
+    "nburnin" : 0, # number of burnin steps the emcee run took (should match whatever runprops has for this value)
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
@@ -14,7 +14,12 @@
     "results_folder":"../results",                          # where the results go
     "backend_path": "../results/grid/backend_",                  # the emcee backend location
     "param_result_filename": "model_0.h5",
-    "model_run_folder": "2025-10-01T18_44",
+    "model_run_folder": "2025-10-23T11_51",
+    "voxel_json_filename": "../data/voxel_grid.json",
+    "processed_stellar_data_filename": "../data/keplerstellar_with_cuts.csv", 
+    "best_guess_filename":"../runs/best_model", 
+
+
     
     # Additional options
     "verbose" : true,             # Enables print statements within the code

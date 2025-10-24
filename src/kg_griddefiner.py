@@ -613,6 +613,7 @@ class RPMeoGrid(RPMGrid):
             assert MES >= 0, "MES should be non-negative, check stellar_df and input parameters."
 
             self.p_detection_array[i, j, k, l, m] = get_detection_probability_hsu(MES,n_transits)[0]
+            #### TODO: this one could be the average of N stars, each with their own grid. what each planet is like around all the stars then take the average
             
             self.p_transit_array[i, j, k, l, m] = get_transit_probability(stellar_df, self.mass_grid_array[k],
                                                                             self.radius_grid_array[i],

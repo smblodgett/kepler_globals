@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit
+import time
 from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
@@ -134,7 +135,7 @@ class RadiusDistribution:
                 + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
                 )
 
-    def sample_radius_given_mass(self,masses):
+    def sample_radius_given_mass(self,masses,rng):
         radii = np.empty_like(masses)
 
         mu = self.mu_total(masses)
@@ -152,45 +153,26 @@ class RadiusDistribution:
             print("self.σ2",self.σ2)
             print("self.C",self.C) 
         assert np.all(sigma > 0), "Sigma must be positive, but got sigma = {}".format(sigma)
-        lower_density_bound = radius_given_density_mass(10, masses) # this is the upper density limit of 10 g/cm^3
-        a = (lower_density_bound - mu) / sigma
+        print("min(masses),max(masses): ", min(masses),max(masses))
+        print("min(mu),max(mu): ", min(mu),max(mu))
+
+        lower_radius_bound = radius_given_density_mass(10, masses) # this is the upper density limit of 10 g/cm^3
+        a = (lower_radius_bound - mu) / sigma # ummm... shouldn't this be 0.01 instead of 10? wtfreak
+        print("lower_density_bound: ",lower_radius_bound)
+        print("a:" , a)
         b = np.full_like(a, np.inf)
-        radii = truncnorm.rvs(a,b, loc=mu, scale=sigma)
+        radii = truncnorm.rvs(a,b, loc=mu, scale=sigma, random_state=rng)
+        print("min(radii),max(radii): ",min(radii),max(radii))
+        print("radii: ",radii)
         if not np.all(radii > 0.25):
             bad_places = np.where(radii <= 0.25)
             print("radii: ", radii)
             print("mu[bad_places]: ", mu[bad_places])
             print("sigma[bad_places]: ", sigma[bad_places])
-            print("lower_density_bound[bad_places]: ", lower_density_bound[bad_places])
+            print("lower_density_bound[bad_places]: ", lower_radius_bound[bad_places])
             # print("radiis[np.where(radii <= 0.25)]: ", radii[np.where(radii <= 0.25)])
             raise ValueError("Radii must be above 0.25, but got radii = {}".format(radii))
-        # assert np.all(radii > 0.25), "Radii must be above 0.25, but got radii = {}".format(radii)
-        # radii = np.random.normal(mu, sigma)
-        # mask = radii < 0.25
-        # i = 0
-        # while np.any(mask):
-        #     radii[mask] = np.random.normal(mu[mask], sigma[mask])
-        #     mask = radii < 0.25
-        #     if i%10 ==0:
-        #         print("mu[mask]: ", mu[mask])
-        #         print("sigma[mask]: ", sigma[mask])
-        #         print("radii[mask]: ", radii[mask])
-        #         print(i," iterations to get radii > 0.25")
-        #         print("len(radii[mask]): ", len(radii[mask]))
-        #     if i%100 == 0:
-        #         print("len of mass < 0.1: ", len(masses[masses < 0.1]))
-        #         print(masses)
-        #         print("radii : ", radii)
-        #     i += 1
-            
-        # for i,mass in enumerate(masses):
-        #     # if (radius := pure_silicate_radius(mass)) < 1.6 and mass < 100:
-        #     #     radii = np.append(radii,radius)
-        #     # else:
-        #     radius = np.random.normal(mu_tot:=self.mu_total(mass),mu_tot*self.sigma_total(mass))
-        #     while radius < 0.4:
-        #         radius = np.random.normal(mu_tot,mu_tot*self.sigma_total(mass))
-        #     radii[i] = radius
+
         return radii
     
     def radius_pdf_area(self,low_radius,high_radius): # so does this just return the number of points in a certain radius range?
@@ -233,16 +215,12 @@ class EccentricityDistribution:
 
 def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     
-    # stellar_df["u1"] = stellar_df['limbdark_coeff1'] #-1.93 * 10**-4 * stellar_df['teff'] + 1.5169
-    # stellar_df["u2"] = stellar_df['limbdark_coeff2'] #1.25 * 10**-4 * stellar_df['teff'] - 0.4601
-
-
 
     stellar_df["u1"] = -1.93 * 10**-4 * stellar_df['teff'] + 1.5169
     stellar_df["u2"] = 1.25 * 10**-4 * stellar_df['teff'] - 0.4601
 
     stellar_df["c0"] = 1 - (stellar_df['u1'] + stellar_df['u2'])
-    stellar_df["omega"] = stellar_df['c0']/4 + (stellar_df['u1']+(2*stellar_df['u2']))/6 - stellar_df['u2']/8
+    stellar_df["omega_zink"] = stellar_df['c0']/4 + (stellar_df['u1']+(2*stellar_df['u2']))/6 - stellar_df['u2']/8
 
     # print("stellar median radius: ", np.median(stellar_df['radius']))
     # print(stellar_df)
@@ -272,13 +250,9 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
 
     def find_CDPP(transit_duration):
         
-        # cpdds = [np.median(stellar_df[col]) for col in stellar_df.columns if col.startswith('rrmscdpp')]
-        # durations = [1.5,2,2.5,3,3.5,4.5,5,6,7.5,9,10.5,12,12.5,15]
-        # cdpp_f = UnivariateSpline(durations,cpdds,s=0)
-        # return cdpp_f(transit_duration)
-            # def find_CDPP(transit_duration):
         
         cpdds = [np.median(stellar_df[col]) for col in stellar_df.columns if col.startswith('rrmscdpp')]
+        ###### TODO: doublecheck that the cpdds are in the right order with the durations
         durations = [1.5,2,2.5,3,3.5,4.5,5,6,7.5,9,10.5,12,12.5,15]
         cdpp_f = PchipInterpolator(durations,cpdds,extrapolate=False)
 
@@ -294,7 +268,7 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     def get_depth(stellar_df,k_rp):
         return 1 - (np.median(stellar_df['c0'])/4 
                     + ((np.median(stellar_df["u1"])+(2*np.median(stellar_df["u2"])))*(1-k_rp**2)**1.5)/6 
-                    -   np.median(stellar_df["u2"])*(1-k_rp**2)/8) / (np.median(stellar_df["omega"]))
+                    -   np.median(stellar_df["u2"])*(1-k_rp**2)/8) / (np.median(stellar_df["omega_zink"]))
 
 
     
@@ -349,33 +323,52 @@ def get_detection_probability_hsu(MES,n_transits):
 
 # def draw_radii(mass_distribution):
 
+# generate a seed used to rng the synthetic catalog
+def random_seed_generation(master_seed,*args):
+    seed_seq = np.random.SeedSequence([int(master_seed)] + [int(a) for a in args])
+    return int(seed_seq.generate_state(1)[0] & 0xFFFFFFFF)
 
 
-def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid):
+def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=None):
+    
+    # np.random.seed(22)
+
     # print("begin generating fake catalog...")
     fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),5)) # change if including impact parameter or other dimension!
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
-    fake_catalog[:,0] = np.random.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
+    
+    if master_seed is None:
+        master_seed = 22
+    if time_seed is None:
+        time_seed = int(time.time()) & 0xFFFFFF
 
-    fake_catalog[:,1] = np.random.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
+    rng_metadata = {"master_seed":master_seed,
+                    "rank":rank,"time_seed":time_seed} 
+
+    rng_seed = random_seed_generation(master_seed,rank,time_seed)
+    rng = np.random.default_rng(seed=rng_seed)
+
+    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
+
+    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
     mask = fake_catalog[:,1] < 0.1
     while np.any(mask):
         print("Some masses are less than 0.1 M_E, regenerating...")
-        fake_catalog[:,1][mask] = np.random.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
+        fake_catalog[:,1][mask] = rng.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
     
     # print("make radius distribution...")
-    fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1])  # Radius
+    fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     
-    fake_catalog[:,3] = np.random.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
-    fake_catalog[:,4] = np.random.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
+    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
+    fake_catalog[:,4] = rng.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
     # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
     # print("fake catalog has been created!")
 
     # print("fake catalog: ",fake_catalog)
-    return fake_catalog
+    return fake_catalog, rng_metadata
 
 
 def get_probability_distributions(params):
