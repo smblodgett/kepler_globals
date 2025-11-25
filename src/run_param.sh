@@ -1,9 +1,11 @@
 #!/bin/bash --login
 
 #SBATCH --time=8:00:00
-#SBATCH --ntasks=2001
-#SBATCH --mem-per-cpu=2G
+#SBATCH --ntasks=1001
+#SBATCH --mem-per-cpu=4G
 #SBATCH -J "kepler_globals_param"
+
+export PMIX_MCA_psec=^munge
 
 ulimit -n 65535
 
@@ -26,8 +28,6 @@ import kg_probability_distributions
 import kg_plots
 print("warm imports done on", socket.gethostname(), "took", time.time()-t0)
 PY
-
-python -u kg_initialize_voxel_grid.py
 
 echo "beginning srun"
 

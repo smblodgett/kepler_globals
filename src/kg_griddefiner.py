@@ -541,6 +541,8 @@ class RPMeoGrid(RPMGrid):
         self.id_array=np.empty((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len))
         self.p_detection_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
         self.p_transit_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
+        self.completeness_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
+
         self.likelihood_array=np.zeros((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len,2))
 
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
@@ -588,53 +590,185 @@ class RPMeoGrid(RPMGrid):
             # num_data_with_weighting(self.voxel_array[r, p, m, e].df)
             # self.voxel_array[r, p, m, e].create_probability_weighted()
     
-    def setup_completeness_grid(self,stellar_df,N_SAMPLE_STARS=100):
+    def setup_completeness_grid(self,stellar_df,comm):
 
-        stellar_df=stellar_df.sample(n=N_SAMPLE_STARS,random_state=41)
+        print("inside completeness setup!")
 
-        it = np.nditer(self.p_detection_array, flags=['multi_index'], op_flags=['writeonly'])
-        for grid_edgepoint_number in range((self.r_len+1) * (self.p_len+1) * (self.m_len+1) * (self.e_len+1) * (self.o_len+1)):
-            i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
-
+        def compute_vertex_value(i,j,k,l,m,stellar_df):
+           
             print("mass input: ", self.mass_grid_array[k])
             print("radius input: ", self.radius_grid_array[i])
             print("period input: ", self.period_grid_array[j])
-            print("hdfhsdafhsdfhsdsdaasdfadsf")
-            print("self.eccentricity_grid_array[l]: ", self.eccentricity_grid_array[l])
+            # print("self.eccentricity_grid_array[l]: ", self.eccentricity_grid_array[l])
             print("eccentricity input: ", self.eccentricity_grid_array[l])
             print("omega input: ", self.omega_grid_array[m])
-            MES,n_transits = get_MES(stellar_df, self.mass_grid_array[k],
-                                                    self.radius_grid_array[i],
-                                                    self.period_grid_array[j],
-                                                    self.eccentricity_grid_array[l],
-                                                    self.omega_grid_array[m],
-                                                    b=0
-                                                    )
-            assert MES >= 0, "MES should be non-negative, check stellar_df and input parameters."
+            MESs = []
+            n_transits_list = []
+            transit_prob_list = []
+            detection_prob_list = []
+            completeness_list = []
+            for star_ind, star_row in stellar_df.iterrows():
+                star_df = stellar_df.loc[[star_ind]]
+                MES,n_transits = get_MES(star_df, self.mass_grid_array[k],
+                                                        self.radius_grid_array[i],
+                                                        self.period_grid_array[j],
+                                                        self.eccentricity_grid_array[l],
+                                                        self.omega_grid_array[m],
+                                                        b=0
+                                                        )
+                if np.isnan(MES) and np.isnan(n_transits):
+                    continue
+                MESs.append(MES)
+                n_transits_list.append(n_transits)
+                transit_prob = get_transit_probability(star_df, self.mass_grid_array[k],
+                                                                 self.radius_grid_array[i],
+                                                                 self.period_grid_array[j],
+                                                                 self.eccentricity_grid_array[l],
+                                                                 self.omega_grid_array[m]
+                                                                 )
+                transit_prob_list.append(transit_prob)
+                
+                if n_transits > 2:
+                    detection_prob = get_detection_probability_hsu(MES,n_transits)[0]
+                else:
+                    print(f"n transits = {n_transits}")
+                    detection_prob = 0
 
-            self.p_detection_array[i, j, k, l, m] = get_detection_probability_hsu(MES,n_transits)[0]
-            #### TODO: this one could be the average of N stars, each with their own grid. what each planet is like around all the stars then take the average
+                detection_prob_list.append(detection_prob)
+
+                completeness = detection_prob * transit_prob
+                completeness_list.append(completeness)
+
+            return np.mean(completeness_list)
             
-            self.p_transit_array[i, j, k, l, m] = get_transit_probability(stellar_df, self.mass_grid_array[k],
-                                                                            self.radius_grid_array[i],
-                                                                            self.period_grid_array[j],
-                                                                            self.eccentricity_grid_array[l],
-                                                                            self.omega_grid_array[m]
-                                                                            )
-            # it[0] = grid_edgepoint_number  # Write to id_array
-            it.iternext()
+        tasks = list(np.ndindex(self.r_len+1,
+                        self.p_len+1,
+                        self.m_len+1,
+                        self.e_len+1,
+                        self.o_len+1))
+        # if comm.rank == 0 : print("tasks: ", tasks)
+        # input()
+        size = comm.Get_size()
+        chunks = [tasks[r::size] for r in range(size)]
 
-        self.p_detection_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
-                                                  self.mass_grid_array,self.eccentricity_grid_array,
-                                                  self.omega_grid_array),self.p_detection_array
-                                                  )
+        my_chunk = comm.scatter(chunks, root=0)
+
+        partial_results = []
+
+        for (i,j,k,l,m) in my_chunk:
+            val = compute_vertex_value(i,j,k,l,m,stellar_df)
+            partial_results.append((i,j,k,l,m,val))
+
+        all_results = comm.gather(partial_results, root=0)
+
+        if comm.rank == 0:
+            
+            # print(all_results)
+
+            # it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
+            # for id_number in range(self.r_len * self.p_len * self.m_len * self.e_len * self.o_len):
+            #     i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l) position
+            
+            flat = [item for sublist in all_results for item in sublist]
+
+            print("len(flat): ", len(flat))
+
+            # fill the array
+
+            # print(flat)
+
+            for (i,j,k,l,m,val) in flat:
+                self.completeness_array[i,j,k,l,m] = val
+
+            print("self.completeness_array.size: ",self.completeness_array.size)
+            self.completeness_interp = RegularGridInterpolator(
+                                                              (self.radius_grid_array,
+                                                              self.period_grid_array,
+                                                              self.mass_grid_array,
+                                                              self.eccentricity_grid_array,
+                                                              self.omega_grid_array),
+                                                              self.completeness_array
+                                                              )
+        
+        # convert to numpy arrays, vectorize this whole boi 
+    #     it = np.nditer(self.p_detection_array, flags=['multi_index'], op_flags=['writeonly'])
+    #     for grid_edgepoint_number in range((self.r_len+1) * (self.p_len+1) * (self.m_len+1) * (self.e_len+1) * (self.o_len+1)):
+    #         i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
+
+    #         print("mass input: ", self.mass_grid_array[k])
+    #         print("radius input: ", self.radius_grid_array[i])
+    #         print("period input: ", self.period_grid_array[j])
+    #         # print("self.eccentricity_grid_array[l]: ", self.eccentricity_grid_array[l])
+    #         print("eccentricity input: ", self.eccentricity_grid_array[l])
+    #         print("omega input: ", self.omega_grid_array[m])
+    #         MESs = []
+    #         n_transits_list = []
+    #         transit_prob_list = []
+    #         detection_prob_list = []
+    #         completeness_list = []
+    #         for star_ind, star_row in stellar_df.iterrows():
+    #             star_df = stellar_df.loc[[star_ind]]
+    #             MES,n_transits = get_MES(star_df, self.mass_grid_array[k],
+    #                                                     self.radius_grid_array[i],
+    #                                                     self.period_grid_array[j],
+    #                                                     self.eccentricity_grid_array[l],
+    #                                                     self.omega_grid_array[m],
+    #                                                     b=0
+    #                                                     )
+    #             if np.isnan(MES) and np.isnan(n_transits):
+    #                 continue
+    #             MESs.append(MES)
+    #             n_transits_list.append(n_transits)
+    #             transit_prob = get_transit_probability(star_df, self.mass_grid_array[k],
+    #                                                              self.radius_grid_array[i],
+    #                                                              self.period_grid_array[j],
+    #                                                              self.eccentricity_grid_array[l],
+    #                                                              self.omega_grid_array[m]
+    #                                                              )
+    #             transit_prob_list.append(transit_prob)
+                
+    #             if n_transits > 2:
+    #                 detection_prob = get_detection_probability_hsu(MES,n_transits)[0]
+    #             else:
+    #                 print("n transits is less than 3!!")
+    #                 detection_prob = 0
+
+    #             detection_prob_list.append(detection_prob)
+
+    #             completeness = detection_prob * transit_prob
+    #             completeness_list.append(completeness)
+
+            
+    #         # avg_MES = np.mean(MESs)
+    #         # # print("n_transits_list: ",n_transits_list)
+    #         # avg_n_transits = np.round(np.mean(n_transits_list))
+    #         # avg_transit_prob = np.mean(transit_prob_list)
+            
+    #         # assert avg_MES >= 0, "MES should be non-negative, check stellar_df and input parameters."
+    #         # print("avg_n_transits: ",avg_n_transits)
+    #         #### TODO: this one could be the average of N stars, each with their own grid. what each planet is like around all the stars then take the average
+            
+    #         # self.p_transit_array[i, j, k, l, m] = avg_transit_prob
+    #         # self.p_detection_array[i, j, k, l, m] = np.mean(detection_prob_list)
+    #         self.completeness_array[i, j, k, l, m] = np.mean(completeness_list)
+    #         # it[0] = grid_edgepoint_number  # Write to id_array
+    #         it.iternext()
+
+    #     # self.p_detection_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
+    #     #                                           self.mass_grid_array,self.eccentricity_grid_array,
+    #     #                                           self.omega_grid_array),self.p_detection_array
+    #     #                                           )
         
         
-        self.p_transit_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
-                                                  self.mass_grid_array,self.eccentricity_grid_array,
-                                                  self.omega_grid_array),self.p_transit_array
-                                                  )
-
+    #     # self.p_transit_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
+    #     #                                           self.mass_grid_array,self.eccentricity_grid_array,
+    #     #                                           self.omega_grid_array),self.p_transit_array
+    #     #                                           )
+        
+    #     self.completeness_interp = RegularGridInterpolator((self.radius_grid_array,self.period_grid_array,
+    #                                               self.mass_grid_array,self.eccentricity_grid_array,
+    #                                               self.omega_grid_array),self.completeness_array
+    #                                               )
         
     def setup_likelihood_grid(self):
         """Creates a grid that includes the necessary information for the likelihood evaluation to improve runtime."""

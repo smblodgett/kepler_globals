@@ -1,3 +1,16 @@
+from mpi4py import MPI
+import os
+
+# rank initialization signature
+rank = MPI.COMM_WORLD.Get_rank()
+size = MPI.COMM_WORLD.Get_size()
+print(f"[Rank {rank}/{size}] starting up")
+print(os.system("hostname"))
+# space out the walkers by a tenth of a second
+import time
+time.sleep(.02*rank) 
+
+
 import os
 import sys
 import math
@@ -12,14 +25,11 @@ from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_
 import json
 import numpy as np
 import pandas as pd
-
-
-
-import json
-import numpy as np
-import pandas as pd
 import math
 import numbers
+from mpi4py import MPI
+
+
 
 class GridJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -61,75 +71,108 @@ def main(runprops):
     
     use_cache = os.path.isdir(runprops["voxel_data_folder"]) and not runprops["reload_KMDC"]
 
-    if not runprops["suppress_warnings"]: 
+
+    voxel_grid = None
+    stellar_df = None
+    comm = MPI.COMM_WORLD
+    # with MPIPool() as pool:
+        # if not pool.is_master():
+        #     pool.wait()
+        #     sys.exit(0)
+
+    if comm.Get_rank() == 0:
+
+        if not runprops["suppress_warnings"]: 
+            if not use_cache:
+                print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
+                print("Only run this way if your voxel data hasn't yet been cached.")
+        
+        # If the voxels don't have their data cached, then read in everything.
         if not use_cache:
-            print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
-            print("Only run this way if your voxel data hasn't yet been cached.")
-    
-    # If the voxels don't have their data cached, then read in everything.
-    if not use_cache:
-        df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
-        if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
-        # input()
-        print("now we're caching it!")
-        df = df[["R_pE","Period_days","M_pE","e","omega"]]#,"p_trans","MES_rowe"]]
-        #df = create_probability_weighted(df)
-        df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
-        if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
-        # input()
-    # Otherwise, you can just read in 1 voxel that has its data cached.    
-    else:
-        df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv",index_col=0,engine='pyarrow')
-        if runprops["verbose"]: print("read in cached df")
+            df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
+            if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
+            # input()
+            print("now we're caching it!")
+            df = df[["R_pE","Period_days","M_pE","e","omega"]]#,"p_trans","MES_rowe"]]
+            #df = create_probability_weighted(df)
+            df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
+            if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
+            # input()
+        # Otherwise, you can just read in 1 voxel that has its data cached.    
+        else:
+            df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv",index_col=0,engine='pyarrow')
+            if runprops["verbose"]: print("read in cached df")
 
-    print("full data df: ",df)
-    
+        print("full data df: ",df)
+        
 
-    # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
-    voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
-    voxel_grid.setup_dataframes(df.columns)
-    voxel_grid.add_data(df)
+        # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
+        voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
+        print("started grid!")
+        voxel_grid.setup_dataframes(df.columns)
+        print("setup dataframes")
+        voxel_grid.add_data(df)
 
-    gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
-    gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
+        print("initialized voxel grid!")
 
-    stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow')
-    stellar_df = stellar_df[stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
-    stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
+        gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
+        gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
 
+        print("starting stellar df")
 
-    stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
-
-    for old_col,new_col in zip(["teff","mass","radius"],["Teff","Mass","Rad"]):
-        stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
+        stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow')
+        stellar_df = stellar_df[stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+        stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
 
 
-    stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
-    stellar_df = stellar_df[(stellar_df["logg"]>4)]
+        stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
 
-    stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
-    voxel_grid.setup_completeness_grid(stellar_df) # this is the kepler stellar catalog, which has the stellar radii and masses
+        for old_col,new_col in zip(["teff","mass","radius"],["Teff","Mass","Rad"]):
+            stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
+
+
+        stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
+        stellar_df = stellar_df[(stellar_df["logg"]>4)]
+
+        stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
+        
+        print("starting completeness grid")
+
+        stellar_df=stellar_df.sample(n=100,random_state=22)
+
+    voxel_grid = comm.bcast(voxel_grid,root=0)
+    stellar_df = comm.bcast(stellar_df,root=0)
+        
+    voxel_grid.setup_completeness_grid(stellar_df,comm) # this is the kepler stellar catalog, which has the stellar radii and masses
     voxel_grid.setup_likelihood_grid()
     # MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
-    if runprops["verbose"]: print("MES grid has been set up!")
-
-
-    grid_string = json.dumps(voxel_grid,cls=GridJSONEncoder)
-
     
-    with open(runprops["voxel_json_filename"], "w") as f:
-        f.write(grid_string)
+    if runprops["verbose"] and comm.Get_rank() == 0: print("MES grid has been set up!")
 
-    stellar_df.to_csv("../data/keplerstellar_with_cuts.csv")
+    comm.Barrier()
+
+    if comm.Get_rank() == 0:
+        grid_string = json.dumps(voxel_grid,cls=GridJSONEncoder)
+
+        
+        with open(runprops["voxel_json_filename"], "w") as f:
+            f.write(grid_string)
+
+        stellar_df.to_csv("../data/keplerstellar_with_cuts.csv")
 
 
-    df_columns = json.dumps(list(df.columns))
-    with open('../data/dataframe_column_names.json', "w") as f:
-        f.write(df_columns)
+        df_columns = json.dumps(list(df.columns))
+        with open('../data/dataframe_column_names.json', "w") as f:
+            f.write(df_columns)
+        
+        print("Finished writing to json!")
+    
+    comm.Barrier()
 
 
 
 if __name__ == "__main__":       
+    
     # Verify the correct path script is being run from. 
     cwd = os.getcwd()
     print(cwd)        

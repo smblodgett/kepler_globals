@@ -52,6 +52,11 @@ def parametric_log_prior(params):
             case "Mbreak1":
                 if params[i] > params[i+1]: # if Mbreak1 is greater than Mbreak2
                     return -np.inf
+                if params[i] < 0:
+                    return -np.inf
+            case "Mbreak2":
+                if params[i] < 0:
+                    return -np.inf
             
 
         match prior_type:
@@ -179,13 +184,15 @@ def parametric_log_probability(params):
 
     prior = parametric_log_prior(params)
 
+    if not np.isfinite(prior):
+        print("prior is not finite with this params!!!")
+        print("params: ", params)
+        return -np.inf
+
     logL, rng_metadata, rank = parametric_log_likelihood(params)
 
     # print("prior: ",prior,flush=True)
 
-    if not np.isfinite(prior):
-        print("prior is not finite with this params!!!")
-        print("params: ", params)
 
     logProb = prior + logL if np.isfinite(prior) else -np.inf
 

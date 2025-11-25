@@ -15,7 +15,7 @@ print(f"[Rank {rank}/{size}] starting up")
 print(os.system("hostname"))
 # space out the walkers by a tenth of a second
 import time
-time.sleep(.05*rank) 
+time.sleep(.025*rank) 
 
 import pandas as pd
 import numpy as np
@@ -31,6 +31,7 @@ from kg_param_initial_guess import get_initial_guess
 from kg_utilities import ReadJson
 from kg_plots import MES_grid_plot
 from kg_grid_object_hook import grid_object_hook
+from kg_param_boundary_arrays import radius_grid_array
 
 print(f"[Rank {rank}/{size}] finished imports")
 print(os.system("hostname"))
@@ -168,15 +169,8 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
 
 
-def main(model_id, runprops):  ## don't forget pool!
+def main(model_id, runprops):
 
-    # print(type(voxel_grid))
-    # # time.sleep(5)
-    # print(voxel_grid)
-    # # time.sleep(10)
-
-    # for voxel in voxel_grid.voxel_array.flat:
-    #     print(voxel)
     voxel_grid = None
     stellar_df = None
     model_run_dir = None
@@ -189,8 +183,9 @@ def main(model_id, runprops):  ## don't forget pool!
         with open('../data/dataframe_column_names.json', "r") as f:
             df_columns = json.load(f)
         voxel_grid.assign_column_names(df_columns)
-        MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
-        print("[Rank 0 made mes grid plot!")
+        
+        assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
+
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
         print("[Rank 0 read in stellar df]")
         if runprops["date"] == "today":
@@ -200,6 +195,12 @@ def main(model_id, runprops):  ## don't forget pool!
 
         model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{(timestamp_folder:=datetime.now().isoformat(timespec='minutes').replace(':','_'))}"
         os.makedirs(model_run_dir,exist_ok=True)
+        
+        for ecc in [0,0.1,0.5,0.99]:
+            for omega in [0,45,90,135,180,225,270,315,360]:
+                MES_grid_plot(voxel_grid.completeness_interp,model_run_dir,ecc_fixed=ecc,omega_fixed=omega)
+        
+        print("[Rank 0 made mes grid plot!")
 
 
         with open("model_run_folder.json", "w") as f:
@@ -249,7 +250,6 @@ def main(model_id, runprops):  ## don't forget pool!
         finally:
             timer(runprops["timer"],"",mode="final")
     
-
 
 if __name__ == "__main__":
 

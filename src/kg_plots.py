@@ -522,7 +522,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     print(top_log_prob)
     print("max top log prob: ",max(top_log_prob),"top log prob[0]: ",top_log_prob[0])
 
-    with open(model_run_folder+"rng_metadata.json") as f:
+    with open(visualization_plot_folder+"/rng_metadata.json") as f:
         rng_metadata = json.load(f)
     
     master_seed = rng_metadata["master_seed"]
@@ -550,11 +550,15 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     σ_e = top_samples[:,19]
 
 
-    Gamma0 = 10**model_params[:,0]
+    print("model_params: ", model_params)
+    print("log10(Gamma0) model_params[0]: ", model_params[0])
+    print("top samples: ",top_samples)
+
+    Gamma0 = 10**model_params[0]
 
     
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs = get_probability_distributions(model_params)
-    synthetic_catalog = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed,time_seed)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed,time_seed)
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
@@ -577,6 +581,12 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     plt.hist(data_ecc,bins=1000,density=True)
 
     model_count_ecc = np.sum(model_count, axis=(0,1,2,4))
+
+    print("model_count.shape: ",model_count.shape)
+    print("model_count_ecc.shape: ", model_count_ecc.shape)
+    print("len(model_count_ecc): ",len(model_count_ecc))
+    print("len(eccentricity_param_grid_array) - 1: " ,len(eccentricity_param_grid_array) - 1 )
+
     assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1 
 
     plt.hist(model_count_ecc,bins=eccentricity_param_grid_array)
@@ -761,20 +771,18 @@ def grid_corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uni
     corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
 
 
-def MES_grid_plot(detection_interp,transit_interp,save_path="../results/plots/completeness/"):
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array,omega_grid_array = detection_interp.grid
-    mass_fixed = 1.0
-    ecc_fixed = 0.0
-    omega_fixed = 0.0
+def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/",mass_fixed=1.0,ecc_fixed=0.0,omega_fixed=0.0):
+    os.makedirs(os.path.dirname(save_path + '/completeness/'), exist_ok=True)
+    radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array,omega_grid_array = completeness_interp.grid
 
     X1, X2 = np.meshgrid(radius_grid_array, period_grid_array, indexing='ij')
 
     pts = np.column_stack([X1.ravel(), X2.ravel(), np.full(X1.size, mass_fixed),
                            np.full(X1.size, ecc_fixed), np.full(X1.size, omega_fixed)])
     
-    Z1 = detection_interp(pts).reshape(X1.shape)
-    Z2 = transit_interp(pts).reshape(X1.shape)
+    # Z1 = detection_interp(pts).reshape(X1.shape)
+    # Z2 = transit_interp(pts).reshape(X1.shape)
+    Z3 = completeness_interp(pts).reshape(X1.shape)
 
     filled_levels = np.linspace(0, 1, 100)
     contour_levels = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75,1.0]
@@ -797,8 +805,8 @@ def MES_grid_plot(detection_interp,transit_interp,save_path="../results/plots/co
 
     fig, ax = plt.subplots()
 
-    cf = ax.contourf(X2, X1, Z1 * Z2, levels=filled_levels, cmap='Greys_r')
-    cs = ax.contour(X2, X1, Z1 * Z2, levels=contour_levels, colors='green', linewidths=0.5)
+    cf = ax.contourf(X2, X1, Z3, levels=filled_levels, cmap='Greys_r')
+    cs = ax.contour(X2, X1, Z3, levels=contour_levels, colors='green', linewidths=0.5)
     ax.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='green', inline_spacing=3)
 
     # Set log scales
@@ -821,7 +829,7 @@ def MES_grid_plot(detection_interp,transit_interp,save_path="../results/plots/co
     # Axis labels and title
     ax.set_xlabel('Period [days]')
     ax.set_ylabel('Radius [R⊕]')
-    ax.set_title('Kepler Detection Probability')
+    ax.set_title(f'Kepler Detection Probability,e={ecc_fixed},$\omega={omega_fixed}$,M={mass_fixed}')
 
     # Colorbar with matching contour levels
     cbar = plt.colorbar(cf, ax=ax)
@@ -829,7 +837,7 @@ def MES_grid_plot(detection_interp,transit_interp,save_path="../results/plots/co
     cbar.set_ticks(contour_levels)
 
     plt.tight_layout()
-    plt.savefig(save_path + 'MES_detection_probability.png', dpi=300)
+    plt.savefig(save_path + f'/completeness/MES_detection_probability_{ecc_fixed}_{omega_fixed}_{mass_fixed}.png', dpi=300)
 
 
 def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/grid/backend_30",make_gifs=True):

@@ -4,14 +4,14 @@
     "date": "today",
     "time": "now",
     "user": "Steven",
-    "RunGoal" : "uniform priors, long run (to hopefully lock in good guesses and do better than last time)",
+    "RunGoal" : "trying to get completeness to work :/ ",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
 
     # Run properties/parameters
-    "nwalkers" : 60,           # number of walkers in emcee ensemble
-    "nburnin" : 0,            # length of burn in
+    "nwalkers" : 1001,           # number of walkers in emcee ensemble
+    "nburnin" : 100,            # length of burn in
     "ndim" : 20,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 8,           # number of steps for sampling
+    "nsteps" : 2000,           # number of steps for sampling
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction

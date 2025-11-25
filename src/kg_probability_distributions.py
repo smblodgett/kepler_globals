@@ -153,17 +153,17 @@ class RadiusDistribution:
             print("self.σ2",self.σ2)
             print("self.C",self.C) 
         assert np.all(sigma > 0), "Sigma must be positive, but got sigma = {}".format(sigma)
-        print("min(masses),max(masses): ", min(masses),max(masses))
-        print("min(mu),max(mu): ", min(mu),max(mu))
+        # print("min(masses),max(masses): ", min(masses),max(masses))
+        # print("min(mu),max(mu): ", min(mu),max(mu))
 
         lower_radius_bound = radius_given_density_mass(10, masses) # this is the upper density limit of 10 g/cm^3
         a = (lower_radius_bound - mu) / sigma # ummm... shouldn't this be 0.01 instead of 10? wtfreak
-        print("lower_density_bound: ",lower_radius_bound)
-        print("a:" , a)
+        # print("lower_density_bound: ",lower_radius_bound)
+        # print("a:" , a)
         b = np.full_like(a, np.inf)
         radii = truncnorm.rvs(a,b, loc=mu, scale=sigma, random_state=rng)
-        print("min(radii),max(radii): ",min(radii),max(radii))
-        print("radii: ",radii)
+        # print("min(radii),max(radii): ",min(radii),max(radii))
+        # print("radii: ",radii)
         if not np.all(radii > 0.25):
             bad_places = np.where(radii <= 0.25)
             print("radii: ", radii)
@@ -216,46 +216,57 @@ class EccentricityDistribution:
 def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     
 
-    stellar_df["u1"] = -1.93 * 10**-4 * stellar_df['teff'] + 1.5169
-    stellar_df["u2"] = 1.25 * 10**-4 * stellar_df['teff'] - 0.4601
+    stellar_df["u1"] = -1.93 * 10**-4 * stellar_df['teff'].iloc[0] + 1.5169
+    stellar_df["u2"] = 1.25 * 10**-4 * stellar_df['teff'].iloc[0] - 0.4601
 
-    stellar_df["c0"] = 1 - (stellar_df['u1'] + stellar_df['u2'])
-    stellar_df["omega_zink"] = stellar_df['c0']/4 + (stellar_df['u1']+(2*stellar_df['u2']))/6 - stellar_df['u2']/8
+    stellar_df["c0"] = 1 - (stellar_df['u1'].iloc[0] + stellar_df['u2'].iloc[0])
+    stellar_df["omega_zink"] = stellar_df['c0'].iloc[0]/4 + (stellar_df['u1'].iloc[0]+(2*stellar_df['u2'].iloc[0]))/6 - stellar_df['u2'].iloc[0]/8
 
     # print("stellar median radius: ", np.median(stellar_df['radius']))
     # print(stellar_df)
-    sm_axis = (G * (period*24*3600)**2 * (np.median(stellar_df['mass'])*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
+    sm_axis = (G * (period*24*3600)**2 * (stellar_df['mass'].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
     
-    i = np.arccos(((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))*(RSCM/100*np.median(stellar_df['radius'])*b/sm_axis)) # check conversions here!
+    i = np.arccos(((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))*(RSCM/100*stellar_df['radius'].iloc[0]*b/sm_axis)) # check conversions here!
     
-    k_rp = (RETORS*radius) / np.median(stellar_df['radius'])
+    k_rp = (RETORS*radius) / stellar_df['radius'].iloc[0]
     
-    n_tr = np.median(stellar_df["dataspan"]) / period
+    n_tr = stellar_df["dataspan"].iloc[0] / period
 
+    # print("period: ",period)
+    # print("stellar_df['dataspan'].iloc[0]: ",stellar_df["dataspan"].iloc[0])
+    # print("n_tr: ",n_tr)
 
     def get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis):
         # print("np.mean(stellar_df['radius']): ",np.median(stellar_df['radius']))
         # print("sm_axis: ",sm_axis)
         # print("np.sin(i): ",np.sin(i)) 
         # print(((RSCM/100)*np.median(stellar_df['radius'])/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i))
-        if abs((((RSCM/100)*np.median(stellar_df['radius'])/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i)) * np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180))) > 1:
-            print("((RSCM/100)*np.median(stellar_df['radius'])/sm_axis)", ((RSCM/100)*np.median(stellar_df['radius'])/sm_axis))
-            print("np.sqrt((1+k_rp)**2 - b**2)", np.sqrt((1+k_rp)**2 - b**2))
-            print("np.sin(i)", np.sin(i))
-            print("np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180))", np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)))
+        # if abs((((RSCM/100)*stellar_df['radius'].iloc[0]/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i))) > 1:
+        #     print("((RSCM/100)*stellar_df['radius']/sm_axis)", ((RSCM/100)*stellar_df['radius'].iloc[0]/sm_axis))
+        #     print("stellar radius: ",stellar_df['radius'].iloc[0])
+        #     print("k_rp: ",k_rp)
+        #     print("b: ",b)
+        #     print("sm_axis: ",sm_axis)
+        #     print("np.sqrt((1+k_rp)**2 - b**2)", np.sqrt((1+k_rp)**2 - b**2))
+        #     print("np.sin(i)", np.sin(i))
+        #     print("np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180))", np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)))
             
-            raise ValueError("The abs argument of arcsin is greater than 1, which is not possible. Check your inputs.")
-        
-        return (period/np.pi) * np.arcsin(((RSCM/100)*np.median(stellar_df['radius'])/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i)) * np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)) # check conversions here!
+        #     raise ValueError("The abs argument of arcsin is greater than 1, which is not possible. Check your inputs.")
+        arcsin_arg = np.clip(((RSCM/100)*stellar_df['radius'].iloc[0]/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i) , -1, 1)
+        return (period/np.pi) * np.arcsin(arcsin_arg) * np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)) # check conversions here!
 
     def find_CDPP(transit_duration):
         
         
-        cpdds = [np.median(stellar_df[col]) for col in stellar_df.columns if col.startswith('rrmscdpp')]
+        cpdds = [stellar_df[col].iloc[0] for col in stellar_df.columns if col.startswith('rrmscdpp')]
         ###### TODO: doublecheck that the cpdds are in the right order with the durations
         durations = [1.5,2,2.5,3,3.5,4.5,5,6,7.5,9,10.5,12,12.5,15]
         cdpp_f = PchipInterpolator(durations,cpdds,extrapolate=False)
 
+        # print("durations:", durations)
+        # print("cpdds raw:", cpdds)
+        # print("cpdds dtype/finite:", getattr(cpdds, 'dtype', None), np.isfinite(cpdds).all())
+        # print("valid counts:", np.sum(np.isfinite(cpdds)))
 
         def cdpp_model(t, A, B):
             return np.sqrt((A**2) / t + B**2) # power law to extrapolate beyond the given transit duration regime
@@ -266,16 +277,17 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
         return cdpp_f(transit_duration) if not np.isnan(cdpp_f(transit_duration)) else cdpp_model(transit_duration, A, B)
     
     def get_depth(stellar_df,k_rp):
-        return 1 - (np.median(stellar_df['c0'])/4 
-                    + ((np.median(stellar_df["u1"])+(2*np.median(stellar_df["u2"])))*(1-k_rp**2)**1.5)/6 
-                    -   np.median(stellar_df["u2"])*(1-k_rp**2)/8) / (np.median(stellar_df["omega_zink"]))
+        return 1 - (stellar_df['c0'].iloc[0]/4 
+                    + ((stellar_df["u1"].iloc[0]+(2*stellar_df["u2"].iloc[0]))*(1-k_rp**2)**1.5)/6 
+                    -   stellar_df["u2"].iloc[0]*(1-k_rp**2)/8) / (stellar_df["omega_zink"].iloc[0])
 
 
     
     # print("depth: ",get_depth(stellar_df,k_rp)*10**6)
     assert get_depth(stellar_df,k_rp)*10**6 > 0, "Depth must be greater than 0"
-    assert sm_axis > (RSCM/100)*np.median(stellar_df['radius']), "Semi-major axis must be greater than stellar radius"
     
+    if sm_axis < (RSCM/100)*stellar_df['radius'].iloc[0]: #f"Semi-major axis {sm_axis} must be greater than stellar radius {(RSCM/100)*stellar_df["radius"].iloc[0]}"
+        return np.nan, np.nan
     # print("i: ",i)
 
     # print("transit duration: ",get_transit_duration(period,b,ecc,i,omega,k_rp,sm_axis))
@@ -296,8 +308,9 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
                
 
 def get_transit_probability(stellar_df, mass, radius, period, ecc, omega):
-    a = (G * (period*24*3600)**2 * (np.median(stellar_df["mass"])*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
-    return ((np.median(stellar_df["radius"])*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))
+    # geometric probability
+    a = (G * (period*24*3600)**2 * (stellar_df["mass"].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
+    return ((stellar_df["radius"].iloc[0]*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))
 
 
 def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):
@@ -305,6 +318,7 @@ def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):
         return (c / (b**a * gamma(a)) ) * x**(a-1) * np.exp(-x/b)
     return quad(integrand, 0, MES)
 
+# see hsu et al 2019
 def get_detection_probability_hsu(MES,n_transits):
     match n_transits:
         case 3: a,b,c = 33.3884,0.264472,0.699093 
@@ -315,7 +329,9 @@ def get_detection_probability_hsu(MES,n_transits):
         case _ if 10 <= n_transits <= 18: a,b,c = 31.6342,0.279425,0.886144
         case _ if 19 <= n_transits <= 36: a,b,c = 32.6448,0.268898,0.889724
         case _ if 37 <= n_transits: a,b,c = 27.8185,0.32432,0.945075
-        case _: raise ValueError("n_transits is messed up...")
+        case _: 
+            print("n_transits= ",n_transits)
+            raise ValueError("n_transits is messed up...")
     
     def integrand(x):
         return (c / (b**a * gamma(a)) ) * x**(a-1) * np.exp(-x/b)
@@ -476,9 +492,10 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
         ]    # print("bad radii are " ,bad_radii)
     # print("len of bad radii are ", len(bad_radii))
     # print("len of synthetic catalog is ", len(synthetic_catalog))
-    p_d = voxel_grid.p_detection_interp(synthetic_catalog)
-    p_t = voxel_grid.p_transit_interp(synthetic_catalog)
-    completeness = p_d * p_t
+    # p_d = voxel_grid.p_detection_interp(synthetic_catalog)
+    # p_t = voxel_grid.p_transit_interp(synthetic_catalog)
+    # completeness = p_d * p_t
+    completeness = voxel_grid.completeness_interp(synthetic_catalog)
     return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)
     # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
 

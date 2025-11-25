@@ -33,7 +33,7 @@ def grid_object_hook(dct):
     if {
         "radius_grid_array","period_grid_array","mass_grid_array",
         "eccentricity_grid_array","omega_grid_array",
-        "voxel_array","p_detection_array","p_transit_array","id_array"
+        "voxel_array","completeness_array","id_array"
     }.issubset(keys):
 
         # 2a) Reconstruct the grid object
@@ -46,27 +46,18 @@ def grid_object_hook(dct):
         )
         # 2b) Overwrite its raw arrays
         grid.voxel_array         = np.array(dct["voxel_array"],    dtype=object)
-        grid.p_detection_array   = np.array(dct["p_detection_array"])
-        grid.p_transit_array     = np.array(dct["p_transit_array"])
+        grid.completeness_array  = np.array(dct["completeness_array"])
         grid.id_array            = np.array(dct["id_array"])
         grid.likelihood_array    = np.array(dct["likelihood_array"])
 
         # 2c) Rebuild the interpolators so .p_detection_interp exists
-        grid.p_detection_interp = RegularGridInterpolator(
+        grid.completeness_interp = RegularGridInterpolator(
             (grid.radius_grid_array,
             grid.period_grid_array,
             grid.mass_grid_array,
             grid.eccentricity_grid_array,
             grid.omega_grid_array),
-            grid.p_detection_array
-        )
-        grid.p_transit_interp = RegularGridInterpolator(
-            (grid.radius_grid_array,
-            grid.period_grid_array,
-            grid.mass_grid_array,
-            grid.eccentricity_grid_array,
-            grid.omega_grid_array),
-            grid.p_transit_array
+            grid.completeness_array
         )
 
         return grid
