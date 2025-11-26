@@ -142,8 +142,11 @@ def main(runprops):
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
+
+    print("broadcasted voxel grid and stellar df")
         
     voxel_grid.setup_completeness_grid(stellar_df,comm) # this is the kepler stellar catalog, which has the stellar radii and masses
+    print("set up completeness grid")
     voxel_grid.setup_likelihood_grid()
     # MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
     

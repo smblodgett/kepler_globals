@@ -38,12 +38,6 @@ srun -n $SLURM_NTASKS --mpi=pmix python -u kg_run_param.py $model_id
 
 echo "finished MCMC. Beginning plotting!"
 
-filepath=$(jq -r '.model_run_folder' model_run_folder.json)
-
-scp -r $filepath smb9564@haumea-new.byu.edu:/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/results/param_runs/model_$model_id/
-
-echo "got through the scp!"
-
 python kg_plots.py param_analysis
 
 rm model_run_folder.json

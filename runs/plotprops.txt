@@ -6,6 +6,7 @@
     "model_id" : 0, # which kind of parametric model is being run
 
     "nburnin" : 0, # number of burnin steps the emcee run took (should match whatever runprops has for this value)
+    "nthinning" : 50, #the nth number of steps that should be kept when plotting trace/corner plots
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",

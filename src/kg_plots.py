@@ -77,7 +77,7 @@ plt.rcParams['axes.titleweight']='semibold'
 plt.rcParams['axes.titlesize']=12
 
 # This will need to change based on adding new parameters...maybe this should be in the utility file?
-param_labels = ['$\mathrm{log}_{10}(Γ_0)$',
+param_labels = [r'$\mathrm{log}_{10}(Γ_0)$',
                 '$γ_0$',
                 '$γ_1$',  
                 '$γ_2$',  
@@ -489,7 +489,7 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 
 
-def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filename,voxel_grid,kmdc_filename,model_params,stellar_df):
+def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df):
 
     df = pd.read_csv(kmdc_filename,index_col=0)    
     voxel_grid.setup_dataframes(df.columns)
@@ -574,11 +574,14 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
         plt.plot(ecc,rayleigh_exponential(α[n],λ[n],σ_e[n],ecc),alpha=0.01,linewidth=1, c='b')
     plt.plot(ecc,rayleigh_exponential(α[0],λ[0],σ_e[0],ecc),alpha=0.5, c='r',label="best fit")
     
-    data_ecc = np.array([])
+    data_ecc_list = []
+
     for voxel in voxel_grid.voxel_array.flat:
-        data_ecc = np.append(data_ecc,voxel.df["e"])
+        data_ecc_list.append(voxel.df["e"].to_numpy())
+
+    data_ecc = np.concatenate(data_ecc_list)
     
-    plt.hist(data_ecc,bins=1000,density=True)
+    plt.hist(data_ecc,bins=eccentricity_param_grid_array,alpha=0.5)
 
     model_count_ecc = np.sum(model_count, axis=(0,1,2,4))
 
@@ -587,19 +590,23 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     print("len(model_count_ecc): ",len(model_count_ecc))
     print("len(eccentricity_param_grid_array) - 1: " ,len(eccentricity_param_grid_array) - 1 )
 
-    assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1 
+    # assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1 
 
-    plt.hist(model_count_ecc,bins=eccentricity_param_grid_array)
+    plt.hist(model_count_ecc,bins=eccentricity_param_grid_array,alpha=0.5)
 
     plt.xlabel("eccentricity",fontsize=10)
     plt.legend()
     plt.title('Close-in Exoplanet Eccentricity Distribution')
     plt.savefig(visualization_plot_folder+'/model_ecc.png')
+    plt.close()
 
 
-    data_mass = np.array([])
+    data_mass_list = []
+
     for voxel in voxel_grid.voxel_array.flat:
-        data_mass = np.append(data_mass,voxel.df["M_pE"])
+        data_mass_list.append(voxel.df["M_pE"].to_numpy())
+
+    data_mass = np.concatenate(data_mass_list)
 
     masses = np.logspace(-1,2.2,10000)
     plt.figure(dpi=300,facecolor="w")
@@ -633,18 +640,19 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,filena
     plt.legend()
     plt.title('Close-in Exoplanet Mass Distribution')
     plt.savefig(visualization_plot_folder+'/model_mass.png')
+    plt.close()
 
     print("best fit mu_M:",μM[0] )
     print("best fit sigma_M:",σM[0] )
 
-    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename)
+    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
 
-    param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename)
-
-
+    param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
 
 
-def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename):
+
+
+def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename):
     corner_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(corner_plot_folder, exist_ok=True)
 
@@ -654,6 +662,7 @@ def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename)
 
     samples = reader.get_chain()
     samples = samples[nburnin:,:,:]
+    samples = samples[::nthinning, :, :]
 
     print("Chain shape:", samples.shape)
 
@@ -669,6 +678,7 @@ def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,filename)
     plt.suptitle(f"Model {model_id}",fontsize=200)
     
     corner_plot.savefig(corner_plot_folder+f"/model_corner.png",dpi=150)
+    plt.close()
 
 
 def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename):
@@ -769,13 +779,14 @@ def grid_corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uni
                 f"M: {voxel.bottom_mass} - {voxel.top_mass})",fontsize=7)
     
     corner_plot.savefig(corner_plot_folder+f"/{voxel_id}_corner.png",dpi=150)
+    plt.close()
 
 
 def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/",mass_fixed=1.0,ecc_fixed=0.0,omega_fixed=0.0):
     os.makedirs(os.path.dirname(save_path + '/completeness/'), exist_ok=True)
-    radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array,omega_grid_array = completeness_interp.grid
+    radius_param_grid_array,period_param_grid_array,mass_param_grid_array,eccentricity_param_grid_array,omega_param_grid_array = completeness_interp.grid
 
-    X1, X2 = np.meshgrid(radius_grid_array, period_grid_array, indexing='ij')
+    X1, X2 = np.meshgrid(radius_param_grid_array, period_param_grid_array, indexing='ij')
 
     pts = np.column_stack([X1.ravel(), X2.ravel(), np.full(X1.size, mass_fixed),
                            np.full(X1.size, ecc_fixed), np.full(X1.size, omega_fixed)])
@@ -828,8 +839,8 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
 
     # Axis labels and title
     ax.set_xlabel('Period [days]')
-    ax.set_ylabel('Radius [R⊕]')
-    ax.set_title(f'Kepler Detection Probability,e={ecc_fixed},$\omega={omega_fixed}$,M={mass_fixed}')
+    ax.set_ylabel(r'Radius [$R_{\oplus}$]')
+    ax.set_title(fr'Kepler Detection Probability,e={ecc_fixed},$\omega={omega_fixed}$,M={mass_fixed}')
 
     # Colorbar with matching contour levels
     cbar = plt.colorbar(cf, ax=ax)
@@ -838,7 +849,7 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
 
     plt.tight_layout()
     plt.savefig(save_path + f'/completeness/MES_detection_probability_{ecc_fixed}_{omega_fixed}_{mass_fixed}.png', dpi=300)
-
+    plt.close(fig)
 
 def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/grid/backend_30",make_gifs=True):
     """
@@ -1036,6 +1047,7 @@ def main(voxel_id,plottype,model_run_folder_argv):
     getData = ReadJson(plotprops_filename)
     plotprops = getData.outProps()
     nburnin = plotprops.get("nburnin")
+    nthinning = plotprops.get("nthinning")
     verbose = plotprops.get("verbose")
     # plottype = plotprops.get("plottype")
     input_data_filename = plotprops.get("input_data_filename")
@@ -1101,7 +1113,7 @@ def main(voxel_id,plottype,model_run_folder_argv):
         param_trace_plot(results_folder,model_run_folder,model_id,nburnin,param_result_filename)
 
     if plottype == "param_analysis":
-        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df)
+        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df)
 
     
 if __name__ == "__main__":# Default to False if not specified
