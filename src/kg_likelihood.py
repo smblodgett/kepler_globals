@@ -13,6 +13,7 @@ from kg_probability_distributions import synthetic_catalog_to_grid, generate_cat
 stellar_df = None
 voxel_grid = None
 model_run_dir = None
+model_id = None
 local_best_logProb = -np.inf
 
 def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
@@ -88,7 +89,7 @@ def parametric_log_likelihood(params):
     
     start_time = time.time()
 
-    global voxel_grid, stellar_df
+    global voxel_grid, stellar_df, model_id
 
     rank = MPI.COMM_WORLD.Get_rank()
     # print(f"[log-prob on rank {rank}]", flush=True)
@@ -112,20 +113,15 @@ def parametric_log_likelihood(params):
         print("inf in pmfs!")
         return -np.inf
     
-    # pre_generation_time = time.time()
     synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
-    
-    # print("catalog generation time is ", time.time() - pre_generation_time)
 
-    # method = "new faster way"
 
-    # if method == "new faster way":
-    # puts the synthetic catalog into the voxel grid all at once.
-    voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
+    ### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
+    local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
-    voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Gamma0* voxel_grid.likelihood_array[:,:,:,:,:,1]
+    voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
+    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]
 
     print("voxel_num_data.shape: ",voxel_num_data.shape)
     print("model_count.shape: ",model_count.shape)
@@ -133,9 +129,6 @@ def parametric_log_likelihood(params):
 
     print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
     print("num of model_count > 0:", len(model_count[model_count > 0]))
-
-    # print("voxel_num_data",np.ravel(voxel_num_data))
-    # print("model_count",model_count)
 
     if np.any((voxel_num_data < 0) | (np.isnan(voxel_num_data))):
         print("aaaaa")
@@ -151,6 +144,8 @@ def parametric_log_likelihood(params):
 
     no_model_mask = (model_count == 0) & (voxel_num_data > 0)
     model_count[no_model_mask] = 1e-3
+
+    ### EDGE CASE: LOW DATA, HIGH MODEL ONES. CHECK THIS OUT
 
     grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
     # print("grid_sum: ",grid_sum)

@@ -226,6 +226,7 @@ def main(model_id, runprops):
     kg_likelihood.voxel_grid = voxel_grid
     kg_likelihood.stellar_df = stellar_df
     kg_likelihood.model_run_dir = model_run_dir
+    kg_likelihood.model_id = model_id
 
 
     with MPIPool() as pool:

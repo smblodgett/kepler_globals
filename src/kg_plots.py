@@ -491,14 +491,12 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df):
 
-    df = pd.read_csv(kmdc_filename,index_col=0)    
-    voxel_grid.setup_dataframes(df.columns)
-    voxel_grid.add_data(df)
-
     visualization_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(visualization_plot_folder, exist_ok=True)
     
     file_path = os.path.join(visualization_plot_folder, filename)
+
+    print("file_path: ",file_path)
 
     reader = emcee.backends.HDFBackend(file_path)
 
@@ -529,6 +527,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     rank = rng_metadata["rank"]
     time_seed = rng_metadata["time_seed"]
 
+    Γ0 = 10**top_samples[:,0]
     γ0 = top_samples[:,1]
     γ1 = top_samples[:,2]
     γ2 = top_samples[:,3]
@@ -552,6 +551,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     print("model_params: ", model_params)
     print("log10(Gamma0) model_params[0]: ", model_params[0])
+    print("Γ0: ",Γ0)
     print("top samples: ",top_samples)
 
     Gamma0 = 10**model_params[0]
@@ -562,93 +562,77 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Gamma0 * voxel_grid.likelihood_array[:,:,:,:,:,1]
+    model_count = Γ0[0] * voxel_grid.likelihood_array[:,:,:,:,:,1]
 
     def rayleigh_exponential(alpha,lamb,sigma,e):
         return (alpha*((lamb*np.exp(-lamb*e))/(1-np.exp(-lamb))) + 
                 (1-alpha)*((2*e*(1/(2*sigma**2))*np.exp(-1*e**2/(2*sigma**2)))/(1-np.exp(-1/(2*sigma**2)))))
     
-    ecc = np.linspace(0,1,900)
-    plt.figure(dpi=300,facecolor="w")
-    for n in range(len(top_samples)):
-        plt.plot(ecc,rayleigh_exponential(α[n],λ[n],σ_e[n],ecc),alpha=0.01,linewidth=1, c='b')
-    plt.plot(ecc,rayleigh_exponential(α[0],λ[0],σ_e[0],ecc),alpha=0.5, c='r',label="best fit")
+    # ecc = np.linspace(0,1,900)
+    # plt.figure(dpi=300,facecolor="w")
+    # for n in range(len(top_samples)):
+    #     plt.plot(ecc,rayleigh_exponential(α[n],λ[n],σ_e[n],ecc),alpha=0.01,linewidth=1, c='b')
+    # plt.plot(ecc,rayleigh_exponential(α[0],λ[0],σ_e[0],ecc),alpha=0.5, c='r',label="best fit")
     
-    data_ecc_list = []
 
-    for voxel in voxel_grid.voxel_array.flat:
-        data_ecc_list.append(voxel.df["e"].to_numpy())
-
-    data_ecc = np.concatenate(data_ecc_list)
-    
-    plt.hist(data_ecc,bins=eccentricity_param_grid_array,alpha=0.5)
-
+    data_count_ecc = np.sum(voxel_num_data, axis=(0,1,2,4))
     model_count_ecc = np.sum(model_count, axis=(0,1,2,4))
 
-    print("model_count.shape: ",model_count.shape)
-    print("model_count_ecc.shape: ", model_count_ecc.shape)
-    print("len(model_count_ecc): ",len(model_count_ecc))
-    print("len(eccentricity_param_grid_array) - 1: " ,len(eccentricity_param_grid_array) - 1 )
+    param_residuals_plot(data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
-    # assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1 
-
-    plt.hist(model_count_ecc,bins=eccentricity_param_grid_array,alpha=0.5)
-
-    plt.xlabel("eccentricity",fontsize=10)
-    plt.legend()
-    plt.title('Close-in Exoplanet Eccentricity Distribution')
-    plt.savefig(visualization_plot_folder+'/model_ecc.png')
-    plt.close()
-
-
-    data_mass_list = []
-
-    for voxel in voxel_grid.voxel_array.flat:
-        data_mass_list.append(voxel.df["M_pE"].to_numpy())
-
-    data_mass = np.concatenate(data_mass_list)
-
-    masses = np.logspace(-1,2.2,10000)
-    plt.figure(dpi=300,facecolor="w")
-    for n in range(len(top_samples)):
-        plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(μM[n]),scale=np.exp(σM[n])),alpha=0.01,linewidth=1.1, c="b")
-    plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(μM[0]),scale=np.exp(σM[0])),alpha=0.5, c='r',label="best fit")
-    plt.semilogy(masses,lognorm.pdf(masses,s=np.exp(1.00),scale=np.exp(1.65)),alpha=0.5, c='g',label="N&R 2020") ### wtfreak logs? 
-
-
-   
-    # Compute histogram counts manually
-    counts, bins = np.histogram(data_mass, bins=10000, density=True)
-
+    data_count_mass = np.sum(voxel_num_data, axis=(0,1,3,4))
     model_count_mass = np.sum(model_count, axis=(0,1,3,4))
-    assert len(model_count_mass) == len(mass_param_grid_array) - 1 
 
+    param_residuals_plot(data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
 
-    counts_model, bins_model = np.histogram(model_count_mass,bins=mass_param_grid_array,density=True)
+    data_count_radius = np.sum(voxel_num_data, axis=(1,2,3,4))
+    model_count_radius = np.sum(model_count, axis=(1,2,3,4))
 
+    param_residuals_plot(data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
 
-    # Plot as a bar plot on the same axes
-    bin_centers = 0.5 * (bins[:-1] + bins[1:])
-    bin_centers_model = 0.5 * (bins_model[:-1] + bins_model[1:])
-    plt.bar(bin_centers, counts, width=(bins[1]-bins[0]), alpha=0.5, label="log histogram (observed data)")
-    plt.bar(bin_centers_model, counts_model, width=(bins_model[1]-bins_model[0]), alpha=0.5, label="log histogram (model)")
+    data_count_period = np.sum(voxel_num_data, axis=(0,2,3,4))
+    model_count_period = np.sum(model_count, axis=(0,2,3,4))
 
+    param_residuals_plot(data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
 
-    plt.ylim([1e-3,1.2])
-    plt.xlim([0,200])
-    plt.xlabel("Mass [$M_{⊕}$]",fontsize=10)
-    plt.legend()
-    plt.title('Close-in Exoplanet Mass Distribution')
-    plt.savefig(visualization_plot_folder+'/model_mass.png')
-    plt.close()
+    data_count_omega = np.sum(voxel_num_data, axis=(0,1,2,3))
+    model_count_omega = np.sum(model_count, axis=(0,1,2,3))
 
-    print("best fit mu_M:",μM[0] )
-    print("best fit sigma_M:",σM[0] )
+    param_residuals_plot(data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
     param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
 
     param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
 
+
+def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_folder,name):
+    
+    print("data_count.shape: ",data_count.shape)
+    print("model_count.shape: ",model_count.shape)
+
+    # assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1
+
+    edges = np.asarray(edge_array)
+    centers = 0.5*(edges[:-1] + edges[1:])
+    widths = 1
+
+    x = np.arange(len(centers))
+
+    ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
+    plt.figure(dpi=300, facecolor='w')
+    plt.bar(x, data_count, width=widths, alpha=0.5, label='data')
+    plt.bar(x, model_count, width=widths, alpha=0.5, label='model') 
+    
+    edge_positions = np.arange(len(edges)) - 0.5
+
+    plt.xticks(edge_positions, [f"{e:.3f}" for e in edges], rotation=45)
+
+
+    plt.xlabel("eccentricity",fontsize=10)
+    plt.legend()
+    plt.title(f'Close-in Exoplanet {name} Distribution')
+    plt.savefig(visualization_plot_folder+f'/model_{name}.png')
+    plt.close()
 
 
 
@@ -681,7 +665,7 @@ def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning
     plt.close()
 
 
-def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename):
+def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename):
     
     
     trace_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
@@ -703,6 +687,8 @@ def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,filename):
 
     samples = reader.get_chain()
     samples = samples[nburnin:,:,:]
+    samples = samples[::nthinning, :, :]
+
     
     n_steps, n_walkers, n_params = samples.shape
 
@@ -782,6 +768,12 @@ def grid_corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uni
     plt.close()
 
 
+
+###### do a model vs obs scatter plot for number of objects in each voxel??
+
+
+### ADD OPTION TO DO LOGSCALE COLORING
+### ADD SPLINES 
 def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/",mass_fixed=1.0,ecc_fixed=0.0,omega_fixed=0.0):
     os.makedirs(os.path.dirname(save_path + '/completeness/'), exist_ok=True)
     radius_param_grid_array,period_param_grid_array,mass_param_grid_array,eccentricity_param_grid_array,omega_param_grid_array = completeness_interp.grid
@@ -797,22 +789,6 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
 
     filled_levels = np.linspace(0, 1, 100)
     contour_levels = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75,1.0]
-
-    # plt.figure()
-    # cf = plt.contourf(X2,X1, Z1*Z2, levels=filled_levels, cmap='Grays')
-    # cs = plt.contour(X2,X1, Z1*Z2, levels=contour_levels, colors='g', linewidths=0.5)
-    # plt.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='g',inline_spacing=3)
-    # cbar = plt.colorbar(cf)
-    # cbar.set_label('Completeness') 
-    # cbar.set_ticks(contour_levels)
-
-    # plt.ylabel('Radius [R⊕]')
-    # plt.xlabel('Period [days]')
-    # plt.xlim([0,20])
-    # # plt.semilogx()
-    # # plt.semilogy()
-    # plt.title('MES Detection Probability')
-    # plt.savefig(save_path + 'MES_detection_probability.png', dpi=300)
 
     fig, ax = plt.subplots()
 

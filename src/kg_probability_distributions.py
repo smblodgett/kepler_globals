@@ -542,7 +542,9 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
         (o_idx >= 0) & (o_idx < voxel_grid.o_len)
     )
     if not np.any(valid):
-        return
+        print("no valid points to pack! Returning empty voxel grid")
+        voxel_grid.likelihood_array[:,:,:,:,:,1] = 0
+        return voxel_grid
 
     r_idx = r_idx[valid]; p_idx = p_idx[valid]; m_idx = m_idx[valid]
     e_idx = e_idx[valid]; o_idx = o_idx[valid]

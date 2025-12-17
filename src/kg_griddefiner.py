@@ -775,8 +775,8 @@ class RPMeoGrid(RPMGrid):
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
         for voxel_values in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
             i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
-            self.likelihood_array[i, j, k, l, m, 0] = len(self.voxel_array[i,j,k,l,m].df) # assign the length of the voxel data to the 0th index of the likelihood function computing grid
-            it.iternext()
+            self.likelihood_array[i, j, k, l, m, 0] = len(self.voxel_array[i,j,k,l,m].df) / 1000 # assign the length of the voxel data to the 0th index of the likelihood function computing grid. 
+            it.iternext()                                                                        # remember that each member in the df is only 1/1000 of a planet
 
     def find_voxel_by_id(self,voxel_id):
         """Finds the voxel represented by a given id number."""

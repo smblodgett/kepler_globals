@@ -18,7 +18,7 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
         best_params = get_initial_guess_from_previous(previous_filename)
         assert len(best_params) == ndim, "Mismatch between loaded best params and expected ndim!"
 
-        scale = 1e-3 * np.abs(best_params)
+        scale = 1e-2 * np.maximum(np.abs(best_params), 1e-1) # if any best param is zero, it needs to use a small fixed scale
         np.random.seed(42)
         p0 = np.random.normal(best_params,scale=scale,size=(nwalkers,len(best_params)))
         print("using previous best initialization method")
