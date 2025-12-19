@@ -539,8 +539,6 @@ class RPMeoGrid(RPMGrid):
         self.voxel_array = np.array(self.voxel_array,dtype=object)
         id_number=0
         self.id_array=np.empty((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len))
-        self.p_detection_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
-        self.p_transit_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
         self.completeness_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
 
         self.likelihood_array=np.zeros((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len,2))

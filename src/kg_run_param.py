@@ -183,11 +183,13 @@ def main(model_id, runprops):
         with open('../data/dataframe_column_names.json', "r") as f:
             df_columns = json.load(f)
         voxel_grid.assign_column_names(df_columns)
+
+        print("[Rank 0] read in voxel grid")
         
         assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
 
-        stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"])
-        print("[Rank 0 read in stellar df]")
+        stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
+        print("[Rank 0] read in stellar df")
         if runprops["date"] == "today":
             runprops["date"] = datetime.now().date().isoformat()
         if runprops["time"] == "now":
@@ -195,12 +197,13 @@ def main(model_id, runprops):
 
         model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{(timestamp_folder:=datetime.now().isoformat(timespec='minutes').replace(':','_'))}"
         os.makedirs(model_run_dir,exist_ok=True)
-        
-        for ecc in [0,0.1,0.5,0.99]:
-            for omega in [0,45,90,135,180,225,270,315,360]:
-                MES_grid_plot(voxel_grid.completeness_interp,model_run_dir,ecc_fixed=ecc,omega_fixed=omega)
-        
-        print("[Rank 0 made mes grid plot!")
+            
+        if runprops["plot_completeness"]:
+            for ecc in [0,0.1,0.5,0.99]:
+                for omega in [0,45,90,135,180,225,270,315,360]:
+                    MES_grid_plot(voxel_grid.completeness_interp,model_run_dir,ecc_fixed=ecc,omega_fixed=omega)
+            
+            print("Rank 0 made mes grid plot!")
 
 
         with open("model_run_folder.json", "w") as f:

@@ -126,9 +126,12 @@ def parametric_log_likelihood(params):
     print("voxel_num_data.shape: ",voxel_num_data.shape)
     print("model_count.shape: ",model_count.shape)
     print("sum(model_count): ",np.sum(model_count))
+    print("sum(voxel_num_data): ",np.sum(voxel_num_data))
 
     print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
     print("num of model_count > 0:", len(model_count[model_count > 0]))
+    print("num of voxel_num_data > 1:", len(voxel_num_data[voxel_num_data > 1]))
+    print("num of model_count > 1:", len(model_count[model_count > 1]))
 
     if np.any((voxel_num_data < 0) | (np.isnan(voxel_num_data))):
         print("aaaaa")

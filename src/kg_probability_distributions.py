@@ -378,7 +378,7 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     
     fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
-    fake_catalog[:,4] = rng.uniform(0,2*np.pi,len_stellar_df)  # omega (argument of periastron)
+    fake_catalog[:,4] = rng.uniform(0,360,len_stellar_df)  # omega (argument of periastron)
     # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
     # print("fake catalog has been created!")
@@ -468,7 +468,14 @@ def normalize_pdf_to_pmf(pdf, grid):
 
 
 def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
+    # print("synthetic catalog original shape: ", synthetic_catalog.shape)
+    # print("synthetic catalog head: ", synthetic_catalog[:5,:])
+    # print("synthetic catalog count: ", np.sum(synthetic_catalog))
+    # originally synthetic catalog is in order period, mass, radius, ecc, omega confirmed 12/19 that this is working right
     synthetic_catalog = synthetic_catalog[:, [2, 0, 1, 3, 4]]
+    print("rearranged catalog shape: ", synthetic_catalog.shape)
+    # print("rearranged synthetic catalog head: ", synthetic_catalog[:5,:])
+
     # print("rearranged catalog: ", synthetic_catalog)
     synthetic_catalog = synthetic_catalog[
         ~((synthetic_catalog[:, 0] < np.min(voxel_grid.radius_grid_array)) |
@@ -489,12 +496,15 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     synthetic_catalog = synthetic_catalog[
         ~((synthetic_catalog[:,4] < np.min(voxel_grid.omega_grid_array)) |
         (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
-        ]    # print("bad radii are " ,bad_radii)
+        ]    
+        # print("bad radii are " ,bad_radii)
     # print("len of bad radii are ", len(bad_radii))
     # print("len of synthetic catalog is ", len(synthetic_catalog))
     # p_d = voxel_grid.p_detection_interp(synthetic_catalog)
     # p_t = voxel_grid.p_transit_interp(synthetic_catalog)
     # completeness = p_d * p_t
+    print("synthetic catalog shape after filter: ", synthetic_catalog.shape)
+
     completeness = voxel_grid.completeness_interp(synthetic_catalog)
     return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)
     # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
@@ -563,6 +573,12 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     sums = sums.reshape(shape)
     # assumes likelihood_array[..., 1] exists and matches shape
     voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums
+
+    model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
+
+    print("sum of voxel grid model count: ", np.sum(voxel_grid.likelihood_array[:,:,:,:,:,1]))
+    print("num of model_count > 0 inside pack_points: ", len(model_count[model_count > 0]))
+    print("num of model_count > 1 inside pack_points: ", len(model_count[model_count > 1]))
 
     return voxel_grid
 
