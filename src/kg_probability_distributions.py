@@ -345,12 +345,12 @@ def random_seed_generation(master_seed,*args):
     return int(seed_seq.generate_state(1)[0] & 0xFFFFFFFF)
 
 
-def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=None):
+def generate_catalog(n_planets,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=None):
     
     # np.random.seed(22)
 
     # print("begin generating fake catalog...")
-    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),5)) # change if including impact parameter or other dimension!
+    fake_catalog = np.zeros((n_planets,5)) # change if including impact parameter or other dimension!
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
     
@@ -365,9 +365,9 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
     rng_seed = random_seed_generation(master_seed,rank,time_seed)
     rng = np.random.default_rng(seed=rng_seed)
 
-    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
+    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=n_planets,p=p_Period)  # Period
 
-    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
+    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=n_planets,p=p_mass)  # Mass
     mask = fake_catalog[:,1] < 0.1
     while np.any(mask):
         print("Some masses are less than 0.1 M_E, regenerating...")
@@ -377,9 +377,9 @@ def generate_catalog(stellar_df, p_Period, Period_fine_grid, p_mass, mass_fine_g
     fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     
-    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
-    fake_catalog[:,4] = rng.uniform(0,360,len_stellar_df)  # omega (argument of periastron)
-    # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
+    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=n_planets,p=p_ecc)  # Eccentricity
+    fake_catalog[:,4] = rng.uniform(0,360,n_planets)  # omega (argument of periastron)
+    # fake_catalog[:,5] = np.random.uniform(-1,1,n_planets)  # b (impact parameter) ... do we need this? why do we need it?
     
     # print("fake catalog has been created!")
 
@@ -504,6 +504,7 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     # p_t = voxel_grid.p_transit_interp(synthetic_catalog)
     # completeness = p_d * p_t
     print("synthetic catalog shape after filter: ", synthetic_catalog.shape)
+    
 
     completeness = voxel_grid.completeness_interp(synthetic_catalog)
     return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)

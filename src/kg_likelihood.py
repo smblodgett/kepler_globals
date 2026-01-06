@@ -6,7 +6,7 @@ from mpi4py import MPI
 from scipy.special import gamma, gammaln
 from scipy.stats import norm, lognorm, uniform
 from kg_priors import prior_args
-from kg_constants import N_PHODYMM_STARS
+from kg_constants import N_PHODYMM_SYSTEMS
 
 from kg_probability_distributions import synthetic_catalog_to_grid, generate_catalog, get_probability_distributions, voxel_model_count
 
@@ -113,15 +113,17 @@ def parametric_log_likelihood(params):
         print("inf in pmfs!")
         return -np.inf
     
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
+    n_synth_planets = 150000  # number of synthetic planets to generate for the likelihood estimation
+
+    synthetic_catalog, rng_metadata = generate_catalog(n_synth_planets,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
 
 
     ### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
-    voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]
+    voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]       # chat is saying to scale the model count by the number of phodymm systems that we have...? could this be right?
+    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] * N_PHODYMM_SYSTEMS / n_synth_planets
 
     print("voxel_num_data.shape: ",voxel_num_data.shape)
     print("model_count.shape: ",model_count.shape)

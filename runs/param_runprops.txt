@@ -4,7 +4,7 @@
     "date": "today",
     "time": "now",
     "user": "Steven",
-    "RunGoal" : "trying to get completeness to work :/ ",
+    "RunGoal" : "trying to get the model to actually fit ",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
 
     # Run properties/parameters
@@ -39,5 +39,5 @@
     "suppress_warnings" : false,    # Suppresses warning statements (things that will print even when not verbose)
     "timer" : true,                 # Prints timing of the elements of the script 
     "updatebestfitfile" : true, 	# Writes to a file when new best fit is found ??
-    "plot_completeness" : false 
+    "plot_completeness" : true 
 }
