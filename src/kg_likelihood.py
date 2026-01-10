@@ -91,6 +91,8 @@ def parametric_log_likelihood(params):
 
     global voxel_grid, stellar_df, model_id
 
+    print("len(stellar_df): ", len(stellar_df))
+
     rank = MPI.COMM_WORLD.Get_rank()
     # print(f"[log-prob on rank {rank}]", flush=True)
     # print(os.getpid())
@@ -113,25 +115,28 @@ def parametric_log_likelihood(params):
         print("inf in pmfs!")
         return -np.inf
     
-    n_synth_planets = 150000  # number of synthetic planets to generate for the likelihood estimation
-
-    synthetic_catalog, rng_metadata = generate_catalog(n_synth_planets,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
 
+    print("synthetic_catalog head: ", synthetic_catalog[:5])
+    print("shape of synthetic_catalog: ", synthetic_catalog.shape)
 
     ### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]       # chat is saying to scale the model count by the number of phodymm systems that we have...? could this be right?
-    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] * N_PHODYMM_SYSTEMS / n_synth_planets
+    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]
 
     print("voxel_num_data.shape: ",voxel_num_data.shape)
     print("model_count.shape: ",model_count.shape)
     print("sum(model_count): ",np.sum(model_count))
     print("sum(voxel_num_data): ",np.sum(voxel_num_data))
 
+
     print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
     print("num of model_count > 0:", len(model_count[model_count > 0]))
+    print("shape of voxel_num_data > 0:", voxel_num_data[voxel_num_data > 0].shape)
+    print("shape of model_count > 0:", model_count[model_count > 0].shape)
     print("num of voxel_num_data > 1:", len(voxel_num_data[voxel_num_data > 1]))
     print("num of model_count > 1:", len(model_count[model_count > 1]))
 

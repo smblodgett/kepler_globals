@@ -345,12 +345,12 @@ def random_seed_generation(master_seed,*args):
     return int(seed_seq.generate_state(1)[0] & 0xFFFFFFFF)
 
 
-def generate_catalog(n_planets,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=None):
+def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=None):
     
     # np.random.seed(22)
 
     # print("begin generating fake catalog...")
-    fake_catalog = np.zeros((n_planets,5)) # change if including impact parameter or other dimension!
+    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),5)) # change if including impact parameter or other dimension!
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
     
@@ -365,9 +365,9 @@ def generate_catalog(n_planets,p_Period, Period_fine_grid, p_mass, mass_fine_gri
     rng_seed = random_seed_generation(master_seed,rank,time_seed)
     rng = np.random.default_rng(seed=rng_seed)
 
-    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=n_planets,p=p_Period)  # Period
+    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
 
-    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=n_planets,p=p_mass)  # Mass
+    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
     mask = fake_catalog[:,1] < 0.1
     while np.any(mask):
         print("Some masses are less than 0.1 M_E, regenerating...")
@@ -377,9 +377,9 @@ def generate_catalog(n_planets,p_Period, Period_fine_grid, p_mass, mass_fine_gri
     fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     
-    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=n_planets,p=p_ecc)  # Eccentricity
-    fake_catalog[:,4] = rng.uniform(0,360,n_planets)  # omega (argument of periastron)
-    # fake_catalog[:,5] = np.random.uniform(-1,1,n_planets)  # b (impact parameter) ... do we need this? why do we need it?
+    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
+    fake_catalog[:,4] = rng.uniform(0,360,len_stellar_df)  # omega (argument of periastron)
+    # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
     # print("fake catalog has been created!")
 
@@ -507,6 +507,8 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     
 
     completeness = voxel_grid.completeness_interp(synthetic_catalog)
+    print("completeness shape: ", completeness.shape)
+    print("completeness head: ", completeness[:5])
     return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)
     # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
 
@@ -561,17 +563,32 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     e_idx = e_idx[valid]; o_idx = o_idx[valid]
     w = completeness[valid]
 
+    print("r_idx shape: ", r_idx.shape)
+    print("p_idx shape: ", p_idx.shape)
+    print("m_idx shape: ", m_idx.shape)
+    print("e_idx shape: ", e_idx.shape)
+    print("o_idx shape: ", o_idx.shape)
+    print("w shape: ", w.shape)
+    print("w: ", w)
+
     # flatten the multi-index to 1D
     shape = (voxel_grid.r_len, voxel_grid.p_len, voxel_grid.m_len,
              voxel_grid.e_len, voxel_grid.o_len)
     flat_idx = np.ravel_multi_index((r_idx, p_idx, m_idx, e_idx, o_idx), shape)
 
+    print("flat_idx shape: ", flat_idx.shape)
+    print("flat_idx head: ", flat_idx[:5])
     # sum weights per flat index
     total_voxels = np.prod(shape)
     sums = np.bincount(flat_idx, weights=w, minlength=total_voxels)
 
+    print("sum(sums): ", np.sum(sums))
+
     # reshape and add into likelihood array's last index (1)
     sums = sums.reshape(shape)
+
+    print("reshaped sum(sums): ", np.sum(sums))
+
     # assumes likelihood_array[..., 1] exists and matches shape
     voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums
 
