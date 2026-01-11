@@ -349,10 +349,15 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     
     # np.random.seed(22)
 
-    # print("begin generating fake catalog...")
+    print("begin generating fake catalog...")
+    print("len_stellar_df: ",len(stellar_df))
+
+
     fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),5)) # change if including impact parameter or other dimension!
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
+
+    print("fake_catalog shape: ", fake_catalog.shape)
     
     if master_seed is None:
         master_seed = 22
@@ -383,7 +388,7 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     
     # print("fake catalog has been created!")
 
-    # print("fake catalog: ",fake_catalog)
+    print("fake catalog shape no 2: ",fake_catalog.shape)
     return fake_catalog, rng_metadata
 
 
@@ -468,7 +473,7 @@ def normalize_pdf_to_pmf(pdf, grid):
 
 
 def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
-    # print("synthetic catalog original shape: ", synthetic_catalog.shape)
+    print("synthetic catalog original shape: ", synthetic_catalog.shape)
     # print("synthetic catalog head: ", synthetic_catalog[:5,:])
     # print("synthetic catalog count: ", np.sum(synthetic_catalog))
     # originally synthetic catalog is in order period, mass, radius, ecc, omega confirmed 12/19 that this is working right

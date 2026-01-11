@@ -189,6 +189,7 @@ def main(model_id, runprops):
         assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
 
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
+        print("len(stellar_df) after reading in: ",len(stellar_df))
         print("[Rank 0] read in stellar df")
         if runprops["date"] == "today":
             runprops["date"] = datetime.now().date().isoformat()
@@ -220,6 +221,7 @@ def main(model_id, runprops):
             json.dump(prior_args_json, f, indent=4)
     
 
+
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
     model_run_dir = comm.bcast(model_run_dir,root=0)
@@ -230,6 +232,11 @@ def main(model_id, runprops):
     kg_likelihood.stellar_df = stellar_df
     kg_likelihood.model_run_dir = model_run_dir
     kg_likelihood.model_id = model_id
+
+    print("kg_likelihood.stellar_df : ",kg_likelihood.stellar_df )
+    print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))
+
+
 
 
     with MPIPool() as pool:

@@ -39,5 +39,5 @@
     "suppress_warnings" : false,    # Suppresses warning statements (things that will print even when not verbose)
     "timer" : true,                 # Prints timing of the elements of the script 
     "updatebestfitfile" : true, 	# Writes to a file when new best fit is found ??
-    "plot_completeness" : true 
+    "plot_completeness" : false 
 }
