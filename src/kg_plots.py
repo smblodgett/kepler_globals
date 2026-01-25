@@ -511,7 +511,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     print("max top log prob: ",max(top_log_prob))
     print("max log prob: ",max(log_prob))
 
-        # Sort by likelihood descending
+    # Sort by likelihood descending
     order = np.argsort(top_log_prob)[::-1]
     top_samples = top_samples[order]
     top_log_prob = top_log_prob[order]
@@ -527,42 +527,16 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     rank = rng_metadata["rank"]
     time_seed = rng_metadata["time_seed"]
 
-    Γ0 = 10**top_samples[:,0]
-    γ0 = top_samples[:,1]
-    γ1 = top_samples[:,2]
-    γ2 = top_samples[:,3]
-    σ0 = top_samples[:,4]
-    σ1 = top_samples[:,5]
-    σ2 = top_samples[:,6]
-    mass_break_1 = top_samples[:,7]
-    mass_break_2 = top_samples[:,8]
-    C = top_samples[:,9]
-    μM = top_samples[:,10]
-    σM = top_samples[:,11]
-    β1 = top_samples[:,12]
-    β2 = top_samples[:,13]
-    β3 = top_samples[:,14]
-    Period_break_1 = top_samples[:,15]
-    Period_break_2 = top_samples[:,16]
-    α = top_samples[:,17]
-    λ = top_samples[:,18]
-    σ_e = top_samples[:,19]
-
-
-    print("model_params: ", model_params)
-    print("log10(Gamma0) model_params[0]: ", model_params[0])
-    print("Γ0: ",Γ0)
-    print("top samples: ",top_samples)
-
-    Gamma0 = 10**model_params[0]
+    print("top_samples[0]: ",top_samples[0])
+    print("model_params: ",model_params)
 
     
-    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs = get_probability_distributions(model_params)
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(top_samples[0])
     synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed,time_seed)
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Γ0[0] * voxel_grid.likelihood_array[:,:,:,:,:,1]
+    model_count = 10**top_samples[0,0] * voxel_grid.likelihood_array[:,:,:,:,:,1] # check for 
 
     def rayleigh_exponential(alpha,lamb,sigma,e):
         return (alpha*((lamb*np.exp(-lamb*e))/(1-np.exp(-lamb))) + 
@@ -1039,11 +1013,11 @@ def main(voxel_id,plottype,model_run_folder_argv):
     heatmap_plot_type = plotprops.get("heatmap_plot_type")
     residual_plot_type = plotprops.get("residual_plot_type")
     model_id = plotprops.get("model_id")
-    param_result_filename = plotprops.get("param_result_filename")
+    param_result_filename = plotprops.get("param_result_filename") + f'_{model_id}.h5'
     model_run_folder = plotprops.get("model_run_folder") 
     voxel_grid_json_object_filename = plotprops.get("voxel_json_filename")
 
-    best_guess_filename = plotprops["best_guess_filename"] + f'_{model_id}.json'
+    best_guess_filename = plotprops["best_guess_filename"] + f'model_{model_id}/best_fit.json'
 
     
     if model_run_folder_argv is not None:

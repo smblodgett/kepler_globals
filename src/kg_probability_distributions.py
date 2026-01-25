@@ -445,9 +445,12 @@ def get_probability_distributions(params):
     if (is_inf_in_pmfs := (not np.isfinite(p_ecc).any() or not np.isfinite(p_Period).any() or not np.isfinite(p_mass).any())):
         print("Warning: PMFs contain inf. This parameter draw is bad, let's skip it!")
 
+    if (is_neg_in_pmfs := (np.any(p_ecc < 0) or np.any(p_Period < 0) or np.any(p_mass < 0))):
+        print("Warning: PMFs contain negative values. This parameter draw is bad, let's skip it!")
 
 
-    return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid, is_nan_in_pmfs, is_inf_in_pmfs
+
+    return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs
 
 
 def normalize_pdf_to_pmf(pdf, grid):
@@ -478,7 +481,7 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     # print("synthetic catalog count: ", np.sum(synthetic_catalog))
     # originally synthetic catalog is in order period, mass, radius, ecc, omega confirmed 12/19 that this is working right
     synthetic_catalog = synthetic_catalog[:, [2, 0, 1, 3, 4]]
-    print("rearranged catalog shape: ", synthetic_catalog.shape)
+    # print("rearranged catalog shape: ", synthetic_catalog.shape)
     # print("rearranged synthetic catalog head: ", synthetic_catalog[:5,:])
 
     # print("rearranged catalog: ", synthetic_catalog)
@@ -508,12 +511,12 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     # p_d = voxel_grid.p_detection_interp(synthetic_catalog)
     # p_t = voxel_grid.p_transit_interp(synthetic_catalog)
     # completeness = p_d * p_t
-    print("synthetic catalog shape after filter: ", synthetic_catalog.shape)
+    # print("synthetic catalog shape after filter: ", synthetic_catalog.shape)
     
 
     completeness = voxel_grid.completeness_interp(synthetic_catalog)
-    print("completeness shape: ", completeness.shape)
-    print("completeness head: ", completeness[:5])
+    # print("completeness shape: ", completeness.shape)
+    # print("completeness head: ", completeness[:5])
     return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)
     # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
 
@@ -568,40 +571,40 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     e_idx = e_idx[valid]; o_idx = o_idx[valid]
     w = completeness[valid]
 
-    print("r_idx shape: ", r_idx.shape)
-    print("p_idx shape: ", p_idx.shape)
-    print("m_idx shape: ", m_idx.shape)
-    print("e_idx shape: ", e_idx.shape)
-    print("o_idx shape: ", o_idx.shape)
-    print("w shape: ", w.shape)
-    print("w: ", w)
+    # print("r_idx shape: ", r_idx.shape)
+    # print("p_idx shape: ", p_idx.shape)
+    # print("m_idx shape: ", m_idx.shape)
+    # print("e_idx shape: ", e_idx.shape)
+    # print("o_idx shape: ", o_idx.shape)
+    # print("w shape: ", w.shape)
+    # print("w: ", w)
 
     # flatten the multi-index to 1D
     shape = (voxel_grid.r_len, voxel_grid.p_len, voxel_grid.m_len,
              voxel_grid.e_len, voxel_grid.o_len)
     flat_idx = np.ravel_multi_index((r_idx, p_idx, m_idx, e_idx, o_idx), shape)
 
-    print("flat_idx shape: ", flat_idx.shape)
-    print("flat_idx head: ", flat_idx[:5])
+    # print("flat_idx shape: ", flat_idx.shape)
+    # print("flat_idx head: ", flat_idx[:5])
     # sum weights per flat index
     total_voxels = np.prod(shape)
     sums = np.bincount(flat_idx, weights=w, minlength=total_voxels)
 
-    print("sum(sums): ", np.sum(sums))
+    # print("sum(sums): ", np.sum(sums))
 
     # reshape and add into likelihood array's last index (1)
     sums = sums.reshape(shape)
 
-    print("reshaped sum(sums): ", np.sum(sums))
+    # print("reshaped sum(sums): ", np.sum(sums))
 
     # assumes likelihood_array[..., 1] exists and matches shape
     voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums
 
     model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
 
-    print("sum of voxel grid model count: ", np.sum(voxel_grid.likelihood_array[:,:,:,:,:,1]))
-    print("num of model_count > 0 inside pack_points: ", len(model_count[model_count > 0]))
-    print("num of model_count > 1 inside pack_points: ", len(model_count[model_count > 1]))
+    # print("sum of voxel grid model count: ", np.sum(voxel_grid.likelihood_array[:,:,:,:,:,1]))
+    # print("num of model_count > 0 inside pack_points: ", len(model_count[model_count > 0]))
+    # print("num of model_count > 1 inside pack_points: ", len(model_count[model_count > 1]))
 
     return voxel_grid
 

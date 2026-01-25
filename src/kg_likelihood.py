@@ -99,9 +99,11 @@ def parametric_log_likelihood(params):
 
 
     # len_stellar_df = len(stellar_df)
+    print("params: ", params)
+
     Gamma0 = 10**params[0]
     grid_sum = 0.0
-    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs = get_probability_distributions(params)
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params)
     
     # print(params)
     # print("get probability distribution time is ", time.time() - start_time)
@@ -109,11 +111,15 @@ def parametric_log_likelihood(params):
 
     if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
         print("nan in pmfs!")
-        return -np.inf
+        return -np.inf, {}, rank
     
     if is_inf_in_pmfs:
         print("inf in pmfs!")
-        return -np.inf
+        return -np.inf, {}, rank
+    
+    if is_neg_in_pmfs:
+        print("negative values in pmfs!")
+        return -np.inf, {}, rank
     
     synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
@@ -125,7 +131,7 @@ def parametric_log_likelihood(params):
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]       # chat is saying to scale the model count by the number of phodymm systems that we have...? could this be right?
-    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]
+    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] 
 
     print("voxel_num_data.shape: ",voxel_num_data.shape)
     print("model_count.shape: ",model_count.shape)
@@ -137,15 +143,15 @@ def parametric_log_likelihood(params):
     print("num of model_count > 0:", len(model_count[model_count > 0]))
     print("shape of voxel_num_data > 0:", voxel_num_data[voxel_num_data > 0].shape)
     print("shape of model_count > 0:", model_count[model_count > 0].shape)
-    print("num of voxel_num_data > 1:", len(voxel_num_data[voxel_num_data > 1]))
-    print("num of model_count > 1:", len(model_count[model_count > 1]))
+    # print("num of voxel_num_data > 1:", len(voxel_num_data[voxel_num_data > 1]))
+    # print("num of model_count > 1:", len(model_count[model_count > 1]))
 
     if np.any((voxel_num_data < 0) | (np.isnan(voxel_num_data))):
         print("aaaaa")
-        return -np.inf
+        return -np.inf, rng_metadata, rank
     elif np.any((model_count < 0) | (np.isnan(model_count))):
         print("aaaaaaaaaaa")
-        return -np.inf
+        return -np.inf, rng_metadata, rank
     
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
