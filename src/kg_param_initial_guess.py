@@ -1,13 +1,16 @@
 import numpy as np
 from kg_utilities import ReadJson
-from kg_priors import get_initial_guess_from_priors, prior_args
+from kg_priors import PriorArgs
 
 def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename=""):
     if method == "priors":
         p0 = np.zeros((nwalkers, ndim))  # Initialize an array for the initial guess
-        assert ndim == len(prior_args.keys()), "Number of dimensions must match the number of prior parameters!"
-        for parameter_name, i in zip(prior_args.keys(),range(ndim)):
-            p0[:,i] = get_initial_guess_from_priors(parameter_name, nwalkers)  # Fill each column with initial guesses from priors
+        prior_args = PriorArgs().load_priors()
+        priors = prior_args.get_priors(model_id)
+        assert ndim == len(priors), "Number of dimensions must match the number of prior parameters!"
+        for prior, i in zip(priors, range(ndim)):
+            parameter_name = prior[0]
+            p0[:, i] = prior_args.get_initial_guess_from_priors(parameter_name, nwalkers)  # Fill each column with initial guesses from priors
         print("using priors initialization method")
     
     elif method == "previous_best":

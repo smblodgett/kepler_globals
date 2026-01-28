@@ -139,16 +139,15 @@ def parametric_log_likelihood(params, model_id):
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]       # chat is saying to scale the model count by the number of phodymm systems that we have...? could this be right?
     model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] 
 
-    print("voxel_num_data.shape: ",voxel_num_data.shape)
-    print("model_count.shape: ",model_count.shape)
-    print("sum(model_count): ",np.sum(model_count))
-    print("sum(voxel_num_data): ",np.sum(voxel_num_data))
+    # print("voxel_num_data.shape: ",voxel_num_data.shape)
+    # print("model_count.shape: ",model_count.shape)
 
 
-    print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
-    print("num of model_count > 0:", len(model_count[model_count > 0]))
-    print("shape of voxel_num_data > 0:", voxel_num_data[voxel_num_data > 0].shape)
-    print("shape of model_count > 0:", model_count[model_count > 0].shape)
+
+    # print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
+    # print("num of model_count > 0:", len(model_count[model_count > 0]))
+    # print("shape of voxel_num_data > 0:", voxel_num_data[voxel_num_data > 0].shape)
+    # print("shape of model_count > 0:", model_count[model_count > 0].shape)
     # print("num of voxel_num_data > 1:", len(voxel_num_data[voxel_num_data > 1]))
     # print("num of model_count > 1:", len(model_count[model_count > 1]))
 
@@ -170,6 +169,9 @@ def parametric_log_likelihood(params, model_id):
         model_count[no_model_mask] = 1e-7
     else:
         model_count[no_model_mask] = 10 ** params[20] 
+
+    print("sum(model_count): ",np.sum(model_count))
+    print("sum(voxel_num_data): ",np.sum(voxel_num_data))
 
     ### EDGE CASE: LOW DATA, HIGH MODEL ONES. CHECK THIS OUT
 

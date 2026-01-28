@@ -31,7 +31,7 @@ PY
 
 echo "beginning srun"
 
-model_id=0
+model_id=1
 
 # mpirun -np $SLURM_NTASKS python kg_run_param.py 0
 srun -n $SLURM_NTASKS --mpi=pmix python -u kg_run_param.py $model_id

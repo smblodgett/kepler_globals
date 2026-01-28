@@ -57,6 +57,7 @@ from kg_constants import *
 from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
 from kg_probability_distributions import get_probability_distributions, generate_catalog, synthetic_catalog_to_grid
 from kg_grid_object_hook import grid_object_hook
+from kg_priors import PriorArgs
 
 
 # Set good-looking plot options
@@ -77,27 +78,6 @@ plt.rcParams['axes.titleweight']='semibold'
 plt.rcParams['axes.titlesize']=12
 
 # This will need to change based on adding new parameters...maybe this should be in the utility file?
-param_labels = [r'$\mathrm{log}_{10}(Γ_0)$',
-                '$γ_0$',
-                '$γ_1$',  
-                '$γ_2$',  
-                '$σ_0$',  
-                '$σ_1$',   
-                '$σ_2$',  
-                '$M_{break,1}$',  
-                '$M_{break,2}$',   
-                'C',
-                '$μ_M$',  
-                '$σ_M$',  
-                '$β_1$',
-                '$β_2$',  
-                '$β_3$',
-                '$P_{break,1}$',   
-                '$P_{break,2}$',
-                '$α_e$',
-                '$λ_e$',
-                '$σ_e$'
-                ]
 
 
 def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend",upper_rho_prior=30,is_uniform_density=False):
@@ -489,7 +469,7 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 
 
-def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df):
+def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df,param_labels):
 
 
     print("model id: ", model_id)
@@ -547,7 +527,8 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     if model_id == 0:
         model_count[no_model_mask] = 1e-7
     else:
-        model_count[no_model_mask] = 10 ** top_samples[20] 
+        print("top samples[0,20]: ",top_samples[0,20])
+        model_count[no_model_mask] = 10 ** top_samples[0,20] 
 
     print("sum(model_count) after the no model mask: ",np.sum(model_count))
 
@@ -589,9 +570,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     param_residuals_plot(data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
-    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
+    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels)
 
-    param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
+    param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels)
 
     param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder)
 
@@ -636,7 +617,7 @@ def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_fo
 
 
 
-def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename):
+def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels):
     corner_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(corner_plot_folder, exist_ok=True)
 
@@ -665,7 +646,7 @@ def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning
     plt.close()
 
 
-def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename):
+def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels):
     
     
     trace_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
@@ -1040,6 +1021,8 @@ def main(voxel_id,plottype,model_run_folder_argv):
     residual_plot_type = plotprops.get("residual_plot_type")
     model_id = plotprops.get("model_id")
     print("model_id: ", model_id)
+    prior_args = PriorArgs().load_priors()
+    param_labels = prior_args.get_plot_labels(model_id)
     param_result_filename = plotprops.get("param_result_filename") + f'_{model_id}.h5'
     model_run_folder = plotprops.get("model_run_folder") 
 
@@ -1093,7 +1076,7 @@ def main(voxel_id,plottype,model_run_folder_argv):
         param_trace_plot(results_folder,model_run_folder,model_id,nburnin,param_result_filename)
 
     if plottype == "param_analysis":
-        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df)
+        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df,param_labels)
 
     print("Done with plotting.")
     

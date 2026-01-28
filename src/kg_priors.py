@@ -7,6 +7,7 @@ import numpy as np
 class PriorArgs:
     def __init__(self):
         self.priors = []
+        self.plot_labels = []
     def add_prior(self, parameter_name, mu, sigma, prior_type,model_id_list):
         self.priors.append([parameter_name,mu,sigma,prior_type,model_id_list])
     def get_priors(self,model_id):
@@ -53,5 +54,38 @@ class PriorArgs:
         self.add_prior('sigma_e',0,1,"U", [0,1])
         self.add_prior('log10(tau)', -20,20,"U", [1])  
         return self
+    def load_plot_labels(self):
+        self.plot_labels = [r'$\mathrm{log}_{10}(Γ_0)$',
+                            '$γ_0$',
+                            '$γ_1$',  
+                            '$γ_2$',  
+                            '$σ_0$',  
+                            '$σ_1$',   
+                            '$σ_2$',  
+                            '$M_{break,1}$',  
+                            '$M_{break,2}$',   
+                            'C',
+                            '$μ_M$',  
+                            '$σ_M$',  
+                            '$β_1$',
+                            '$β_2$',  
+                            '$β_3$',
+                            '$P_{break,1}$',   
+                            '$P_{break,2}$',
+                            '$α_e$',
+                            '$λ_e$',
+                            '$σ_e$',
+                            r'$\mathrm{log}_{10}(\tau)$'
+                            ]
+    def get_plot_labels(self, model_id):
+        self.load_plot_labels()
+        for prior, prior_label in zip(self.priors, self.plot_labels):
+            if model_id in prior[4]:
+                continue
+            else:
+                self.priors.remove(prior)
+                self.plot_labels.remove(prior_label)
+        return self.plot_labels
+        
 
             

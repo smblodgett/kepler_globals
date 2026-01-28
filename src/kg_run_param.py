@@ -2,7 +2,7 @@
 # assuming each voxel's independence
 
 # begun October 3, 2024
-# developed by Steven Blodgett, with Darin Ragozzine, Dallin Spencer, and Daniel Jones
+# developed by Steven Blodgett, with the advisement of Darin Ragozzine, Dallin Spencer, and Daniel Jones
 # codebase drawn from Dallin Spencer's multi_moon
 
 from mpi4py import MPI
