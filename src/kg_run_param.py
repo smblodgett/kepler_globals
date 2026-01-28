@@ -215,10 +215,9 @@ def main(model_id, runprops):
             json.dump(runprops, f, indent=2)
 
         import kg_priors
-        prior_args_json = {k: list(v) for k,v in kg_priors.prior_args.items()}
-
+        priors = kg_priors.PriorArgs().load_priors().get_priors(model_id)
         with open(model_run_dir + "/priors.json", "w") as f:
-            json.dump(prior_args_json, f, indent=4)
+            json.dump(priors, f, indent=4)
     
 
 

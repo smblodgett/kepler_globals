@@ -491,6 +491,9 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df):
 
+
+    print("model id: ", model_id)
+
     visualization_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
     os.makedirs(visualization_plot_folder, exist_ok=True)
     
@@ -536,7 +539,19 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = 10**top_samples[0,0] * voxel_grid.likelihood_array[:,:,:,:,:,1] # check for 
+    model_count = 10**top_samples[0,0] * voxel_grid.likelihood_array[:,:,:,:,:,1] 
+
+    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    print("Number of voxels with data but no model count: ", np.sum(no_model_mask))
+    print("sum(model_count) before the no model mask: ",np.sum(model_count))
+    if model_id == 0:
+        model_count[no_model_mask] = 1e-7
+    else:
+        model_count[no_model_mask] = 10 ** top_samples[20] 
+
+    print("sum(model_count) after the no model mask: ",np.sum(model_count))
+
+
 
     def rayleigh_exponential(alpha,lamb,sigma,e):
         return (alpha*((lamb*np.exp(-lamb*e))/(1-np.exp(-lamb))) + 
@@ -577,6 +592,17 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
 
     param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename)
+
+    param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder)
+
+
+def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder):
+    plt.scatter(model_count.flatten(),voxel_num_data.flatten(),alpha=0.5)
+    plt.xlabel("Model Count")
+    plt.ylabel("Data Count")
+    plt.title("Voxel Count Comparison")
+    plt.savefig(visualization_plot_folder+"/voxel_comparison.png")
+    plt.close()
 
 
 def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_folder,name):
@@ -1013,15 +1039,19 @@ def main(voxel_id,plottype,model_run_folder_argv):
     heatmap_plot_type = plotprops.get("heatmap_plot_type")
     residual_plot_type = plotprops.get("residual_plot_type")
     model_id = plotprops.get("model_id")
+    print("model_id: ", model_id)
     param_result_filename = plotprops.get("param_result_filename") + f'_{model_id}.h5'
     model_run_folder = plotprops.get("model_run_folder") 
-    voxel_grid_json_object_filename = plotprops.get("voxel_json_filename")
 
-    best_guess_filename = plotprops["best_guess_filename"] + f'model_{model_id}/best_fit.json'
-
-    
     if model_run_folder_argv is not None:
         model_run_folder = model_run_folder_argv
+
+    voxel_grid_json_object_filename = plotprops.get("voxel_json_filename")
+
+    best_guess_filename = plotprops["best_guess_filename"] + f'model_{model_id}/'+ model_run_folder +'/best_fit.json'
+
+    
+
     
     print("Plotting: ", plottype)
     
@@ -1065,6 +1095,7 @@ def main(voxel_id,plottype,model_run_folder_argv):
     if plottype == "param_analysis":
         param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df)
 
+    print("Done with plotting.")
     
 if __name__ == "__main__":# Default to False if not specified
    
@@ -1086,6 +1117,7 @@ if __name__ == "__main__":# Default to False if not specified
         voxel_id = int(sys.argv[2])
 
     if os.path.isfile("model_run_folder.json"):
+        print("Found model_run_folder.json, loading model_run_folder from it.")
         model_run_folder = ReadJson("model_run_folder.json").outProps()["model_run_folder"]
         
     main(voxel_id,plottype,model_run_folder)

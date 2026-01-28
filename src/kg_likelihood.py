@@ -5,7 +5,8 @@ import json
 from mpi4py import MPI
 from scipy.special import gamma, gammaln
 from scipy.stats import norm, lognorm, uniform
-from kg_priors import prior_args
+from kg_priors import PriorArgs 
+
 from kg_constants import N_PHODYMM_SYSTEMS
 
 from kg_probability_distributions import synthetic_catalog_to_grid, generate_catalog, get_probability_distributions, voxel_model_count
@@ -15,6 +16,8 @@ voxel_grid = None
 model_run_dir = None
 model_id = None
 local_best_logProb = -np.inf
+
+prior_args = PriorArgs().load_priors()
 
 def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
     R_mrp = params[0]
@@ -27,13 +30,16 @@ def grid_log_probability(params,observed,N_HSU_STARS,observation_probability):
 
 
 
-def parametric_log_prior(params):
+def parametric_log_prior(params, model_id):
+
+    priors = prior_args.get_priors(model_id)
+
     # start_time = time.time()
-    assert len(params) == len(prior_args.keys()), "Number of parameters must match the number of priors!"
+    assert len(params) == len(priors), "Number of parameters must match the number of priors!"
     # print("params.shape: ", params.shape)
     lp = 0.0 
-    for parameter_name, i in zip(prior_args.keys(), range(len(params))):
-        mu, sigma, prior_type = prior_args[parameter_name]
+    for parameter_name, i in zip(priors, range(len(params))):
+        mu, sigma, prior_type = parameter_name[1], parameter_name[2], parameter_name[3]
         
         # print("parameter_name: ", parameter_name)
         # print("params[i]: ", params[i])
@@ -85,11 +91,11 @@ def parametric_log_prior(params):
     return lp
 
 
-def parametric_log_likelihood(params):
+def parametric_log_likelihood(params, model_id):
     
     start_time = time.time()
 
-    global voxel_grid, stellar_df, model_id
+    global voxel_grid, stellar_df
 
     print("len(stellar_df): ", len(stellar_df))
 
@@ -159,7 +165,11 @@ def parametric_log_likelihood(params):
     model_count = model_count[~zero_mask] 
 
     no_model_mask = (model_count == 0) & (voxel_num_data > 0)
-    model_count[no_model_mask] = 1e-3
+    
+    if model_id == 0:
+        model_count[no_model_mask] = 1e-7
+    else:
+        model_count[no_model_mask] = 10 ** params[20] 
 
     ### EDGE CASE: LOW DATA, HIGH MODEL ONES. CHECK THIS OUT
 
@@ -167,6 +177,16 @@ def parametric_log_likelihood(params):
     # print("grid_sum: ",grid_sum)
     total_grid_sum = np.sum(grid_sum)
     print("grid_sum after summing: ", total_grid_sum)
+
+
+    # perfect_grid_sum = (voxel_num_data * np.log(voxel_num_data+1e-1) - voxel_num_data - gammaln(voxel_num_data+1))
+    # perfect_total_grid_sum = np.sum(perfect_grid_sum)
+    # print("perfect grid sum after summing: ", perfect_total_grid_sum)
+
+    # times_two_grid_sum = (voxel_num_data * np.log(1.5*model_count) - 1.5*model_count - gammaln(voxel_num_data+1))
+    # times_two_total_grid_sum = np.sum(times_two_grid_sum)
+    # print("times two grid sum after summing: ", times_two_total_grid_sum)
+
     
     end_time = time.time()
     # print("total model count time is ", total_model_count_time)
@@ -192,15 +212,16 @@ def parametric_log_probability(params):
 
     global model_run_dir
     global local_best_logProb
+    global model_id
 
-    prior = parametric_log_prior(params)
+    prior = parametric_log_prior(params,model_id)
 
     if not np.isfinite(prior):
         print("prior is not finite with this params!!!")
         print("params: ", params)
         return -np.inf
 
-    logL, rng_metadata, rank = parametric_log_likelihood(params)
+    logL, rng_metadata, rank = parametric_log_likelihood(params,model_id)
 
     # print("prior: ",prior,flush=True)
 

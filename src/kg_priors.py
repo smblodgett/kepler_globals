@@ -3,47 +3,55 @@ import numpy as np
 # Format for prior arguments:
 # 'parameter_name': (mu, sigma, type)  should try using parameters.csv instead?
 #                   (lower, upper, type) for uniform distribution
-prior_args = {
-        'Gamma_0': (-4, 2.0,"U"),  # now log10(Gamma0)
-        'gamma_0': (-1,1,"U"),
-        'gamma_1': (0, 1.5,"U"),  # lnN(0.6,0.1)
-        'gamma_2': (-1, 1,"U"),  # lnN(0,0.1)
-        'sigma_0': (0, 1,"U"),  # lnN(-1.8, 0.25)
-        'sigma_1': (0, .5,"U"),  # lnN(-1.3, 0.25)
-        'sigma_2': (0, .5,"U"),  # lnN(-2.3, 0.25)
-        'Mbreak1': (0.1, 50,"U"),  # lnN(2,1)
-        'Mbreak2': (50, 10000,"U"),  # lnN(5,0.25)
-        'C': (0.2,4.5,"U"),
-        'mu_M': (-.5, 3,"U"),  # N(1,2)
-        'sigma_M': (.5, 3.5,"U"),  # lnN(1,0.25)
-        'Beta1': (0, 2.5,"U"),  # N(0.5,0.5)
-        'Beta2': (-2.5, 0,"U"),  # N(-0.5,0.5)
-        'Beta3': (-4,4,"U"),
-        'Pbreak1': (0.2, 20,"U"),   # lnN(2,1)
-        'Pbreak2':(20,500,"U"),
-        'alpha_e': (0,2,"U"),
-        'lambda_e': (0,50,"U"),
-        'sigma_e':(0,1,"U")
-        }
 
+class PriorArgs:
+    def __init__(self):
+        self.priors = []
+    def add_prior(self, parameter_name, mu, sigma, prior_type,model_id_list):
+        self.priors.append([parameter_name,mu,sigma,prior_type,model_id_list])
+    def get_priors(self,model_id):
+        for prior in self.priors:
+            if model_id in prior[4]:
+                continue
+            else:
+                self.priors.remove(prior)
+        return self.priors
+    def get_prior_arguments(self,parameter_name):
+        for prior in self.priors:
+            if prior[0] == parameter_name:
+                return prior[1], prior[2], prior[3]
+        return None
+    def get_initial_guess_from_priors(self, parameter_name, nwalkers):
+        mu, sigma, prior_type =  self.get_prior_arguments(parameter_name)
+        match prior_type:
+            case "lnN":
+                return np.random.lognormal(mu, sigma, nwalkers)
+            case "N":
+                return np.random.normal(mu, sigma, nwalkers)
+            case "U":
+                return np.random.uniform(mu,sigma,nwalkers)
+    def load_priors(self):
+        self.add_prior('Log10(Gamma_0)', -4, 2.0,"U", [0,1])  # now log10(Gamma0)
+        self.add_prior('gamma_0', -1,1,"U", [0,1])
+        self.add_prior('gamma_1', 0, 1.5,"U", [0,1])  # lnN(0.6,0.1)
+        self.add_prior('gamma_2', -1, 1,"U", [0,1])  # lnN(0,0.1)
+        self.add_prior('sigma_0', 0, 1,"U", [0,1])  # lnN(-1.8, 0.25)
+        self.add_prior('sigma_1', 0, .5,"U", [0,1])  # lnN(-1.3, 0.25)
+        self.add_prior('sigma_2', 0, .5,"U", [0,1])  # lnN(-2.3, 0.25)
+        self.add_prior('Mbreak1', 0.1, 50,"U", [0,1])  # lnN(2,1)
+        self.add_prior('Mbreak2', 50, 10000,"U", [0,1])  # lnN(5,0.25)
+        self.add_prior('C', 0.2,4.5,"U", [0,1])       
+        self.add_prior('mu_M', -.5, 3,"U", [0,1])  # N(1,2)
+        self.add_prior('sigma_M', .5, 3.5,"U", [0,1])  # lnN(1,0.25)
+        self.add_prior('Beta1', 0, 2.5,"U", [0,1])  # N(0.5,0.5)
+        self.add_prior('Beta2', -2.5,0,"U", [0,1])  # N(-0.5,0.5)
+        self.add_prior('Beta3', -4,4,"U", [0,1])
+        self.add_prior('Pbreak1', 0.2, 20,"U", [0,1])   # lnN(2,1)
+        self.add_prior('Pbreak2',20,500,"U", [0,1])
+        self.add_prior('alpha_e', 0,2,"U", [0,1])
+        self.add_prior('lambda_e', 0,50,"U", [0,1])
+        self.add_prior('sigma_e',0,1,"U", [0,1])
+        self.add_prior('log10(tau)', -20,20,"U", [1])  
+        return self
 
-def get_prior_arguments(parameter_name):
-    """Return the prior arguments for a given parameter."""
-    return prior_args.get(parameter_name)
-
-
-def get_initial_guess_from_priors(parameter_name, nwalkers):
-    """Return an initial guess for a parameter based solely on its prior."""
-    mu, sigma, prior_type =  get_prior_arguments(parameter_name)
-    match prior_type:
-        case "lnN":
-            return np.random.lognormal(mu, sigma, nwalkers)
-        case "N":
-            return np.random.normal(mu, sigma, nwalkers)
-        case "U":
-            return np.random.uniform(mu,sigma,nwalkers)
-        
-        
-def apply_priors_to_params(params):
-    
-    return params
+            
