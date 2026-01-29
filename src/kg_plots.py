@@ -578,7 +578,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
 
 def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder):
-    plt.scatter(model_count.flatten(),voxel_num_data.flatten(),alpha=0.5)
+    plt.figure((8,8),dpi=150)
+    plt.scatter(model_count.flatten(),voxel_num_data.flatten(),alpha=0.005,s=0.25)
+    plt.plot(np.linspace(0,np.max(model_count),100),np.linspace(0,np.max(model_count),100),c='r',linestyle='dashed')
     plt.xlabel("Model Count")
     plt.ylabel("Data Count")
     plt.title("Voxel Count Comparison")
