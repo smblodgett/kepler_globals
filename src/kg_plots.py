@@ -474,14 +474,18 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     print("model id: ", model_id)
 
-    visualization_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
+    backend_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
+    os.makedirs(backend_folder, exist_ok=True)
+
+    visualization_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder,"plots")
     os.makedirs(visualization_plot_folder, exist_ok=True)
     
-    file_path = os.path.join(visualization_plot_folder, filename)
 
-    print("file_path: ",file_path)
+    backend_file_path = os.path.join(backend_folder, filename)
 
-    reader = emcee.backends.HDFBackend(file_path)
+    print("backend_file_path: ",backend_file_path)
+
+    reader = emcee.backends.HDFBackend(backend_file_path)
 
     log_prob = reader.get_log_prob(discard=nburnin, flat=True)
     samples = reader.get_chain(discard=nburnin, flat=True)
@@ -503,7 +507,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     print(top_log_prob)
     print("max top log prob: ",max(top_log_prob),"top log prob[0]: ",top_log_prob[0])
 
-    with open(visualization_plot_folder+"/rng_metadata.json") as f:
+    with open(backend_folder+"/rng_metadata.json") as f:
         rng_metadata = json.load(f)
     
     master_seed = rng_metadata["master_seed"]
@@ -570,15 +574,48 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     param_residuals_plot(data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
-    param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels)
+    param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
-    param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels)
+    param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
     param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder)
 
+    param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
+
+
+def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_plot_folder):
+    samples = reader.get_chain()
+    log_prob = reader.get_log_prob()
+    n_steps, n_chains, n_params = samples.shape
+
+    cmap = plt.get_cmap("rainbow")
+    colors = cmap(np.linspace(0, 1, n_chains))
+
+    for i in range(n_params):
+        plt.figure(dpi=150)
+
+        for c in range(n_chains):
+            plt.scatter(
+                samples[:, c, i],
+                log_prob[:, c],
+                s=0.5,
+                alpha=0.005,
+                color=colors[c],
+            )
+
+        plt.xlabel(f"{param_labels[i]}")
+        plt.ylabel(r"$\mathrm{log}(\mathcal{L})$")
+        plt.title(f"{param_labels[i]} vs Log Likelihood")
+
+        plt.tight_layout()
+        os.makedirs(visualization_plot_folder + "/param_vs_likelihood", exist_ok=True)
+        plt.savefig(f"{visualization_plot_folder}/param_vs_likelihood/{param_labels[i].replace('\\','').replace('mathrm','').replace('{','').replace('}','').replace('$','')}_vs_likelihood.png")
+        plt.close()
+
+
 
 def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder):
-    plt.figure((8,8),dpi=150)
+    plt.figure(figsize=(8,8),dpi=150)
     plt.scatter(model_count.flatten(),voxel_num_data.flatten(),alpha=0.005,s=0.25)
     plt.plot(np.linspace(0,np.max(model_count),100),np.linspace(0,np.max(model_count),100),c='r',linestyle='dashed')
     plt.xlabel("Model Count")
@@ -619,47 +656,40 @@ def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_fo
 
 
 
-def param_corner_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels):
-    corner_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
-    os.makedirs(corner_plot_folder, exist_ok=True)
+def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels):
 
-    file_path = os.path.join(corner_plot_folder, filename)
-
-    reader = emcee.backends.HDFBackend(file_path)
 
     samples = reader.get_chain()
     samples = samples[nburnin:,:,:]
     samples = samples[::nthinning, :, :]
+
+    likelihood = reader.get_log_prob()
+    likelihood = likelihood[nburnin:]
+    likelihood = likelihood[::nthinning, :]
+
+    likelihood_1d = likelihood.reshape(-1)
 
     print("Chain shape:", samples.shape)
 
     n_steps, n_walkers, n_dim = samples.shape
     samples = np.array(samples)
 
-    
-
     samples_2d = samples.reshape(-1, samples.shape[-1])
+
+    samples_2d = np.column_stack((samples_2d, likelihood_1d))
+
+    param_labels = param_labels + [r"$\mathrm{log}(\mathcal{L})$"]
     
     corner_plot = corner.corner(samples_2d,labels=param_labels,show_titles=True)
-    # plt.suptitle("         Corner Plot") ????
+    
     plt.suptitle(f"Model {model_id}",fontsize=200)
     
-    corner_plot.savefig(corner_plot_folder+f"/model_corner.png",dpi=150)
+    corner_plot.savefig(visualization_plot_folder+f"/model_corner.png",dpi=150)
     plt.close()
 
 
-def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,param_labels):
+def param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels):
     
-    
-    trace_plot_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
-    os.makedirs(trace_plot_folder, exist_ok=True)
-
-    print("trace_plot_folder: ", trace_plot_folder)
-
-
-    file_path = os.path.join(trace_plot_folder, filename)
-
-    reader = emcee.backends.HDFBackend(file_path)
 
     print("reader.iteration: ",  reader.iteration)
 
@@ -697,7 +727,7 @@ def param_trace_plot(results_folder,model_run_folder,model_id,nburnin,nthinning,
 
     axes[-1].set_xlabel("Step")
     # plt.tight_layout()
-    fig.savefig(os.path.join(trace_plot_folder, f"model_trace.png"), dpi=150)
+    fig.savefig(os.path.join(visualization_plot_folder, f"model_trace.png"), dpi=150)
     plt.close(fig)
 
     # n_steps, n_walkers, n_params = samples.shape
