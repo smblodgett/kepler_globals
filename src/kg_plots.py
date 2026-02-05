@@ -67,8 +67,8 @@ plt.rcParams['xtick.major.width'] =2
 plt.rcParams['ytick.major.width'] =2
 plt.rcParams['xtick.minor.width'] =1.5
 plt.rcParams['ytick.minor.width'] =1.5
-plt.rcParams['ytick.labelsize'] = 13
-plt.rcParams['xtick.labelsize'] = 13
+plt.rcParams['ytick.labelsize'] = 10
+plt.rcParams['xtick.labelsize'] = 10
 plt.rcParams['axes.labelsize'] = 18
 plt.rcParams['legend.numpoints'] = 1
 plt.rcParams['axes.labelweight']='semibold'
@@ -77,7 +77,6 @@ plt.rcParams['font.weight'] = 'semibold'
 plt.rcParams['axes.titleweight']='semibold'
 plt.rcParams['axes.titlesize']=12
 
-# This will need to change based on adding new parameters...maybe this should be in the utility file?
 
 
 def heatmap_plot(rpm_grid,results_folder,nburnin,mode="all", make_gifs=True, verbose=False, is_plot_ids=False, fps=0.5,backend_path="../results/backend",upper_rho_prior=30,is_uniform_density=False):
@@ -583,6 +582,8 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
 
 
+
+
 def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_plot_folder):
     samples = reader.get_chain()
     log_prob = reader.get_log_prob()
@@ -669,6 +670,10 @@ def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folde
 
     likelihood_1d = likelihood.reshape(-1)
 
+    valid = np.isfinite(likelihood_1d)
+
+
+
     print("Chain shape:", samples.shape)
 
     n_steps, n_walkers, n_dim = samples.shape
@@ -676,9 +681,12 @@ def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folde
 
     samples_2d = samples.reshape(-1, samples.shape[-1])
 
+    samples_2d = samples_2d[valid]
+    likelihood_1d = likelihood_1d[valid]
+
     samples_2d = np.column_stack((samples_2d, likelihood_1d))
 
-    param_labels = param_labels + [r"$\mathrm{log}(\mathcal{L})$"]
+    param_labels = param_labels + [r"$\log (\mathcal{L})$"]
     
     corner_plot = corner.corner(samples_2d,labels=param_labels,show_titles=True)
     
@@ -729,22 +737,6 @@ def param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder
     # plt.tight_layout()
     fig.savefig(os.path.join(visualization_plot_folder, f"model_trace.png"), dpi=150)
     plt.close(fig)
-
-    # n_steps, n_walkers, n_params = samples.shape
-    # print("n_params:", n_params)
-    # print("samples: ", samples)
-
-    # for i in range(n_params):
-    #     fig, ax = plt.subplots(figsize=(10, 2.5))
-    #     for walker in range(n_walkers):
-    #         ax.plot(samples[:, walker, i], alpha=0.1, lw=0.8)
-    #     label = param_labels[i]
-    #     # ax.set_title(f"Trace plot for {label}")
-    #     ax.set_xlabel("Step")
-    #     ax.set_ylabel(label)
-    #     plt.tight_layout()
-
-    # plt.savefig(trace_plot_folder+f"/{model_id}_trace.png",dpi=150)
 
 
 
@@ -829,7 +821,7 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     # Axis labels and title
     ax.set_xlabel('Period [days]')
     ax.set_ylabel(r'Radius [$R_{\oplus}$]')
-    ax.set_title(fr'Kepler Detection Probability,e={ecc_fixed},$\omega={omega_fixed}$,M={mass_fixed}')
+    ax.set_title(fr'Kepler Completeness, e={ecc_fixed}, $\omega={omega_fixed}$, M={mass_fixed}')
 
     # Colorbar with matching contour levels
     cbar = plt.colorbar(cf, ax=ax)

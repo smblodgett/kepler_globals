@@ -8,11 +8,12 @@
 from mpi4py import MPI
 import os
 
-# rank initialization signature
+# rank initialization signatures
 rank = MPI.COMM_WORLD.Get_rank()
 size = MPI.COMM_WORLD.Get_size()
 print(f"[Rank {rank}/{size}] starting up")
 print(os.system("hostname"))
+
 # space out the walkers by a tenth of a second
 import time
 time.sleep(.025*rank) 
@@ -68,15 +69,16 @@ def timer(is_timer,benchmark_message_string,mode='benchmark'):
 #     return len(expanded_dr_df.loc[mask])
 
 def save_best_model(best_guess_filename,model_run_dir,backend):
+    # get samples and log probabilities from backend
     samples = backend.get_chain(flat=True)
     log_prob = backend.get_log_prob(flat=True)
 
-    # === FIND BEST SAMPLE IN CURRENT BACKEND ===
+    # find best sample in current samples
     best_idx = np.argmax(log_prob)
     best_logp = log_prob[best_idx]
     best_params = samples[best_idx].tolist()  # convert to list for JSON
 
-    # === LOAD EXISTING BEST GUESS, IF IT EXISTS ===
+    # load an existing best guess, if it exists
     if os.path.exists(best_guess_filename):
         with open(best_guess_filename, "r") as f:
             saved = json.load(f)
@@ -86,10 +88,11 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
         saved_logp = -np.inf
         saved_params = None
 
+    # save the very best parameters from this run in the run output directory
     with open(model_run_dir + '/best_fit.json', "w") as f:
         json.dump({"log_prob": best_logp, "params": best_params}, f, indent=2)
 
-    # Compare and update if better
+    # compare and update if better in the all-time best guess file
     if best_logp > saved_logp:
         with open(best_guess_filename, "w") as f:
             json.dump({"log_prob": best_logp, "params": best_params}, f, indent=2)
@@ -97,10 +100,13 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
     else:
         print("Existing best parameters are better. No update made.")
 
+    # save the rng metadata for the best run from each rank
     for rng_metadata_file in os.listdir(model_run_dir+"/rank_metadata"):
         with open(model_run_dir+"/rank_metadata/"+rng_metadata_file,'r') as f:
             rng_metadata = json.load(f)
         logP = rng_metadata["logProb"]
+
+        # this specifically saves the very best run's metadata into the run output directory
         if logP == best_logp:
             with open(model_run_dir+"/rng_metadata.json",'w') as f:
                 json.dump(rng_metadata, f)
@@ -111,27 +117,21 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
 
 
 def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
-    """Configures and runs the emcee MCMC sampler.""" # DON"T FORGET POOL
+    """Configures and runs the emcee MCMC sampler."""
 
-    # # Get DR25 catalog.
-    # dr_df = pd.read_csv(dr_path)
-    # # Get processed singles dataframe. 
-    # expanded_dr_singles_df = pd.read_csv(expanded_dr_path) # These have already been filtered for the Hsu stellar catalog (and given the proper values)
-    # # Get Hsu stellar catalog.
-    # hsu_star_df = pd.read_csv(hsu_star_path)
-    # # Mark the DR25 catalog with those that are in the Hsu stellar catalog.
-    # dr_df["in_hsu"] = dr_df["kepid"].isin(hsu_star_df["kepid"]).astype(int)
+
     
     # timer(runprops["timer"],"other readin")
 
+    # define the best guess filename based on model ID
     best_guess_filename = runprops["best_guess_filename"] + f'_{model_id}.json'
-
+    # determine the initial guess filename based on the method. Possible to add a manual filename later.
     initial_guess_filename = best_guess_filename if runprops["initial_guess_method"] == "previous_best" else ""
-
+    # get initial guess positions for the walkers
     p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
 
 
-    # Create the emcee backend.
+    # create the emcee backend
     backend_folder = model_run_dir
     os.makedirs(backend_folder, exist_ok=True)
     backend_filename = backend_folder + "/model_" + str(model_id) +".h5"
@@ -142,22 +142,18 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
     timer(runprops["timer"],"backend setup")
 
-    
-    print("type(pool): ",type(pool))
-    print("pool: ",pool)
-
-    # Create the emcee sampler.
+    # create the emcee sampler
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
                                     kg_likelihood.parametric_log_probability,backend=backend, pool=pool, args=())
 
     timer(runprops["timer"],"emcee setup")
 
 
-    print("initial guess shape: ", p0.shape)
+    if runprops["verbose"]: print("initial guess shape: ", p0.shape)
     assert p0.shape == (runprops["nwalkers"], runprops["ndim"])
-
     if runprops["verbose"]: print('sampler created. Beginning run.')
 
+    # run mcmc with possibility to thin the chain if desired.
     if runprops['thin_run']:
         state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, progress_kwargs={'file':sys.stdout},store = True, thin=runprops["nthinning"])
     else:
@@ -165,6 +161,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
     timer(runprops["timer"],"emcee run")
 
+    # save the best model parameters found during this run
     save_best_model(best_guess_filename,model_run_dir,backend)
 
 
@@ -175,6 +172,7 @@ def main(model_id, runprops):
     stellar_df = None
     model_run_dir = None
 
+    # rank 0 reads in the voxel grid and stellar dataframe, then broadcasts to all ranks
     comm = MPI.COMM_WORLD
     if comm.Get_rank() == 0:
         print("[Rank 0] reading csv and voxel grid")
@@ -184,13 +182,15 @@ def main(model_id, runprops):
             df_columns = json.load(f)
         voxel_grid.assign_column_names(df_columns)
 
-        print("[Rank 0] read in voxel grid")
+        if runprops["verbose"]: print("[Rank 0] read in voxel grid")
         
         assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
 
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
         print("len(stellar_df) after reading in: ",len(stellar_df))
         print("[Rank 0] read in stellar df")
+        
+        # set up the model run output directory (coded by date/time)
         if runprops["date"] == "today":
             runprops["date"] = datetime.now().date().isoformat()
         if runprops["time"] == "now":
@@ -199,18 +199,18 @@ def main(model_id, runprops):
         model_run_dir = runprops["model_run_output_folder"] + str(model_id) + f"/{(timestamp_folder:=datetime.now().isoformat(timespec='minutes').replace(':','_'))}"
         os.makedirs(model_run_dir,exist_ok=True)
             
+        # plot completeness function grids
         if runprops["plot_completeness"]:
             for ecc in [0,0.1,0.5,0.99]:
                 for omega in [0,45,90,135,180,225,270,315,360]:
                     MES_grid_plot(voxel_grid.completeness_interp,model_run_dir,ecc_fixed=ecc,omega_fixed=omega)
             
-            print("Rank 0 made mes grid plot!")
+            if runprops["verbose"]: print("Rank 0 made mes grid plot!")
 
-
+        # save run properties to the model run directory
         with open("model_run_folder.json", "w") as f:
             print("timestamp folder: ", timestamp_folder)
-            json.dump({"model_run_folder":timestamp_folder},f) # so that the scp and plotting script can use this
-
+            json.dump({"model_run_folder":timestamp_folder},f) # so that the scp and plotting script can use this info
         with open(model_run_dir + "/runprops.json", "w", encoding="utf-8") as f:
             json.dump(runprops, f, indent=2)
 

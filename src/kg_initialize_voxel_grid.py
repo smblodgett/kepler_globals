@@ -14,6 +14,7 @@ time.sleep(.02*rank)
 import os
 import sys
 import math
+import numbers
 import numpy as np
 import pandas as pd
 import json
@@ -22,12 +23,6 @@ from kg_griddefiner import RPMeoGrid, RPMeoVoxel
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 
 
-import json
-import numpy as np
-import pandas as pd
-import math
-import numbers
-from mpi4py import MPI
 
 
 
@@ -74,6 +69,7 @@ def main(runprops):
 
     voxel_grid = None
     stellar_df = None
+    stellar_df_reduced = None
     comm = MPI.COMM_WORLD
     # with MPIPool() as pool:
         # if not pool.is_master():
@@ -93,10 +89,10 @@ def main(runprops):
             if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
             # input()
             print("now we're caching it!")
-            df = df[["R_pE","Period_days","M_pE","e","omega"]]#,"p_trans","MES_rowe"]]
+            df = df[["R_pE","Period_days","M_pE","e","omega","KIC","rho_p"]]#,"p_trans","MES_rowe"]]
             #df = create_probability_weighted(df)
             df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
-            if runprops["verbose"]: print("data has been cached for future runs! (press enter to continue)")
+            if runprops["verbose"]: print("data has been cached for future runs!")
             # input()
         # Otherwise, you can just read in 1 voxel that has its data cached.    
         else:
@@ -104,14 +100,22 @@ def main(runprops):
             if runprops["verbose"]: print("read in cached df")
 
         print("full data df: ",df)
+
+                # # Get DR25 catalog.
+        # dr_df = pd.read_csv(dr_path)
+        # # Get processed singles dataframe. 
+        # expanded_dr_singles_df = pd.read_csv(expanded_dr_path) # These have already been filtered for the Hsu stellar catalog (and given the proper values)
+        # # Get Hsu stellar catalog.
+        # hsu_star_df = pd.read_csv(hsu_star_path)
+        # # Mark the DR25 catalog with those that are in the Hsu stellar catalog.
+        # dr_df["in_hsu"] = dr_df["kepid"].isin(hsu_star_df["kepid"]).astype(int)
         
 
         # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
         voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
-        print("started grid!")
+
         voxel_grid.setup_dataframes(df.columns)
-        print("setup dataframes")
-        voxel_grid.add_data(df)
+
 
         print("initialized voxel grid!")
 
@@ -136,16 +140,28 @@ def main(runprops):
 
         stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
         
-        print("starting completeness grid")
+        print("stellar df cuts applied")
 
-        stellar_df=stellar_df.sample(n=100,random_state=22)
+        stellar_df_kics = stellar_df["KIC"]
+
+        df = df[df["KIC"].isin(stellar_df_kics)]
+
+        if runprops["exclude_high_densities"]:
+            df = df[df["rho_p"]<runprops["maximum_density"]]
+
+        print("length of df after matching to stellar catalog, filtering densities: ",len(df))
+
+        voxel_grid.add_data(df)
+
+        stellar_df_reduced=stellar_df.sample(n=100,random_state=22)
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
+    stellar_df_reduced = comm.bcast(stellar_df_reduced,root=0)
 
     print("broadcasted voxel grid and stellar df")
         
-    voxel_grid.setup_completeness_grid(stellar_df,comm) # this is the kepler stellar catalog, which has the stellar radii and masses
+    voxel_grid.setup_completeness_grid(stellar_df_reduced,comm) # this is the kepler stellar catalog, which has the stellar radii and masses
     print("set up completeness grid")
     voxel_grid.setup_likelihood_grid()
     # MES_grid_plot(voxel_grid.p_detection_interp,voxel_grid.p_transit_interp,runprops["completeness_plot_folder"])
