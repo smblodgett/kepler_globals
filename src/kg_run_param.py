@@ -1,10 +1,12 @@
-# main script that runs Kepler Globals modeling: as of now, this is modeling the voxels of the M-P-R relationship,
-# assuming each voxel's independence
+"""
+The main script to run the MCMC sampling of the hierarchical model parameters.
+begun October 3, 2024
+developed by Steven Blodgett, with the advisement of Darin Ragozzine, Dallin Spencer, and Daniel Jones
+codebase drawn from Dallin Spencer's multi_moon
+"""
 
-# begun October 3, 2024
-# developed by Steven Blodgett, with the advisement of Darin Ragozzine, Dallin Spencer, and Daniel Jones
-# codebase drawn from Dallin Spencer's multi_moon
 
+# initial necessary imports
 from mpi4py import MPI
 import os
 
@@ -54,21 +56,9 @@ def timer(is_timer,benchmark_message_string,mode='benchmark'):
         old_time = new_time
 
 
-
-# def number_of_singles_in_voxel(voxel, expanded_dr_df):
-#     """Returns the number of singles in a given voxel."""
-#     mask = ((expanded_dr_df["radius"] < voxel.top_radius) &
-#             (expanded_dr_df["radius"] > voxel.bottom_radius) &
-#             (expanded_dr_df["period"] < voxel.top_period) &
-#             (expanded_dr_df["period"] > voxel.bottom_period) &
-#             (expanded_dr_df["mass"] < voxel.top_mass) &
-#             (expanded_dr_df["mass"] > voxel.bottom_mass)
-#             )
-    
-#     print("singles length: ",len(expanded_dr_df.loc[mask]))
-#     return len(expanded_dr_df.loc[mask])
-
 def save_best_model(best_guess_filename,model_run_dir,backend):
+    """Saves the best model parameters found during the MCMC run."""
+
     # get samples and log probabilities from backend
     samples = backend.get_chain(flat=True)
     log_prob = backend.get_log_prob(flat=True)
@@ -119,8 +109,6 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
 def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
     """Configures and runs the emcee MCMC sampler."""
 
-
-    
     # timer(runprops["timer"],"other readin")
 
     # define the best guess filename based on model ID
@@ -167,6 +155,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
 
 def main(model_id, runprops):
+    """Main function to set up and run the MCMC sampling."""
 
     voxel_grid = None
     stellar_df = None
@@ -176,6 +165,7 @@ def main(model_id, runprops):
     comm = MPI.COMM_WORLD
     if comm.Get_rank() == 0:
         print("[Rank 0] reading csv and voxel grid")
+        # read in the voxel grid json object and the column names for its dataframes
         with open(runprops["voxel_json_filename"], "r") as f:
             voxel_grid = json.load(f,object_hook=grid_object_hook)
         with open('../data/dataframe_column_names.json', "r") as f:
@@ -186,6 +176,7 @@ def main(model_id, runprops):
         
         assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
 
+        # read in the stellar dataframe
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
         print("len(stellar_df) after reading in: ",len(stellar_df))
         print("[Rank 0] read in stellar df")
@@ -206,26 +197,29 @@ def main(model_id, runprops):
                     MES_grid_plot(voxel_grid.completeness_interp,model_run_dir,ecc_fixed=ecc,omega_fixed=omega)
             
             if runprops["verbose"]: print("Rank 0 made mes grid plot!")
-
-        # save run properties to the model run directory
+        
+        # save the output path so that the plotting script can use this info
         with open("model_run_folder.json", "w") as f:
             print("timestamp folder: ", timestamp_folder)
-            json.dump({"model_run_folder":timestamp_folder},f) # so that the scp and plotting script can use this info
+            json.dump({"model_run_folder":timestamp_folder},f) 
+        
+        # save run properties to the model run directory
         with open(model_run_dir + "/runprops.json", "w", encoding="utf-8") as f:
             json.dump(runprops, f, indent=2)
 
+        # save the priors being used to a json file in the model run directory
         import kg_priors
         priors = kg_priors.PriorArgs().load_priors().get_priors(model_id)
         with open(model_run_dir + "/priors.json", "w") as f:
             json.dump(priors, f, indent=4)
     
 
-
+    # broadcast the voxel grid and stellar dataframe to all ranks
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
     model_run_dir = comm.bcast(model_run_dir,root=0)
     
-    print("---BROADCAST HAS BEEN COMPLETED---")
+    if runprops["verbose"]: print("---BROADCAST HAS BEEN COMPLETED---")
     
     kg_likelihood.voxel_grid = voxel_grid
     kg_likelihood.stellar_df = stellar_df
@@ -236,8 +230,7 @@ def main(model_id, runprops):
     print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))
 
 
-
-
+    # set up the MPI pool and run emcee
     with MPIPool() as pool:
         if not pool.is_master():
             pool.wait()

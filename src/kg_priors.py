@@ -30,7 +30,9 @@ class PriorArgs:
             case "N":
                 return np.random.normal(mu, sigma, nwalkers)
             case "U":
-                return np.random.uniform(mu,sigma,nwalkers)
+                return np.random.uniform(mu,sigma,nwalkers) # for uniform, mu=lower, sigma=upper
+            case _:
+                raise ValueError(f"Unknown prior type: {prior_type}")
     def load_priors(self):
         self.add_prior('Log10(Gamma_0)', -4, 2.0,"U", [0,1])  # now log10(Gamma0)
         self.add_prior('gamma_0', -1,1,"U", [0,1])

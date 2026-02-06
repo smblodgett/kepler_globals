@@ -68,7 +68,7 @@ plt.rcParams['ytick.major.width'] =2
 plt.rcParams['xtick.minor.width'] =1.5
 plt.rcParams['ytick.minor.width'] =1.5
 plt.rcParams['ytick.labelsize'] = 10
-plt.rcParams['xtick.labelsize'] = 10
+plt.rcParams['xtick.labelsize'] = 8
 plt.rcParams['axes.labelsize'] = 18
 plt.rcParams['legend.numpoints'] = 1
 plt.rcParams['axes.labelweight']='semibold'
@@ -582,6 +582,26 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
 
 
+def mass_radius_scatter_plot(voxel_grid,top_sample,visualization_plot_folder):
+    plt.figure(dpi=150)
+    data_radii = []
+    data_masses = []
+    for voxel in voxel_grid.flatten():
+        data_radii.extend(voxel.df["R_pE"].values)
+        data_masses.extend(voxel.df["M_pE"].values)
+    plt.scatter(data_masses,data_radii,s=0.5,alpha=0.005)
+
+    def mass_radius_relation(mass,C,γ0,γ1,γ2,mass_break_1,mass_break_2):
+        pass
+    # plt.plot()
+    plt.xlabel("Radius [$R_{⊕}$]")
+    plt.ylabel("Mass [$M_{⊕}$]")
+    plt.title("Mass vs Radius for Each Voxel")
+    # plt.xscale('log')
+    # plt.yscale('log')
+    plt.grid()
+    plt.savefig(visualization_plot_folder+"/mass_radius_scatter.png")
+    plt.close()
 
 
 def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_plot_folder):
@@ -646,7 +666,7 @@ def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_fo
     
     edge_positions = np.arange(len(edges)) - 0.5
 
-    plt.xticks(edge_positions, [f"{e:.3f}" for e in edges], rotation=45)
+    plt.xticks(edge_positions, [f"{e:.1f}" for e in edges], rotation=45)
 
 
     plt.xlabel("eccentricity",fontsize=10)
