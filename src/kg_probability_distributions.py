@@ -5,6 +5,7 @@ from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
 from scipy.stats import lognorm, truncnorm #, gaussian_kde
+from scipy.stats import gamma as gamma_dist
 from scipy.special import gamma
 
 
@@ -65,10 +66,10 @@ class PeriodDistribution:
 
 
 class MassDistribution:
-    def __init__(self,mass_fine_grid,μ,σ):
+    def __init__(self,mass_fine_grid,ln_a,ln_beta):
         self.mass_fine_grid = mass_fine_grid
-        self.μ = μ # be careful! this is in ln(M_E), not in M_E!
-        self.σ = σ # same here, this is in ln(M_E), not in M_E!
+        self.ln_a = ln_a # be careful! this is in ln(M_E), not in M_E!
+        self.ln_beta = ln_beta # same here, this is in ln(M_E), not in M_E!
         assert type(self.mass_fine_grid) == np.ndarray, "Mass grid requires a numpy array!"
 
     def __call__(self,low_mass,high_mass):
@@ -79,7 +80,8 @@ class MassDistribution:
         Returns the probability density function of the mass distribution.
         Uses a log-normal distribution.
         """
-        m_pdf = lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=np.exp(self.μ))
+        m_pdf = gamma_dist.pdf(self.mass_fine_grid, a=np.exp(self.ln_a), scale=np.exp(self.ln_beta))
+        # m_pdf = lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=np.exp(self.μ))
         # input()
         return (m_pdf) / np.trapezoid(m_pdf,self.mass_fine_grid)
     
@@ -403,8 +405,8 @@ def get_probability_distributions(params):
     mass_break_1 = params[7]
     mass_break_2 = params[8]
     C = params[9]
-    μM = params[10]
-    σM = params[11]
+    ln_a = params[10]
+    ln_beta = params[11]
     β1 = params[12]
     β2 = params[13]
     β3 = params[14]
@@ -421,7 +423,7 @@ def get_probability_distributions(params):
 
     # mass
     mass_fine_grid = np.logspace(-1,4,10000)
-    pdf_mass = MassDistribution(mass_fine_grid,μM,σM).mass_pdf()
+    pdf_mass = MassDistribution(mass_fine_grid,ln_a,ln_beta).mass_pdf()
     p_mass = normalize_pdf_to_pmf(pdf_mass, mass_fine_grid)
     # print("pmass: ", p_mass)
     # print("area under mass distribution: ", np.trapezoid(pdf_mass, mass_fine_grid))

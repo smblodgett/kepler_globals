@@ -44,11 +44,11 @@ class PriorArgs:
         self.add_prior('Mbreak1', 0.1, 50,"U", [0,1])  # lnN(2,1)
         self.add_prior('Mbreak2', 50, 10000,"U", [0,1])  # lnN(5,0.25)
         self.add_prior('C', 0.2,4.5,"U", [0,1])       
-        self.add_prior('mu_M', -.5, 3,"U", [0,1])  # N(1,2)
-        self.add_prior('sigma_M', .5, 3.5,"U", [0,1])  # lnN(1,0.25)
+        self.add_prior('ln(a_M)', -10, 10,"U", [0,1])  # N(1,2) 
+        self.add_prior('ln(beta_M)', -10, 10,"U", [0,1])  # lnN(1,0.25)
         self.add_prior('Beta1', 0, 6.0,"U", [0,1])  # N(0.5,0.5)
         self.add_prior('Beta2', -2.5,0,"U", [0,1])  # N(-0.5,0.5)
-        self.add_prior('Beta3', -4,4,"U", [0,1])
+        self.add_prior('Beta3', -8,8,"U", [0,1])
         self.add_prior('Pbreak1', 0.2, 20,"U", [0,1])   # lnN(2,1)
         self.add_prior('Pbreak2',20,500,"U", [0,1])
         self.add_prior('alpha_e', 0,2,"U", [0,1])
@@ -67,8 +67,8 @@ class PriorArgs:
                             '$M_{break,1}$',  
                             '$M_{break,2}$',   
                             'C',
-                            '$μ_M$',  
-                            '$σ_M$',  
+                            r'$\mathrm{ln}(a)$',  
+                            r'$\mathrm{ln}(\beta_M)$',  
                             '$β_1$',
                             '$β_2$',  
                             '$β_3$',

@@ -29,6 +29,7 @@
     "processed_stellar_data_filename": "../data/keplerstellar_with_cuts.csv", 
     "voxel_json_filename": "../data/voxel_grid.json",
     "gaia_data_filename": "../data/gaia_kepler.csv",
+    "dr_25_data_filename" : "../data/q1_q17_dr25.csv",
     "input_data_filename": "../data/thinned/KMDC.csv",        # PhoDyMM thinned posteriors (with calculated values)
     "voxel_data_folder": "../data/thinned/voxel_data_param",  # location of cached voxel dataframes (for faster runs)
     "results_folder":"../results",                            # where the results go 

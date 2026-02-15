@@ -240,5 +240,10 @@ def parametric_log_probability(params):
         with open(model_run_dir+f"/rank_metadata/{rank}.json", "w") as f:
             json.dump(rng_metadata,f)
         
+    if logProb == -np.inf:
+        print("logProb is -inf with this params!!!")
+        print("params: ", params)
+        print("prior: ", prior)
+        print("logL: ", logL)
 
     return logProb

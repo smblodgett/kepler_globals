@@ -1,8 +1,8 @@
 #!/bin/bash --login
 
 #SBATCH --time=8:00:00
-#SBATCH --ntasks=1001
-#SBATCH --mem-per-cpu=4G
+#SBATCH --ntasks=2001
+#SBATCH --mem-per-cpu=8G
 #SBATCH -J "kepler_globals_init"
 
 export PMIX_MCA_psec=^munge

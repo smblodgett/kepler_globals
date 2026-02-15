@@ -5,10 +5,12 @@ from scipy.special import gamma
 from kg_constants import *
 
 def radius_given_density_mass(density,mass):
+    """Returns the radius of a planet given its density and mass, with units density in g/cm^3, radius in Earth radii, and mass in Earth masses."""
     return (((mass)*MEG)/((4/3)*np.pi*density))**(1/3) / RECM
 
 
 def mass_given_density_radius(density,radius):
+    """Returns the mass of a planet given its density and radius, with units density in g/cm^3, radius in Earth radii, and mass in Earth masses."""
     return ((4/3)*np.pi*density/MEG)*(radius * RECM)**3
 
 

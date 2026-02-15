@@ -543,6 +543,8 @@ class RPMeoGrid(RPMGrid):
 
         self.likelihood_array=np.zeros((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len,2))
 
+        self.kic_dict = {} # A dict that stores how many of each planet makes the cut, for proper reweighting
+
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
         for id_number in range(self.r_len * self.p_len * self.m_len * self.e_len * self.o_len):
             i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l) position
@@ -587,6 +589,10 @@ class RPMeoGrid(RPMGrid):
             self.voxel_array[r, p, m, e, o].add_data(df_chunk)
             # num_data_with_weighting(self.voxel_array[r, p, m, e].df)
             # self.voxel_array[r, p, m, e].create_probability_weighted()
+
+    def set_kic_dict(self,kic_dict):
+        """Sets the kic_dict attribute of the grid, which is used to track how many planets make the cut for reweighting."""
+        self.kic_dict = kic_dict
     
     def setup_completeness_grid(self,stellar_df,comm):
 
@@ -692,7 +698,10 @@ class RPMeoGrid(RPMGrid):
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
         for voxel_values in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
             i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
-            self.likelihood_array[i, j, k, l, m, 0] = len(self.voxel_array[i,j,k,l,m].df) / 1000 # assign the length of the voxel data to the 0th index of the likelihood function computing grid. 
+            df = self.voxel_array[i,j,k,l,m].df
+            if len(df) > 0:
+                for planet in df["unique_planet"].unique():
+                    self.likelihood_array[i, j, k, l, m, 1] += len(df[df["unique_planet"]==planet]) / self.kic_dict[planet] # assign the number of planets that make the cut in the voxel to the 1st index of the likelihood function computing grid.
             it.iternext()                                                                        # remember that each member in the df is only 1/1000 of a planet
 
     def find_voxel_by_id(self,voxel_id):

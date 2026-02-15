@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.colors import ListedColormap, BoundaryNorm, PowerNorm
 from matplotlib.ticker import ScalarFormatter
 from PIL import Image
 from scipy.stats import lognorm
@@ -546,6 +546,14 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     # for n in range(len(top_samples)):
     #     plt.plot(ecc,rayleigh_exponential(α[n],λ[n],σ_e[n],ecc),alpha=0.01,linewidth=1, c='b')
     # plt.plot(ecc,rayleigh_exponential(α[0],λ[0],σ_e[0],ecc),alpha=0.5, c='r',label="best fit")
+
+
+
+    # marginals for the synthetic physical catalog.
+
+    # 2D marginals ... can we plot the mass-radius relationship for kmdc vs the model?
+
+    
     
 
     data_count_ecc = np.sum(voxel_num_data, axis=(0,1,2,4))
@@ -666,7 +674,7 @@ def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_fo
     
     edge_positions = np.arange(len(edges)) - 0.5
 
-    plt.xticks(edge_positions, [f"{e:.1f}" for e in edges], rotation=45)
+    plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
 
 
     plt.xlabel("eccentricity",fontsize=10)
@@ -812,14 +820,22 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     # Z2 = transit_interp(pts).reshape(X1.shape)
     Z3 = completeness_interp(pts).reshape(X1.shape)
 
-    filled_levels = np.linspace(0, 1, 100)
+    print("Z3 shape: ", Z3.shape)
+    print("min Z3: ", np.min(Z3))
+
+    # issues: cubic interpolation is possibly dipping negative, which would be devastating for the completeness calculations.
+
+    filled_levels = np.linspace(0, 1, 300)
     contour_levels = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75,1.0]
+
+    norm = PowerNorm(gamma=0.4)
 
     fig, ax = plt.subplots()
 
-    cf = ax.contourf(X2, X1, Z3, levels=filled_levels, cmap='Greys_r')
-    cs = ax.contour(X2, X1, Z3, levels=contour_levels, colors='green', linewidths=0.5)
-    ax.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='green', inline_spacing=3)
+    cf = ax.contourf(X2, X1, Z3, levels=filled_levels, cmap='Greys_r',norm=norm)
+    cs = ax.contour(X2, X1, Z3, levels=contour_levels, colors='crimson', linewidths=0.7)
+
+    ax.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='crimson', inline_spacing=0.4)
 
     # Set log scales
     ax.set_xscale('log')
