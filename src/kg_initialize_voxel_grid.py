@@ -21,7 +21,8 @@ import json
 from kg_utilities import ReadJson, mass_given_density_radius
 from kg_griddefiner import RPMeoGrid, RPMeoVoxel
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
-from kg_constants import G, RECM
+from kg_constants import G, RECM, RHOS, RSCM, MSKG
+from kg_plots import ecc_omega_singles_posterior_plot
 
 
 
@@ -58,37 +59,119 @@ class GridJSONEncoder(json.JSONEncoder):
         return str(obj)
 
 
-def sample_eccentricity_omega(radius, period, b, T_14,rho_star_true):
+def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true, rho_star_uncertainty,KIC_id,num_samples):
     """
     Samples eccentricity and omega for a planet based on its radius and period, using the photoeccentric effect.
     
     See MacDougal, Gilbert, and Pettigura 2023. 
     """
-    i=1000
-    eccentricity = np.random.uniform(0, 0.9,size=i)  # Sample eccentricity uniformly between 0 and 0.9
-    omega = np.random.uniform(0, 360,size=i)  # Sample omega uniformly between 0 and 360 degrees
-    rho_star_sample = (3 * np.pi / ((G * 1000 * 100**3) * (period * 24 * 3600)**2)) * ((((1+radius*RECM)**2) - b**2)/ (np.sin((T_14 * np.pi / period) * ( (1+ eccentricity*np.sin(omega * np.pi / 180))/ np.sqrt(1-eccentricity**2)))**2) + b**2)**1.5  # Sample stellar density based on the photoeccentric effect
-    log_likelihood = -0.5 * (rho_star_sample - rho_star_true)**2
+    i=num_samples
+    eccentricity = np.random.uniform(0, 0.99,size=i)  # Sample eccentricity uniformly between 0 and 0.9
+    omega = np.random.uniform(-90, 270,size=i)  # Sample omega uniformly between 0 and 360 degrees
+
+
+    rho_star_sample = np.zeros(i)  # Initialize an array to store the sampled stellar densities
+
+    inside = (((1+planet_star_radius_ratio)**2) - b**2)/ (np.sin(((T_14 / 24) * np.pi / period) * ( (1+ eccentricity*np.sin(omega * np.pi / 180))/ np.sqrt(1-eccentricity**2)))**2) + b**2
+    
+    valid = inside > 0
+
+    rho_star_sample[valid] = (3 * np.pi / (G * (period[valid] * 24 * 3600)**2)) * (inside[valid])**1.5  # Sample stellar density based on the photoeccentric effect
+    
+    
+    log_likelihood = np.full(i, -np.inf)  # Initialize log-likelihood array with negative infinity
+
+    print("rho_star_sample: ",rho_star_sample)
+    
+    log_likelihood[valid] = -0.5 * (rho_star_sample[valid] - rho_star_true)**2 / rho_star_uncertainty**2  # Calculate log-likelihood based on the difference between the sampled and true stellar density
+
+    print("log_likelihood: ",log_likelihood)
+
+    weight = np.exp(log_likelihood) / np.sum(np.exp(log_likelihood))  # Normalize the weights
+
+    print("weight :",weight)
+
+    indices = np.random.choice(range(i), size=i, p=weight)  # Sample indices based on the weights
+
+    eccentricity = eccentricity[indices]  # Sample eccentricity based on the weights
+    omega = omega[indices]  # Sample omega based on the weights
+
+    ecc_omega_singles_posterior_plot(eccentricity,omega,KIC_id=KIC_id)
 
     return eccentricity, omega
 
 
 def process_singles_df(singles_dr_df,stellar_df):
 
-    final_singles_array = np.zeros((len(singles_dr_df)*1000,5)) # radius, period, mass, eccentricity, omega
+    num_posteriors_per_planet = 50000
+
+    final_singles_array = np.zeros((len(singles_dr_df)*num_posteriors_per_planet,5)) # radius, period, mass, eccentricity, omega
+
+    # graphing GJ436 for validation - using Lanotte et al 2014
+    radius = np.random.normal(3.96,0.05,size=num_posteriors_per_planet)
+    period = np.random.normal(2.6438979,0.0000003,size=num_posteriors_per_planet)
+    b = np.random.normal(0.8521,0.0021,size=num_posteriors_per_planet)
+    T_14 = np.random.normal(0.04227*24,0.00016*24,size=num_posteriors_per_planet)
+    rho_star_true = (0.452 * MSKG * 1000) / ((4/3) * np.pi * (0.455 * RSCM)**3) * 1000
+    rho_star_uncertainty_lower = ((0.452 - 0.012) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 + 0.014) * RSCM)**3) * 1000
+    rho_star_uncertainty_upper = ((0.452 + 0.014) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 - 0.012) * RSCM)**3) * 1000
+    rho_star_uncertainty = np.maximum(np.abs(rho_star_uncertainty_lower - rho_star_true), np.abs(rho_star_uncertainty_upper - rho_star_true))
+    star_planet_radius_ratio = radius * RECM / (0.455 * RSCM)
+    print("GJ rho star true: ",rho_star_true)
+    print("GJ rho star uncertainty: ",rho_star_uncertainty)
+    sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_posteriors_per_planet)
 
     for index, row in singles_dr_df.iterrows():
-        radius = np.random.normal(row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])),size=1000)
-        period = np.random.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=1000)
-        b = np.random.normal(row["koi_impact"], np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"])),size=1000)
-        T_14 = np.random.normal(row["koi_duration"], np.maximum(np.abs(row["koi_duration_err1"]), np.abs(row["koi_duration_err2"])),size=1000)
+        radius = np.random.normal(row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])),size=num_posteriors_per_planet)
+        period = np.random.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=num_posteriors_per_planet)
+        print("period with max abs error:", row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])))
 
-        density = np.random.uniform(0.01, 10, size=1000) 
+        b = np.random.normal(row["koi_impact"], np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"])),size=num_posteriors_per_planet)
+        T_14 = np.random.normal(row["koi_duration"], np.maximum(np.abs(row["koi_duration_err1"]), np.abs(row["koi_duration_err2"])),size=num_posteriors_per_planet)
+
+        print("radius: ",radius)
+        print("number of NaN in radius: ",np.sum(np.isnan(radius)))
+        print("period: ",period)
+        print("number of NaN in period: ",np.sum(np.isnan(period)))
+        print("b: ",b)
+        print("number of NaN in b: ",np.sum(np.isnan(b)))
+        print("T_14: ",T_14)
+        print("number of NaN in T_14: ",np.sum(np.isnan(T_14)))
+
+
+        density = np.random.uniform(0.01, 10, size=num_posteriors_per_planet) 
         mass = mass_given_density_radius(density, radius)
-        rho_star_true = stellar_df[stellar_df["KIC"]==row["kepid"]]["dens"].values[0]
-        eccentricity, omega = sample_eccentricity_omega(radius, period, b, T_14,rho_star_true)
 
-        final_singles_array[index*1000:(index+1)*1000] = [radius, period, mass, eccentricity, omega]
+        print("mass: ",mass)
+        print("number of NaN in mass: ",np.sum(np.isnan(mass)))
+
+        # make sure the units here are right, the log uncertainties are weird. 
+
+        rho_star_true_log = stellar_df[stellar_df["KIC"]==row["kepid"]]["rho"].values[0]
+        rho_star_true = 10**(rho_star_true_log) * RHOS
+        rho_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_rho"].values[0]
+        rho_star_upper_uncertainty =  10**(rho_star_upper_uncertainty) * RHOS
+        rho_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_rho"].values[0]
+        rho_star_lower_uncertainty = - 10**(rho_star_lower_uncertainty) * RHOS
+        rho_star_uncertainty = np.maximum(np.abs(rho_star_upper_uncertainty), np.abs(rho_star_lower_uncertainty))
+
+        radius_star_val = stellar_df[stellar_df["KIC"]==row["kepid"]]["Rad"].values[0]
+        radius_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_Rad"].values[0]
+        radius_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_Rad"].values[0]
+        radius_star_uncertainty = np.maximum(np.abs(radius_star_upper_uncertainty), np.abs(radius_star_lower_uncertainty))
+        radius_star = np.random.normal(radius_star_val, radius_star_uncertainty, size=num_posteriors_per_planet)
+
+
+        planet_star_radius_ratio = radius * RECM / (radius_star * RSCM) 
+
+        print("rho_star_true: ",rho_star_true)
+        print("rho_star_uncertainty: ",rho_star_uncertainty)
+        print("number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
+        print("number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
+
+        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_posteriors_per_planet)
+
+        final_singles_array[index*num_posteriors_per_planet:(index+1)*num_posteriors_per_planet] = np.array([radius, period, mass, eccentricity, omega]).T
 
     return pd.DataFrame(final_singles_array, columns=["radius","period","mass","eccentricity","omega"])
 
@@ -141,6 +224,7 @@ def main(runprops):
         singles_dr_df = dr_df[dr_df["multiplicity"]==1]  #?? this is the cut for singles, but we should also make sure to exclude any of these that are in the df already as multis.
 
         
+        
 
         # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
         voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
@@ -150,14 +234,17 @@ def main(runprops):
 
         print("initialized voxel grid!")
 
-        gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
-        gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
+        # gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
+        # gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
 
         print("starting stellar df")
 
-        stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow')
-        stellar_df = stellar_df[stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
-        stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
+        stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow',delimiter='\t') # used to be from ../data/keplerstellar.csv, now is from Berger et al 2020
+        rowe_stellar_df = pd.read_csv(runprops["rowe_stellar_data_filename"],engine='pyarrow') # this is the stellar data from Rowe et al 2015, which has the limb darkening coefficients. We will merge this with the Berger 2020 catalog to get the limb darkening coefficients for as many stars as possible.
+        rowe_stellar_df = rowe_stellar_df[rowe_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+        # stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
+
+        print("len(stellar_df) before cuts: ",len(stellar_df))
 
 
         # stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
@@ -166,10 +253,26 @@ def main(runprops):
         #     stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
 
 
-        stellar_df = stellar_df[(stellar_df["teff"]>4000) & (stellar_df["teff"]<7000)]
+        stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
         stellar_df = stellar_df[(stellar_df["logg"]>4)]
 
-        stellar_df = stellar_df[(~stellar_df["mass"].isna()) & (~stellar_df["limbdark_coeff1"].isna()) & (~stellar_df["teff"].isna())]
+        print("len(stellar_df) after hsu cuts: ",len(stellar_df))
+
+        ### PULL IN THE LIMB DARKENING COEFFICIENTS FROM DR25 or whatever keplerstellar.csv is
+        stellar_df = stellar_df[(~stellar_df["Mass"].isna())  & (~stellar_df["Teff"].isna())] # & (~stellar_df["limbdark_coeff1"].isna())]
+
+        stellar_df = stellar_df.merge(
+                                    rowe_stellar_df[
+                                        ['kepid', 'dataspan', 'rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
+                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
+                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0']
+                                    ],
+                                    left_on='KIC',
+                                    right_on='kepid',
+                                    how='left'   # keeps all rows from stellar_df
+                                )
+        
+        print("len(stellar_df) after removing nans: ",len(stellar_df))
         
         print("stellar df cuts applied")
 
@@ -178,6 +281,17 @@ def main(runprops):
         df = df[df["KIC"].isin(stellar_df_kics)]
 
         singles_dr_df = singles_dr_df[singles_dr_df["kepid"].isin(stellar_df_kics)]
+
+        print("len(singles_dr_df): ",len(singles_dr_df))
+        print("nan in singles_dr_df periods: ",singles_dr_df["koi_period"].isna().sum())
+        print("nan in singles_dr_df periods err1: ",singles_dr_df["koi_period_err1"].isna().sum())
+        print("nan in singles_dr_df periods err2: ",singles_dr_df["koi_period_err2"].isna().sum())
+
+        print("location of nan in errors: ",singles_dr_df[singles_dr_df["koi_period_err1"].isna() | singles_dr_df["koi_period_err2"].isna()]["kepid"])
+
+        singles_dr_df = singles_dr_df[~(singles_dr_df["koi_period_err1"].isna() | singles_dr_df["koi_period_err2"].isna())]
+
+        singles_dr_df = singles_dr_df.reset_index(drop=True)
 
         processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df)
 

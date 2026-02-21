@@ -5,7 +5,7 @@
     "time": "now",
     "user": "Steven",
     "RunGoal" : "testing what happens when we cut out high densities and apply stellar cuts",
-    "reload_KMDC" : true,     # whether the base .csv should be reloaded and recached
+    "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
     "exclude_high_densities": true,
     "maximum_density": 10,     # posterior density draws above this value (g/cm^3) will be excluded
 
@@ -25,7 +25,7 @@
     "priors_filename": "../runs/init_priors.csv",
     "log_filename": "model_log.txt", 
     "input_data_folder": "../data/thinned",                   # where the KMDC is.
-    "stellar_data_filename": "../data/keplerstellar.csv",     # where keplerstellar.csv is located
+    "stellar_data_filename": "../data/berger_2020_keplerstellar.tsv",     # where keplerstellar.csv is located
     "processed_stellar_data_filename": "../data/keplerstellar_with_cuts.csv", 
     "voxel_json_filename": "../data/voxel_grid.json",
     "gaia_data_filename": "../data/gaia_kepler.csv",

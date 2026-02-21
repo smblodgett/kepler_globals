@@ -18,3 +18,4 @@ __pycache__/
 *.h5
 *voxel_grid.json
 model_run_folder.json
+*.tsv

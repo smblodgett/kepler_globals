@@ -13,6 +13,8 @@ RSAU=0.00465047 # solar radius in AU
 RJAU=4.676*10**-4 # jupiter radius in AU
 RSCM=6.9634*10**10 # solar radius in cm
 
+RHOS = 1408 # solar average density in kg/m^3
+
 DTOS=24*3600 # days to seconds
 MTOAU=6.68458712*10**-12 # meters to AU
 

@@ -804,6 +804,23 @@ def grid_corner_plot(voxel_id, results_folder, nburnin,upper_rho_limit=30,is_uni
 
 ###### do a model vs obs scatter plot for number of objects in each voxel??
 
+def ecc_omega_singles_posterior_plot(eccentricity,omega,visualization_plot_folder='../results/plots/ecc_omega_posterior/',KIC_id=None):
+    print("beginning ecc-omega posterior plot")
+    plt.figure(dpi=150)
+    plt.hist2d(omega, eccentricity, bins=50, cmap='viridis')    
+    plt.ylabel("Eccentricity")
+    plt.xlabel("Argument of Periastron")
+    if KIC_id is not None:
+        plt.title(f"Eccentricity vs Argument of Periastron Posterior for KIC {KIC_id}")
+    else:
+        plt.title("Eccentricity vs Argument of Periastron Singles Posterior")
+    
+    os.makedirs(visualization_plot_folder, exist_ok=True)
+    plt.savefig(os.path.join(visualization_plot_folder,f"ecc_omega_singles_posterior_{KIC_id}.png"))
+    plt.close()
+    print("finished ecc-omega posterior plot")
+
+
 
 ### ADD OPTION TO DO LOGSCALE COLORING
 ### ADD SPLINES 

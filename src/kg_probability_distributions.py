@@ -218,19 +218,19 @@ class EccentricityDistribution:
 def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     
 
-    stellar_df["u1"] = -1.93 * 10**-4 * stellar_df['teff'].iloc[0] + 1.5169
-    stellar_df["u2"] = 1.25 * 10**-4 * stellar_df['teff'].iloc[0] - 0.4601
+    stellar_df["u1"] = -1.93 * 10**-4 * stellar_df['Teff'].iloc[0] + 1.5169
+    stellar_df["u2"] = 1.25 * 10**-4 * stellar_df['Teff'].iloc[0] - 0.4601
 
     stellar_df["c0"] = 1 - (stellar_df['u1'].iloc[0] + stellar_df['u2'].iloc[0])
     stellar_df["omega_zink"] = stellar_df['c0'].iloc[0]/4 + (stellar_df['u1'].iloc[0]+(2*stellar_df['u2'].iloc[0]))/6 - stellar_df['u2'].iloc[0]/8
 
     # print("stellar median radius: ", np.median(stellar_df['radius']))
     # print(stellar_df)
-    sm_axis = (G * (period*24*3600)**2 * (stellar_df['mass'].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
+    sm_axis = (G * (period*24*3600)**2 * (stellar_df['Mass'].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
     
-    i = np.arccos(((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))*(RSCM/100*stellar_df['radius'].iloc[0]*b/sm_axis)) # check conversions here!
+    i = np.arccos(((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))*(RSCM/100*stellar_df['Rad'].iloc[0]*b/sm_axis)) # check conversions here!
     
-    k_rp = (RETORS*radius) / stellar_df['radius'].iloc[0]
+    k_rp = (RETORS*radius) / stellar_df['Rad'].iloc[0]
     
     n_tr = stellar_df["dataspan"].iloc[0] / period
 
@@ -254,7 +254,7 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
         #     print("np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180))", np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)))
             
         #     raise ValueError("The abs argument of arcsin is greater than 1, which is not possible. Check your inputs.")
-        arcsin_arg = np.clip(((RSCM/100)*stellar_df['radius'].iloc[0]/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i) , -1, 1)
+        arcsin_arg = np.clip(((RSCM/100)*stellar_df['Rad'].iloc[0]/sm_axis) * np.sqrt((1+k_rp)**2 - b**2) / np.sin(i) , -1, 1)
         return (period/np.pi) * np.arcsin(arcsin_arg) * np.sqrt(1-ecc**2) / (1+ecc*np.sin(omega*np.pi/180)) # check conversions here!
 
     def find_CDPP(transit_duration):
@@ -288,7 +288,7 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
     # print("depth: ",get_depth(stellar_df,k_rp)*10**6)
     assert get_depth(stellar_df,k_rp)*10**6 > 0, "Depth must be greater than 0"
     
-    if sm_axis < (RSCM/100)*stellar_df['radius'].iloc[0]: #f"Semi-major axis {sm_axis} must be greater than stellar radius {(RSCM/100)*stellar_df["radius"].iloc[0]}"
+    if sm_axis < (RSCM/100)*stellar_df['Rad'].iloc[0]: #f"Semi-major axis {sm_axis} must be greater than stellar radius {(RSCM/100)*stellar_df["radius"].iloc[0]}"
         return np.nan, np.nan
     # print("i: ",i)
 
@@ -311,8 +311,8 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
 
 def get_transit_probability(stellar_df, mass, radius, period, ecc, omega):
     # geometric probability
-    a = (G * (period*24*3600)**2 * (stellar_df["mass"].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
-    return ((stellar_df["radius"].iloc[0]*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))
+    a = (G * (period*24*3600)**2 * (stellar_df["Mass"].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
+    return ((stellar_df["Rad"].iloc[0]*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))
 
 
 def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):

@@ -171,7 +171,7 @@ def main(model_id, runprops):
         with open('../data/dataframe_column_names.json', "r") as f:
             df_columns = json.load(f)
         
-        .assign_column_names(df_columns)
+        voxel_grid.assign_column_names(df_columns)
 
         if runprops["verbose"]: print("[Rank 0] read in voxel grid")
         
