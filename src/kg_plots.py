@@ -49,7 +49,7 @@ from kg_param_boundary_arrays import (
     mass_grid_array as mass_param_grid_array,
     eccentricity_grid_array as eccentricity_param_grid_array,
     omega_grid_array as omega_param_grid_array
-)
+    )
 
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array 
 from kg_griddefiner import RPMGrid, RPMeoGrid
@@ -280,10 +280,14 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True,
         else:
             plt.savefig(os.path.join(heatmap_folder, f"cumulative_"+mode+"_heatmap.png"), dpi=300)
         plt.close()
-        if not is_cumul_mode: 
-            cumul_mean += mean
-            cumul_lower += lower
-            cumul_upper += upper
+        if not is_cumul_mode:
+            # Add means (linear)
+            cumul_mean += np.nan_to_num(mean)
+
+            # Propagate uncertainties in quadrature (treating lower/upper as one-sigma-like deltas)
+            # Use nan_to_num so empty cells don't break the sqrt; they will contribute 0.
+            cumul_lower = np.sqrt(cumul_lower**2 + np.nan_to_num(lower)**2)
+            cumul_upper = np.sqrt(cumul_upper**2 + np.nan_to_num(upper)**2)
 
     if make_gifs:
         if not is_uniform_density:
@@ -536,10 +540,6 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     print("sum(model_count) after the no model mask: ",np.sum(model_count))
 
 
-
-    def rayleigh_exponential(alpha,lamb,sigma,e):
-        return (alpha*((lamb*np.exp(-lamb*e))/(1-np.exp(-lamb))) + 
-                (1-alpha)*((2*e*(1/(2*sigma**2))*np.exp(-1*e**2/(2*sigma**2)))/(1-np.exp(-1/(2*sigma**2)))))
     
     # ecc = np.linspace(0,1,900)
     # plt.figure(dpi=300,facecolor="w")
@@ -553,8 +553,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     # 2D marginals ... can we plot the mass-radius relationship for kmdc vs the model?
 
+    eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
     
-    
+    mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder)
 
     data_count_ecc = np.sum(voxel_num_data, axis=(0,1,2,4))
     model_count_ecc = np.sum(model_count, axis=(0,1,2,4))
@@ -590,22 +591,44 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
 
 
-def mass_radius_scatter_plot(voxel_grid,top_sample,visualization_plot_folder):
+def eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder):
+        
+        def rayleigh_exponential(alpha,lamb,sigma,e):
+            return (alpha*((lamb*np.exp(-lamb*e))/(1-np.exp(-lamb))) + 
+                    (1-alpha)*((2*e*(1/(2*sigma**2))*np.exp(-1*e**2/(2*sigma**2)))/(1-np.exp(-1/(2*sigma**2)))))
+        
+        data_ecc = []
+        for voxel in voxel_grid.flatten():
+            data_ecc.extend(voxel.df["e"].values)
+        plt.figure(dpi=150)
+        plt.hist(data_ecc,bins=30,range=(0,1),density=True,alpha=0.5,label="data")
+        e = np.linspace(0,0.99,900)
+        plt.plot(e,rayleigh_exponential(top_samples[0,17],top_samples[0,18],top_samples[0,19],e),c='r',label="best fit")
+        for n in range(len(top_samples)):
+            plt.plot(e,rayleigh_exponential(top_samples[n,17],top_samples[n,18],top_samples[n,19],e),alpha=0.01,c='k')
+        plt.legend()
+        plt.xlabel("eccentricity")
+        plt.ylabel("p(eccentricity)")
+        plt.title("Eccentricity Distribution")
+        plt.savefig(visualization_plot_folder+"/eccentricity_distribution.png")
+        plt.close()
+
+
+def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
     plt.figure(dpi=150)
     data_radii = []
     data_masses = []
     for voxel in voxel_grid.flatten():
         data_radii.extend(voxel.df["R_pE"].values)
         data_masses.extend(voxel.df["M_pE"].values)
-    plt.scatter(data_masses,data_radii,s=0.5,alpha=0.005)
+    plt.scatter(data_masses,data_radii,s=0.5,alpha=0.005,c='k')
 
-    def mass_radius_relation(mass,C,γ0,γ1,γ2,mass_break_1,mass_break_2):
-        pass
+    plt.contourf(mass_param_grid_array, radius_param_grid_array, np.sum(model_count,axis=(2,3,4)), levels=200, cmap='viridis', alpha=0.7)
     # plt.plot()
-    plt.xlabel("Radius [$R_{⊕}$]")
-    plt.ylabel("Mass [$M_{⊕}$]")
-    plt.title("Mass vs Radius for Each Voxel")
-    # plt.xscale('log')
+    plt.ylabel("Radius [$R_{⊕}$]")
+    plt.xlabel("Mass [$M_{⊕}$]")
+    plt.title("Mass vs Radius")
+    plt.xscale('log')
     # plt.yscale('log')
     plt.grid()
     plt.savefig(visualization_plot_folder+"/mass_radius_scatter.png")
@@ -1123,10 +1146,11 @@ def main(voxel_id,plottype,model_run_folder_argv):
     voxel_grid_param.assign_column_names(df_columns)
     stellar_df = pd.read_csv(plotprops["processed_stellar_data_filename"])
     
-    with open(best_guess_filename, "r") as f:
-        saved = json.load(f)
-        logp = saved["log_prob"]
-        params = saved["params"]
+    if plottype != "residual" and plottype != "heatmap":
+        with open(best_guess_filename, "r") as f:
+            saved = json.load(f)
+            logp = saved["log_prob"]
+            params = saved["params"]
 
 
 # Default to False if not specified

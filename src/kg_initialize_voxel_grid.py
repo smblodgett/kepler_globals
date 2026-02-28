@@ -103,11 +103,11 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
 
 def process_singles_df(singles_dr_df,stellar_df):
 
-    num_posteriors_per_planet = 50000
+    num_posteriors_per_planet = 1000
 
-    final_singles_array = np.zeros((len(singles_dr_df)*num_posteriors_per_planet,5)) # radius, period, mass, eccentricity, omega
+    final_singles_array = np.zeros((len(singles_dr_df)*num_posteriors_per_planet,6)) # radius, period, mass, eccentricity, omega
 
-    # graphing GJ436 for validation - using Lanotte et al 2014
+    ##### graphing GJ436 for validation - using Lanotte et al 2014
     radius = np.random.normal(3.96,0.05,size=num_posteriors_per_planet)
     period = np.random.normal(2.6438979,0.0000003,size=num_posteriors_per_planet)
     b = np.random.normal(0.8521,0.0021,size=num_posteriors_per_planet)
@@ -120,6 +120,7 @@ def process_singles_df(singles_dr_df,stellar_df):
     print("GJ rho star true: ",rho_star_true)
     print("GJ rho star uncertainty: ",rho_star_uncertainty)
     sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_posteriors_per_planet)
+    #####
 
     for index, row in singles_dr_df.iterrows():
         radius = np.random.normal(row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])),size=num_posteriors_per_planet)
@@ -171,9 +172,11 @@ def process_singles_df(singles_dr_df,stellar_df):
 
         eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_posteriors_per_planet)
 
-        final_singles_array[index*num_posteriors_per_planet:(index+1)*num_posteriors_per_planet] = np.array([radius, period, mass, eccentricity, omega]).T
+        final_singles_array[index*num_posteriors_per_planet:(index+1)*num_posteriors_per_planet] = np.array([radius, period, mass, eccentricity, omega,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
 
-    return pd.DataFrame(final_singles_array, columns=["radius","period","mass","eccentricity","omega"])
+    df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","kepid"])
+
+    return df
 
 
 def main(runprops):
@@ -184,6 +187,7 @@ def main(runprops):
     voxel_grid = None
     stellar_df = None
     stellar_df_reduced = None
+    final_kdc_df = None
     comm = MPI.COMM_WORLD
     # with MPIPool() as pool:
         # if not pool.is_master():
@@ -218,12 +222,16 @@ def main(runprops):
         # Get DR25 catalog for the inclusion of singles in the catalog.
         dr_df = pd.read_csv(runprops['dr_25_data_filename'],engine='pyarrow')
 
+
         dr_df['multiplicity'] = dr_df['kepid'].map(dr_df['kepid'].value_counts())
+
+        # print("dr_df koi 1257: ", dr_df[dr_df["kepid"]==8751933])
+
 
         # dr_df = dr_df[dr_df["koi_disposition"]=="CONFIRMED"] #??
         singles_dr_df = dr_df[dr_df["multiplicity"]==1]  #?? this is the cut for singles, but we should also make sure to exclude any of these that are in the df already as multis.
 
-        
+        # print("singles koi 1257: ", singles_dr_df[singles_dr_df["kepid"]==8751933])
         
 
         # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
@@ -240,17 +248,13 @@ def main(runprops):
         print("starting stellar df")
 
         stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow',delimiter='\t') # used to be from ../data/keplerstellar.csv, now is from Berger et al 2020
+        # print("stellar_df before cuts koi 1257: ", stellar_df[stellar_df["KIC"]==8751933])
+
         rowe_stellar_df = pd.read_csv(runprops["rowe_stellar_data_filename"],engine='pyarrow') # this is the stellar data from Rowe et al 2015, which has the limb darkening coefficients. We will merge this with the Berger 2020 catalog to get the limb darkening coefficients for as many stars as possible.
         rowe_stellar_df = rowe_stellar_df[rowe_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
         # stellar_df = stellar_df.rename(columns={"kepid":"KIC"})
 
         print("len(stellar_df) before cuts: ",len(stellar_df))
-
-
-        # stellar_df = stellar_df.merge(gaia_df, on='KIC', how='left')
-
-        # for old_col,new_col in zip(["teff","mass","radius"],["Teff","Mass","Rad"]):
-        #     stellar_df[old_col] = stellar_df[new_col].combine_first(stellar_df[old_col])
 
 
         stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
@@ -276,11 +280,17 @@ def main(runprops):
         
         print("stellar df cuts applied")
 
+        # print("stellar_df after cuts koi 1257: ", stellar_df[stellar_df["KIC"]==8751933])
+
+
         stellar_df_kics = stellar_df["KIC"]
 
         df = df[df["KIC"].isin(stellar_df_kics)]
 
         singles_dr_df = singles_dr_df[singles_dr_df["kepid"].isin(stellar_df_kics)]
+
+        # print("singles_dr_df koi 1257: ", singles_dr_df[singles_dr_df["kepid"]==8751933])
+
 
         print("len(singles_dr_df): ",len(singles_dr_df))
         print("nan in singles_dr_df periods: ",singles_dr_df["koi_period"].isna().sum())
@@ -300,16 +310,38 @@ def main(runprops):
 
 
         df['unique_planet'] = df['KIC'] + df['planet']
-        kic_dict = df['unique_planet'].value_counts().to_dict()
+        kic_dict_multis = df['unique_planet'].value_counts().to_dict()
+
+        print("kic_dict_multis: ", kic_dict_multis)
+
+        kic_to_remove = [k for k, v in kic_dict_multis.items() if v < 50]
+
+        for kic in kic_to_remove:
+            df = df[df['KIC'] != kic]
+
+        kic_dict_multis = {k: v for k, v in kic_dict_multis.items() if v >= 50}
+
+        print("kic_dict_multis: ", kic_dict_multis)
+
+        processed_singles_dr_df['unique_planet'] = processed_singles_dr_df['kepid']  + 0.1
+
+        kic_dict_singles = processed_singles_dr_df['unique_planet'].value_counts().to_dict()
+
+        kic_dict = kic_dict_multis | kic_dict_singles
 
         print("kic_dict: ", kic_dict)
 
         voxel_grid.set_kic_dict(kic_dict)
+
+        final_kdc_df = pd.concat([df, processed_singles_dr_df.rename(columns={"kepid":"KIC"})], ignore_index=True)
+
+        print("final_kdc_df: ",final_kdc_df)
+
+        print("final_kdc_df columns: ",final_kdc_df.columns)
         
+        print("length of df after matching to stellar catalog, filtering densities: ",len(final_kdc_df))
 
-        print("length of df after matching to stellar catalog, filtering densities: ",len(df))
-
-        voxel_grid.add_data(df)
+        voxel_grid.add_data(final_kdc_df)
 
         stellar_df_reduced=stellar_df.sample(n=100,random_state=22)
 
@@ -345,10 +377,11 @@ def main(runprops):
 
         stellar_df.to_csv("../data/keplerstellar_with_cuts.csv")
 
+        final_kdc_df.to_csv("../data/final_kdc.csv")
 
-        df_columns = json.dumps(list(df.columns))
+        final_kdc_df_columns = json.dumps(list(final_kdc_df.columns))
         with open('../data/dataframe_column_names.json', "w") as f:
-            f.write(df_columns)
+            f.write(final_kdc_df_columns)
         
         print("Finished writing to json!")
     
