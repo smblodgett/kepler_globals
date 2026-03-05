@@ -142,6 +142,9 @@ def parametric_log_likelihood(params, model_id):
     # print("voxel_num_data.shape: ",voxel_num_data.shape)
     # print("model_count.shape: ",model_count.shape)
 
+    #### If a voxel is outside of the priors of the data, we should exclude it
+    #### tau needs to be added to all voxels, not just to ones where model is 0
+
 
 
     # print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
@@ -179,29 +182,8 @@ def parametric_log_likelihood(params, model_id):
     # print("grid_sum: ",grid_sum)
     total_grid_sum = np.sum(grid_sum)
     print("grid_sum after summing: ", total_grid_sum)
-
-
-    # perfect_grid_sum = (voxel_num_data * np.log(voxel_num_data+1e-1) - voxel_num_data - gammaln(voxel_num_data+1))
-    # perfect_total_grid_sum = np.sum(perfect_grid_sum)
-    # print("perfect grid sum after summing: ", perfect_total_grid_sum)
-
-    # times_two_grid_sum = (voxel_num_data * np.log(1.5*model_count) - 1.5*model_count - gammaln(voxel_num_data+1))
-    # times_two_total_grid_sum = np.sum(times_two_grid_sum)
-    # print("times two grid sum after summing: ", times_two_total_grid_sum)
-
     
     end_time = time.time()
-    # print("total model count time is ", total_model_count_time)
-    # print("average model count time is ", total_model_count_time / voxel_number)
-    # print("the other thing ", )
-    # print("loop eval time is ", end_time - pre_loop_time)
-    # if method == "new faster way": 
-    # print("1 eval time (new faster way) is ", end_time - start_time,flush=True) ###
-    # else:
-        # print("1 eval time (old way) is ", end_time - start_time)
-    # sys.exit(0)
-    # print("evaluated normally")
-    ##################### ^ old implementation
 
     logL = total_grid_sum
 

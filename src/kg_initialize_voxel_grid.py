@@ -66,8 +66,8 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
     See MacDougal, Gilbert, and Pettigura 2023. 
     """
     i=num_samples
-    eccentricity = np.random.uniform(0, 0.99,size=i)  # Sample eccentricity uniformly between 0 and 0.9
-    omega = np.random.uniform(-90, 270,size=i)  # Sample omega uniformly between 0 and 360 degrees
+    eccentricity = np.random.uniform(0, 0.99,size=i)  # Sample eccentricity uniformly between 0 and 0.99
+    omega = np.random.uniform(0, 360,size=i)  # Sample omega uniformly between 0 and 360 degrees
 
 
     rho_star_sample = np.zeros(i)  # Initialize an array to store the sampled stellar densities
@@ -309,21 +309,21 @@ def main(runprops):
             df = df[df["rho_p"]<runprops["maximum_density"]]
 
 
-        df['unique_planet'] = df['KIC'] + df['planet']
+        df['unique_planet'] = df['KIC'].astype(str) + "_" + df['planet'].astype(str)
         kic_dict_multis = df['unique_planet'].value_counts().to_dict()
 
         print("kic_dict_multis: ", kic_dict_multis)
 
-        kic_to_remove = [k for k, v in kic_dict_multis.items() if v < 50]
+        unique_planet_to_remove = [k for k, v in kic_dict_multis.items() if v < 50]
 
-        for kic in kic_to_remove:
-            df = df[df['KIC'] != kic]
+        for unique_planet in unique_planet_to_remove:
+            df = df[df['unique_planet'] != unique_planet]
 
         kic_dict_multis = {k: v for k, v in kic_dict_multis.items() if v >= 50}
 
         print("kic_dict_multis: ", kic_dict_multis)
 
-        processed_singles_dr_df['unique_planet'] = processed_singles_dr_df['kepid']  + 0.1
+        processed_singles_dr_df['unique_planet'] = processed_singles_dr_df['kepid'].astype(int).astype(str) + "_" + "0.1"
 
         kic_dict_singles = processed_singles_dr_df['unique_planet'].value_counts().to_dict()
 
@@ -375,9 +375,18 @@ def main(runprops):
         with open(runprops["voxel_json_filename"], "w") as f:
             f.write(grid_string)
 
-        stellar_df.to_csv("../data/keplerstellar_with_cuts.csv")
+        import pyarrow as pa
+        import pyarrow.csv as csv
 
-        final_kdc_df.to_csv("../data/final_kdc.csv")
+        stellar_table = pa.Table.from_pandas(stellar_df)
+        csv.write_csv(stellar_table, "../data/keplerstellar_with_cuts.csv")
+
+        # stellar_df.to_csv("../data/keplerstellar_with_cuts.csv")
+
+        final_kdc_table = pa.Table.from_pandas(final_kdc_df)
+        csv.write_csv(final_kdc_table, "../data/final_kdc.csv")
+
+        # final_kdc_df.to_csv("../data/final_kdc.csv")
 
         final_kdc_df_columns = json.dumps(list(final_kdc_df.columns))
         with open('../data/dataframe_column_names.json', "w") as f:

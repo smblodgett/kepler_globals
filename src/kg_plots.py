@@ -598,14 +598,14 @@ def eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
                     (1-alpha)*((2*e*(1/(2*sigma**2))*np.exp(-1*e**2/(2*sigma**2)))/(1-np.exp(-1/(2*sigma**2)))))
         
         data_ecc = []
-        for voxel in voxel_grid.flatten():
+        for voxel in voxel_grid.voxel_array.flatten():
             data_ecc.extend(voxel.df["e"].values)
         plt.figure(dpi=150)
-        plt.hist(data_ecc,bins=30,range=(0,1),density=True,alpha=0.5,label="data")
+        plt.hist(data_ecc,range=(0,1),density=True,alpha=0.5,label="data",bins=100)
         e = np.linspace(0,0.99,900)
         plt.plot(e,rayleigh_exponential(top_samples[0,17],top_samples[0,18],top_samples[0,19],e),c='r',label="best fit")
-        for n in range(len(top_samples)):
-            plt.plot(e,rayleigh_exponential(top_samples[n,17],top_samples[n,18],top_samples[n,19],e),alpha=0.01,c='k')
+        for n in range(1,len(top_samples)):
+            plt.plot(e,rayleigh_exponential(top_samples[n,17],top_samples[n,18],top_samples[n,19],e),alpha=0.005,c='k')
         plt.legend()
         plt.xlabel("eccentricity")
         plt.ylabel("p(eccentricity)")
@@ -618,12 +618,20 @@ def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
     plt.figure(dpi=150)
     data_radii = []
     data_masses = []
-    for voxel in voxel_grid.flatten():
+    for voxel in voxel_grid.voxel_array.flatten():
         data_radii.extend(voxel.df["R_pE"].values)
         data_masses.extend(voxel.df["M_pE"].values)
     plt.scatter(data_masses,data_radii,s=0.5,alpha=0.005,c='k')
 
-    plt.contourf(mass_param_grid_array, radius_param_grid_array, np.sum(model_count,axis=(2,3,4)), levels=200, cmap='viridis', alpha=0.7)
+    Z = np.sum(model_count,axis=(1,3,4))
+    print("Z shape: ",Z.shape)
+
+    mass_centers = 0.5 * (mass_param_grid_array[:-1] + mass_param_grid_array[1:])
+    radius_centers = 0.5 * (radius_param_grid_array[:-1] + radius_param_grid_array[1:])
+    print("mass_centers shape: ",mass_centers.shape)
+    print("radius_centers shape: ",radius_centers.shape)
+
+    plt.contourf(mass_centers, radius_centers, Z, levels=200, cmap='viridis', alpha=0.7)
     # plt.plot()
     plt.ylabel("Radius [$R_{⊕}$]")
     plt.xlabel("Mass [$M_{⊕}$]")
@@ -873,9 +881,9 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     fig, ax = plt.subplots()
 
     cf = ax.contourf(X2, X1, Z3, levels=filled_levels, cmap='Greys_r',norm=norm)
-    cs = ax.contour(X2, X1, Z3, levels=contour_levels, colors='crimson', linewidths=0.7)
+    cs = ax.contour(X2, X1, Z3, levels=contour_levels, colors='crimson', linewidths=1.1)
 
-    ax.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='crimson', inline_spacing=0.4)
+    ax.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='crimson', inline_spacing=0.01)
 
     # Set log scales
     ax.set_xscale('log')

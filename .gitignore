@@ -19,3 +19,4 @@ __pycache__/
 *voxel_grid.json
 model_run_folder.json
 *.tsv
+*final_kdc.csv
