@@ -8,6 +8,7 @@
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
     "exclude_high_densities": true,
     "maximum_density": 10,     # posterior density draws above this value (g/cm^3) will be excluded
+    "minimum_density": 0.01,
 
     # Run properties/parameters
     "nwalkers" : 2000,           # number of walkers in emcee ensemble

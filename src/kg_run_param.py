@@ -31,10 +31,10 @@ from schwimmbad import MPIPool
 import kg_likelihood
 from kg_griddefiner import *
 from kg_param_initial_guess import get_initial_guess
-from kg_utilities import ReadJson
+from kg_utilities import ReadJson, density_given_mass_radius
 from kg_plots import MES_grid_plot
 from kg_grid_object_hook import grid_object_hook
-from kg_param_boundary_arrays import radius_grid_array
+from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 
 print(f"[Rank {rank}/{size}] finished imports")
 print(os.system("hostname"))
@@ -175,7 +175,6 @@ def main(model_id, runprops):
 
         if runprops["verbose"]: print("[Rank 0] read in voxel grid")
         
-        assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
 
         # read in the stellar dataframe
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
@@ -213,12 +212,25 @@ def main(model_id, runprops):
         priors = kg_priors.PriorArgs().load_priors().get_priors(model_id)
         with open(model_run_dir + "/priors.json", "w") as f:
             json.dump(priors, f, indent=4)
+
+
+        assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
+        assert voxel_grid.mass_grid_array == mass_grid_array, "The read-in voxel grid's mass boundary array is not correct!"
+        assert voxel_grid.period_grid_array == period_grid_array, "The read-in voxel grid's period boundary array is not correct!"
+        assert voxel_grid.eccentricity_grid_array == eccentricity_grid_array, "The read-in voxel grid's eccentricity boundary array is not correct!"
+        assert voxel_grid.omega_grid_array == omega_grid_array, "The read-in voxel grid's omega boundary array is not correct!"
+
+        density_prior_mask = voxel_grid.get_density_prior_mask()
+
+        print("density_prior_mask: ", density_prior_mask)
+
     
 
     # broadcast the voxel grid and stellar dataframe to all ranks
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df = comm.bcast(stellar_df,root=0)
     model_run_dir = comm.bcast(model_run_dir,root=0)
+    density_prior_mask = comm.bcast(density_prior_mask,root=0)
     
     if runprops["verbose"]: print("---BROADCAST HAS BEEN COMPLETED---")
     
@@ -226,6 +238,7 @@ def main(model_id, runprops):
     kg_likelihood.stellar_df = stellar_df
     kg_likelihood.model_run_dir = model_run_dir
     kg_likelihood.model_id = model_id
+    kg_likelihood.density_prior_mask = density_prior_mask
 
     print("kg_likelihood.stellar_df : ",kg_likelihood.stellar_df )
     print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))

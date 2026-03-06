@@ -616,6 +616,17 @@ def eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
 
 def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
     plt.figure(dpi=150)
+
+    Z = np.sum(model_count,axis=(1,3,4))
+    print("Z shape: ",Z.shape)
+
+    mass_centers = 0.5 * (np.array(mass_param_grid_array)[:-1] + np.array(mass_param_grid_array)[1:])
+    radius_centers = 0.5 * (np.array(radius_param_grid_array)[:-1] + np.array(radius_param_grid_array)[1:])
+    print("mass_centers shape: ",mass_centers.shape)
+    print("radius_centers shape: ",radius_centers.shape)
+
+    plt.contourf(mass_centers, radius_centers, Z, levels=30, cmap='viridis', alpha=0.7)
+
     data_radii = []
     data_masses = []
     for voxel in voxel_grid.voxel_array.flatten():
@@ -623,15 +634,6 @@ def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
         data_masses.extend(voxel.df["M_pE"].values)
     plt.scatter(data_masses,data_radii,s=0.5,alpha=0.005,c='k')
 
-    Z = np.sum(model_count,axis=(1,3,4))
-    print("Z shape: ",Z.shape)
-
-    mass_centers = 0.5 * (mass_param_grid_array[:-1] + mass_param_grid_array[1:])
-    radius_centers = 0.5 * (radius_param_grid_array[:-1] + radius_param_grid_array[1:])
-    print("mass_centers shape: ",mass_centers.shape)
-    print("radius_centers shape: ",radius_centers.shape)
-
-    plt.contourf(mass_centers, radius_centers, Z, levels=200, cmap='viridis', alpha=0.7)
     # plt.plot()
     plt.ylabel("Radius [$R_{⊕}$]")
     plt.xlabel("Mass [$M_{⊕}$]")
@@ -640,6 +642,54 @@ def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
     # plt.yscale('log')
     plt.grid()
     plt.savefig(visualization_plot_folder+"/mass_radius_scatter.png")
+    plt.close()
+
+    # experimental figure with hexbin and pcolormesh
+    plt.figure(dpi=150)
+
+    Z = np.sum(model_count, axis=(1,3,4))
+
+    mass_edges = np.array(mass_param_grid_array)
+    radius_edges = np.array(radius_param_grid_array)
+    
+    from matplotlib.colors import LogNorm
+
+    plt.pcolormesh(
+        mass_edges,
+        radius_edges,
+        Z,
+        cmap="viridis",
+        norm=LogNorm(vmin=np.max([1e-3, np.min(Z[Z > 0])]), vmax=np.max(Z)),
+        shading="auto"
+    )
+
+    data_radii = []
+    data_masses = []
+
+    for voxel in voxel_grid.voxel_array.flatten():
+        data_radii.extend(voxel.df["R_pE"].values)
+        data_masses.extend(voxel.df["M_pE"].values)
+
+    plt.hexbin(
+        data_masses,
+        data_radii,
+        gridsize=200,
+        xscale='log',
+        cmap='Greys',
+        bins='log',
+        mincnt=1
+    )
+
+    plt.xlabel("Mass [$M_{⊕}$]")
+    plt.ylabel("Radius [$R_{⊕}$]")
+    plt.title("Mass vs Radius")
+
+    plt.xscale("log")
+    plt.grid()
+
+    plt.colorbar(label="Model count")
+
+    plt.savefig(visualization_plot_folder + "/mass_radius_mesh.png")
     plt.close()
 
 

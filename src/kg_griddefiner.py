@@ -729,6 +729,20 @@ class RPMeoGrid(RPMGrid):
             if self.voxel_array[i][j][k][l][m].within(radius,period,mass,eccentricity,omega):
                 return i,j,k,l,m
             it.iternext()
+    
+    def get_density_prior_mask(self,upper_density_limit=10,lower_density_limit=0.01):
+        density_prior_mask = np.ones((self.r_len-1, self.p_len-1, self.m_len-1, self.e_len-1, self.o_len-1), dtype=bool)
+        it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
+        for voxels in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
+            i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
+            # print("self.voxel_array[i][j][k][l][m]: ",self.voxel_array[i][j][k][l][m])
+            # print("type(self.voxel_array[i][j][k][l][m]): ",self.voxel_array[i][j][k][l][m])
+            if self.voxel_array[i][j][k][l][m].is_implausible(upper_density_limit,lower_density_limit):
+                 density_prior_mask[i,j,k,l,m] = False
+            it.iternext()
+
+        return density_prior_mask
+
 
     def __str__(self):
         total = self.r_len * self.p_len * self.m_len * self.e_len* self.o_len

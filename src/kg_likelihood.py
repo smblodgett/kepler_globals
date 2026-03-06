@@ -15,6 +15,7 @@ stellar_df = None
 voxel_grid = None
 model_run_dir = None
 model_id = None
+density_prior_mask = None
 local_best_logProb = -np.inf
 
 prior_args = PriorArgs().load_priors()
@@ -143,7 +144,6 @@ def parametric_log_likelihood(params, model_id):
     # print("model_count.shape: ",model_count.shape)
 
     #### If a voxel is outside of the priors of the data, we should exclude it
-    #### tau needs to be added to all voxels, not just to ones where model is 0
 
 
 
@@ -166,17 +166,19 @@ def parametric_log_likelihood(params, model_id):
     voxel_num_data = voxel_num_data[~zero_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
     model_count = model_count[~zero_mask] 
 
-    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+
+    # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
     
     if model_id == 0:
-        model_count[no_model_mask] = 1e-7
+        model_count += 1e-7
     else:
-        model_count[no_model_mask] = 10 ** params[20] 
+        model_count += 10 ** params[20] 
+
+    model_count = model_count[density_prior_mask]
 
     print("sum(model_count): ",np.sum(model_count))
     print("sum(voxel_num_data): ",np.sum(voxel_num_data))
 
-    ### EDGE CASE: LOW DATA, HIGH MODEL ONES. CHECK THIS OUT
 
     grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
     # print("grid_sum: ",grid_sum)

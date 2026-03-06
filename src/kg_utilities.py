@@ -14,6 +14,11 @@ def mass_given_density_radius(density,radius):
     return ((4/3)*np.pi*density/MEG)*(radius * RECM)**3
 
 
+def density_given_mass_radius(mass,radius):
+    """Returns the density of a planet given its mass and radius, with units density in g/cm^3, radius in Earth radii, and mass in Earth masses."""
+    return ((mass)*MEG)/((4/3)*np.pi*(radius * RECM)**3)
+
+
 def simpson_detection_probability(MES,a=29.14,b=0.284,c=0.891,N=500):
     x = np.linspace(0, MES, N)
     integrand = (c / (b**a * gamma(a))) * x**(a-1) * np.exp(-x/b)
