@@ -172,7 +172,7 @@ def parametric_log_likelihood(params, model_id):
     if model_id == 0:
         model_count += 1e-7
     else:
-        model_count += 10 ** params[20] 
+        model_count += 10 ** params[18] 
 
     model_count = model_count[density_prior_mask]
 

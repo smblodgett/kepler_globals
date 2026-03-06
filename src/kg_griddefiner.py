@@ -731,7 +731,7 @@ class RPMeoGrid(RPMGrid):
             it.iternext()
     
     def get_density_prior_mask(self,upper_density_limit=10,lower_density_limit=0.01):
-        density_prior_mask = np.ones((self.r_len-1, self.p_len-1, self.m_len-1, self.e_len-1, self.o_len-1), dtype=bool)
+        density_prior_mask = np.ones((self.r_len, self.p_len, self.m_len, self.e_len, self.o_len), dtype=bool)
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
         for voxels in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
             i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position

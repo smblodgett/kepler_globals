@@ -409,16 +409,16 @@ def get_probability_distributions(params):
     ln_beta = params[11]
     β1 = params[12]
     β2 = params[13]
-    β3 = params[14]
-    Period_break_1 = params[15]
-    Period_break_2 = params[16]
-    α = params[17]
-    λ = params[18]
-    σ_e = params[19]
+    # β3 = params[14]
+    Period_break_1 = params[14]
+    # Period_break_2 = params[16]
+    α = params[15]
+    λ = params[16]
+    σ_e = params[17]
 
     # period
     Period_fine_grid = np.linspace(0.1,500,10000)
-    pdf_Period = PeriodDistribution(Period_fine_grid,β1,β2,β3,Period_break_1,Period_break_2).Period_pdf(Period_fine_grid)
+    pdf_Period = PeriodDistribution(Period_fine_grid,β1,β2,Period_break_1,power_laws=2).Period_pdf(Period_fine_grid)
     p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
 
     # mass

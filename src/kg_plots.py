@@ -640,7 +640,7 @@ def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
     plt.title("Mass vs Radius")
     plt.xscale('log')
     # plt.yscale('log')
-    plt.grid()
+    # plt.grid()
     plt.savefig(visualization_plot_folder+"/mass_radius_scatter.png")
     plt.close()
 
@@ -677,7 +677,8 @@ def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
         xscale='log',
         cmap='Greys',
         bins='log',
-        mincnt=1
+        mincnt=1,
+        alpha=0.1
     )
 
     plt.xlabel("Mass [$M_{⊕}$]")
@@ -685,7 +686,7 @@ def mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder):
     plt.title("Mass vs Radius")
 
     plt.xscale("log")
-    plt.grid()
+    # plt.grid()
 
     plt.colorbar(label="Model count")
 
@@ -795,7 +796,7 @@ def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folde
 
     samples_2d = np.column_stack((samples_2d, likelihood_1d))
 
-    param_labels = param_labels + [r"$\log (\mathcal{L})$"]
+    param_labels = param_labels + [r"$\log \mathcal{L}$"]
     
     corner_plot = corner.corner(samples_2d,labels=param_labels,show_titles=True)
     
