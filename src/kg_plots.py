@@ -42,6 +42,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm, PowerNorm
 from matplotlib.ticker import ScalarFormatter
 from PIL import Image
 from scipy.stats import lognorm
+from itertools import combinations
 
 from kg_param_boundary_arrays import (
     radius_grid_array as radius_param_grid_array,
@@ -528,16 +529,44 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
     model_count = 10**top_samples[0,0] * voxel_grid.likelihood_array[:,:,:,:,:,1] 
 
-    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
-    print("Number of voxels with data but no model count: ", np.sum(no_model_mask))
-    print("sum(model_count) before the no model mask: ",np.sum(model_count))
+    density_prior_mask = voxel_grid.get_density_prior_mask()
+
+
+    zero_mask = (model_count == 0) & (voxel_num_data == 0)
+    combined_mask = ~zero_mask & density_prior_mask
+
+
+    voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    model_count = model_count[combined_mask] 
+
+    
+
+
+    # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    
     if model_id == 0:
-        model_count[no_model_mask] = 1e-7
+        model_count += 1e-7
     else:
-        print("top samples[0,20]: ",top_samples[0,20])
-        model_count[no_model_mask] = 10 ** top_samples[0,20] 
+        model_count += 10**top_samples[0,18]
+
+    
+    original_shape = combined_mask.shape
+
+    assert original_shape == voxel_grid.likelihood_array[:,:,:,:,:,0].shape, "The original shape of the data and model arrays should match the shape of the combined mask."
+
+    reconstructed_model = np.zeros(original_shape)
+    reconstructed_data = np.zeros(original_shape)
+
+    reconstructed_model[combined_mask] = model_count
+    reconstructed_data[combined_mask] = voxel_num_data
 
     print("sum(model_count) after the no model mask: ",np.sum(model_count))
+    print("sum(voxel_num_data) after the no model mask: ",np.sum(voxel_num_data))
+    print("sum(reconstructed_model): ",np.sum(reconstructed_model))
+    print("sum(reconstructed_data): ",np.sum(reconstructed_data))
+
+    print("shape reconstructed model: ",reconstructed_model.shape)
+    print("shape reconstructed data: ",reconstructed_data.shape)
 
 
     
@@ -553,42 +582,107 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     # 2D marginals ... can we plot the mass-radius relationship for kmdc vs the model?
 
-    eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
-    
-    mass_radius_scatter_plot(voxel_grid,model_count,visualization_plot_folder)
+    # 2D residual - model count minus data count in mass-radius
 
-    data_count_ecc = np.sum(voxel_num_data, axis=(0,1,2,4))
-    model_count_ecc = np.sum(model_count, axis=(0,1,2,4))
 
-    param_residuals_plot(data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
-    data_count_mass = np.sum(voxel_num_data, axis=(0,1,3,4))
-    model_count_mass = np.sum(model_count, axis=(0,1,3,4))
+    data_count_ecc = np.sum(reconstructed_data, axis=(0,1,2,4))
+    model_count_ecc = np.sum(reconstructed_model, axis=(0,1,2,4))
 
-    param_residuals_plot(data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
+    param_1D_residuals_plot(data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
-    data_count_radius = np.sum(voxel_num_data, axis=(1,2,3,4))
-    model_count_radius = np.sum(model_count, axis=(1,2,3,4))
+    data_count_mass = np.sum(reconstructed_data, axis=(0,1,3,4))
+    model_count_mass = np.sum(reconstructed_model, axis=(0,1,3,4))
 
-    param_residuals_plot(data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
+    param_1D_residuals_plot(data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
 
-    data_count_period = np.sum(voxel_num_data, axis=(0,2,3,4))
-    model_count_period = np.sum(model_count, axis=(0,2,3,4))
+    data_count_radius = np.sum(reconstructed_data, axis=(1,2,3,4))
+    model_count_radius = np.sum(reconstructed_model, axis=(1,2,3,4))
 
-    param_residuals_plot(data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
+    param_1D_residuals_plot(data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
 
-    data_count_omega = np.sum(voxel_num_data, axis=(0,1,2,3))
-    model_count_omega = np.sum(model_count, axis=(0,1,2,3))
+    data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
+    model_count_period = np.sum(reconstructed_model, axis=(0,2,3,4))
 
-    param_residuals_plot(data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
+    param_1D_residuals_plot(data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
+
+    data_count_omega = np.sum(reconstructed_data, axis=(0,1,2,3))
+    model_count_omega = np.sum(reconstructed_model, axis=(0,1,2,3))
+
+    param_1D_residuals_plot(data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
     param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
     param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
-    param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder)
+    param_voxel_comparison_plot(reconstructed_data,reconstructed_model,visualization_plot_folder)
 
     param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
+
+    eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
+    
+    mass_radius_scatter_plot(voxel_grid,reconstructed_model,visualization_plot_folder)
+
+    print("trying the 2d residuals")
+    for axis in combinations(range(5), 3):
+        data_count_2D = np.sum(reconstructed_data, axis=axis)
+        model_count_2D = np.sum(reconstructed_model, axis=axis)
+        
+        match axis:
+            case (0,1,2):
+                grid_array_1 = eccentricity_param_grid_array
+                grid_array_2 = omega_param_grid_array
+                label_1 = "eccentricity"
+                label_2 = "omega"
+            case (0,1,3):
+                grid_array_1 = mass_param_grid_array
+                grid_array_2 = omega_param_grid_array
+                label_1 = "mass"
+                label_2 = "omega"
+            case (0,1,4):
+                grid_array_1 = mass_param_grid_array
+                grid_array_2 = eccentricity_param_grid_array  
+                label_1 = "mass"
+                label_2 = "eccentricity"          
+            case (0,2,3):
+                grid_array_1 = period_param_grid_array
+                grid_array_2 = omega_param_grid_array
+                label_1 = "period"
+                label_2 = "omega"
+            case (0,2,4):
+                grid_array_1 = period_param_grid_array
+                grid_array_2 = eccentricity_param_grid_array
+                label_1 = "period"
+                label_2 = "eccentricity"
+            case (0,3,4):
+                grid_array_1 = period_param_grid_array
+                grid_array_2 = mass_param_grid_array
+                label_1 = "period"
+                label_2 = "mass"
+            case (1,2,3):
+                grid_array_1 = radius_param_grid_array
+                grid_array_2 = omega_param_grid_array
+                label_1 = "radius"
+                label_2 = "omega"
+            case (1,2,4):
+                grid_array_1 = radius_param_grid_array
+                grid_array_2 = eccentricity_param_grid_array
+                label_1 = "radius"
+                label_2 = "eccentricity"
+            case (1,3,4):
+                grid_array_1 = radius_param_grid_array
+                grid_array_2 = mass_param_grid_array
+                label_1 = "radius"
+                label_2 = "mass"
+            case (2,3,4):
+                grid_array_1 = radius_param_grid_array
+                grid_array_2 = period_param_grid_array
+                label_1 = "radius"
+                label_2 = "period"
+            case _:                
+                raise ValueError("Invalid axis combination for 2D residuals plot.")
+        param_2D_residuals_plot(data_count_2D,model_count_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2)
+    
 
 
 def eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder):
@@ -603,9 +697,9 @@ def eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
         plt.figure(dpi=150)
         plt.hist(data_ecc,range=(0,1),density=True,alpha=0.5,label="data",bins=100)
         e = np.linspace(0,0.99,900)
-        plt.plot(e,rayleigh_exponential(top_samples[0,17],top_samples[0,18],top_samples[0,19],e),c='r',label="best fit")
         for n in range(1,len(top_samples)):
-            plt.plot(e,rayleigh_exponential(top_samples[n,17],top_samples[n,18],top_samples[n,19],e),alpha=0.005,c='k')
+            plt.plot(e,rayleigh_exponential(top_samples[n,15],top_samples[n,16],top_samples[n,17],e),alpha=0.0005,c='k')
+        plt.plot(e,rayleigh_exponential(top_samples[0,15],top_samples[0,16],top_samples[0,17],e),c='r',alpha=0.5,label="best fit")
         plt.legend()
         plt.xlabel("eccentricity")
         plt.ylabel("p(eccentricity)")
@@ -720,7 +814,7 @@ def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_
 
         plt.tight_layout()
         os.makedirs(visualization_plot_folder + "/param_vs_likelihood", exist_ok=True)
-        plt.savefig(f"{visualization_plot_folder}/param_vs_likelihood/{param_labels[i].replace('\\','').replace('mathrm','').replace('{','').replace('}','').replace('$','')}_vs_likelihood.png")
+        plt.savefig(f"{visualization_plot_folder}/param_vs_likelihood/{param_labels[i].replace('\\','').replace('mathrm','').replace('{','').replace('}','').replace('$','')}_vs_likelihood.pdf")
         plt.close()
 
 
@@ -732,11 +826,11 @@ def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_fo
     plt.xlabel("Model Count")
     plt.ylabel("Data Count")
     plt.title("Voxel Count Comparison")
-    plt.savefig(visualization_plot_folder+"/voxel_comparison.png")
+    plt.savefig(visualization_plot_folder+"/voxel_comparison.pdf")
     plt.close()
 
 
-def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_folder,name):
+def param_1D_residuals_plot(data_count,model_count,edge_array,visualization_plot_folder,name):
     
     print("data_count.shape: ",data_count.shape)
     print("model_count.shape: ",model_count.shape)
@@ -759,10 +853,52 @@ def param_residuals_plot(data_count,model_count,edge_array,visualization_plot_fo
     plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
 
 
-    plt.xlabel("eccentricity",fontsize=10)
+    plt.xlabel(name,fontsize=10)
     plt.legend()
     plt.title(f'Close-in Exoplanet {name} Distribution')
-    plt.savefig(visualization_plot_folder+f'/model_{name}.png')
+    plt.savefig(visualization_plot_folder+f'/model_{name}.pdf')
+    plt.close()
+
+
+def param_2D_residuals_plot(data_count,model_count,edge_array_x,edge_array_y,visualization_plot_folder,name_x,name_y):
+    
+    print("data_count.shape: ",data_count.shape)
+    print("model_count.shape: ",model_count.shape)
+
+    # assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1
+
+    edges_x = np.asarray(edge_array_x)
+    centers_x = 0.5*(edges_x[:-1] + edges_x[1:])
+    widths = 1
+
+    edges_y = np.asarray(edge_array_y)
+    centers_y = 0.5*(edges_y[:-1] + edges_y[1:])
+    widths = 1
+
+
+    x = np.arange(len(centers_x))
+    y = np.arange(len(centers_y))
+
+    ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
+    plt.figure(dpi=300, facecolor='w')
+
+    residuals = model_count - data_count
+
+    H, xedges, yedges = np.histogram2d(residuals[:,0], residuals[:,1], bins=50)    
+    
+    edge_positions_x = np.arange(len(xedges)) - 0.5
+    edge_positions_y = np.arange(len(yedges)) - 0.5
+
+
+    plt.xticks(edge_positions_x, [f"{e:.2f}" for e in xedges], rotation=45)
+    plt.yticks(edge_positions_y, [f"{e:.2f}" for e in yedges], rotation=45)
+
+    plt.xlabel(name_x,fontsize=10)
+    plt.ylabel(name_y,fontsize=10)
+
+    plt.legend()
+    plt.title(f'Close-in Exoplanet {name_x} vs {name_y} Residual')
+    plt.savefig(visualization_plot_folder+f'/model_{name_x}_{name_y}_residual.png')
     plt.close()
 
 
@@ -797,6 +933,9 @@ def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folde
     samples_2d = np.column_stack((samples_2d, likelihood_1d))
 
     param_labels = param_labels + [r"$\log \mathcal{L}$"]
+
+    import matplotlib
+    matplotlib.rcParams['mathtext.fontset'] = 'stix'
     
     corner_plot = corner.corner(samples_2d,labels=param_labels,show_titles=True)
     
@@ -934,7 +1073,7 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     cf = ax.contourf(X2, X1, Z3, levels=filled_levels, cmap='Greys_r',norm=norm)
     cs = ax.contour(X2, X1, Z3, levels=contour_levels, colors='crimson', linewidths=1.1)
 
-    ax.clabel(cs, inline=True, fontsize=8, fmt='%.2f', colors='crimson', inline_spacing=0.01)
+    ax.clabel(cs, inline=False, fontsize=8, fmt='%.2f', colors='crimson', inline_spacing=0.01)
 
     # Set log scales
     ax.set_xscale('log')
@@ -964,7 +1103,7 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     cbar.set_ticks(contour_levels)
 
     plt.tight_layout()
-    plt.savefig(save_path + f'/completeness/MES_detection_probability_{ecc_fixed}_{omega_fixed}_{mass_fixed}.png', dpi=300)
+    plt.savefig(save_path + f'/completeness/MES_detection_probability_{ecc_fixed}_{omega_fixed}_{mass_fixed}.pdf', dpi=300)
     plt.close(fig)
 
 def residual_plot(rpm_grid,results_folder,nburnin,mode="all",verbose=False,fps=0.5,backend_path="../results/grid/backend_30",make_gifs=True):

@@ -14,13 +14,16 @@ from kg_utilities import radius_given_density_mass
 
 
 class PeriodDistribution:
-    def __init__(self, period_fine_grid, β1, β2, β3, Period_break_1, Period_break_2, power_laws=3):
+    def __init__(self, period_fine_grid, betas, breaks, power_laws=3):
         self.period_fine_grid = period_fine_grid
-        self.β1 = β1
-        self.β2 = β2
-        self.β3 = β3
-        self.Period_break_1 = Period_break_1
-        self.Period_break_2 = Period_break_2
+        self.β1 = betas[0]
+        if power_laws > 1:
+            self.β2 = betas[1]
+            self.Period_break_1 = breaks[0]
+        if power_laws > 2:
+            self.β3 = betas[2]
+            self.Period_break_2 = breaks[1]
+
         self.power_laws = power_laws
         assert power_laws in [1, 2, 3], "power_laws must be 1, 2, or 3" # for now, but could be extended to more power laws and even changed as emcee parameter!
         assert type(self.period_fine_grid) == np.ndarray, "Period grid requires a numpy array!"
@@ -66,10 +69,10 @@ class PeriodDistribution:
 
 
 class MassDistribution:
-    def __init__(self,mass_fine_grid,ln_a,ln_beta):
+    def __init__(self,mass_fine_grid,mu_M,sigma_M):
         self.mass_fine_grid = mass_fine_grid
-        self.ln_a = ln_a # be careful! this is in ln(M_E), not in M_E!
-        self.ln_beta = ln_beta # same here, this is in ln(M_E), not in M_E!
+        self.mu_M = mu_M # be careful! this is in ln(M_E), not in M_E!
+        self.sigma_M = sigma_M # same here, this is in ln(M_E), not in M_E!
         assert type(self.mass_fine_grid) == np.ndarray, "Mass grid requires a numpy array!"
 
     def __call__(self,low_mass,high_mass):
@@ -80,8 +83,8 @@ class MassDistribution:
         Returns the probability density function of the mass distribution.
         Uses a log-normal distribution.
         """
-        m_pdf = gamma_dist.pdf(self.mass_fine_grid, a=np.exp(self.ln_a), scale=np.exp(self.ln_beta))
-        # m_pdf = lognorm.pdf(self.mass_fine_grid, s=self.σ, scale=np.exp(self.μ))
+        # m_pdf = gamma_dist.pdf(self.mass_fine_grid, a=np.exp(self.ln_a), scale=np.exp(self.ln_beta))
+        m_pdf = lognorm.pdf(self.mass_fine_grid, s=self.sigma_M, scale=np.exp(self.mu_M))
         # input()
         return (m_pdf) / np.trapezoid(m_pdf,self.mass_fine_grid)
     
@@ -418,7 +421,7 @@ def get_probability_distributions(params):
 
     # period
     Period_fine_grid = np.linspace(0.1,500,10000)
-    pdf_Period = PeriodDistribution(Period_fine_grid,β1,β2,Period_break_1,power_laws=2).Period_pdf(Period_fine_grid)
+    pdf_Period = PeriodDistribution(Period_fine_grid,[β1,β2],[Period_break_1],power_laws=2).Period_pdf(Period_fine_grid)
     p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
 
     # mass

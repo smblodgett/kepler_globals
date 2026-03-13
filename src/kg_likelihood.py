@@ -162,10 +162,15 @@ def parametric_log_likelihood(params, model_id):
         return -np.inf, rng_metadata, rank
     
 
-    zero_mask = (model_count == 0) & (voxel_num_data == 0)
-    voxel_num_data = voxel_num_data[~zero_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
-    model_count = model_count[~zero_mask] 
+    print("voxel_num_data.shape pre-mask: ", voxel_num_data.shape)
+    print("model_count.shape pre-mask: ", model_count.shape)
 
+    zero_mask = (model_count == 0) & (voxel_num_data == 0)
+    combined_mask = ~zero_mask & density_prior_mask
+
+
+    voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    model_count = model_count[combined_mask] 
 
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
     
@@ -174,7 +179,10 @@ def parametric_log_likelihood(params, model_id):
     else:
         model_count += 10 ** params[18] 
 
-    model_count = model_count[density_prior_mask]
+    print("voxel_num_data.shape post-mask: ", voxel_num_data.shape)
+    print("model_count.shape post-mask: ", model_count.shape)
+
+    # model_count = model_count[density_prior_mask]
 
     print("sum(model_count): ",np.sum(model_count))
     print("sum(voxel_num_data): ",np.sum(voxel_num_data))

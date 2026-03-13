@@ -98,6 +98,9 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
 
     ecc_omega_singles_posterior_plot(eccentricity,omega,KIC_id=KIC_id)
 
+    ### how to get the eccentricity to be less elevated? How do we deweight the high eccentricities?
+    ### cut out all samples with q < 2 stellar radii and reweight?
+
     return eccentricity, omega
 
 

@@ -18,7 +18,7 @@ print(os.system("hostname"))
 
 # space out the walkers by a tenth of a second
 import time
-time.sleep(.025*rank) 
+time.sleep(.01*rank) 
 
 import pandas as pd
 import numpy as np
@@ -160,6 +160,7 @@ def main(model_id, runprops):
     voxel_grid = None
     stellar_df = None
     model_run_dir = None
+    density_prior_mask = None
 
     # rank 0 reads in the voxel grid and stellar dataframe, then broadcasts to all ranks
     comm = MPI.COMM_WORLD
@@ -222,7 +223,8 @@ def main(model_id, runprops):
 
         density_prior_mask = voxel_grid.get_density_prior_mask()
 
-        print("density_prior_mask: ", density_prior_mask)
+        # print("density_prior_mask: ", density_prior_mask)
+        print("density_prior_mask: ", density_prior_mask.shape)
 
     
 
