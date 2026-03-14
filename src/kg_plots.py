@@ -40,6 +40,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm, PowerNorm
 from matplotlib.ticker import ScalarFormatter
+import matplotlib.patheffects as PathEffects
 from PIL import Image
 from scipy.stats import lognorm
 from itertools import combinations
@@ -698,8 +699,8 @@ def eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
         plt.hist(data_ecc,range=(0,1),density=True,alpha=0.5,label="data",bins=100)
         e = np.linspace(0,0.99,900)
         for n in range(1,len(top_samples)):
-            plt.plot(e,rayleigh_exponential(top_samples[n,15],top_samples[n,16],top_samples[n,17],e),alpha=0.0005,c='k')
-        plt.plot(e,rayleigh_exponential(top_samples[0,15],top_samples[0,16],top_samples[0,17],e),c='r',alpha=0.5,label="best fit")
+            plt.plot(e,rayleigh_exponential(top_samples[n,15],top_samples[n,16],top_samples[n,17],e),alpha=0.01,c='k',linewidth=0.2)
+        plt.plot(e,rayleigh_exponential(top_samples[0,15],top_samples[0,16],top_samples[0,17],e),c='r',alpha=0.8,linewidth=1,label="best fit")
         plt.legend()
         plt.xlabel("eccentricity")
         plt.ylabel("p(eccentricity)")
@@ -797,7 +798,7 @@ def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_
     colors = cmap(np.linspace(0, 1, n_chains))
 
     for i in range(n_params):
-        plt.figure(dpi=150)
+        plt.figure(dpi=100)
 
         for c in range(n_chains):
             plt.scatter(
@@ -882,12 +883,19 @@ def param_2D_residuals_plot(data_count,model_count,edge_array_x,edge_array_y,vis
     ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
     plt.figure(dpi=300, facecolor='w')
 
-    residuals = model_count - data_count
+    residuals = data_count - model_count
 
     H, xedges, yedges = np.histogram2d(residuals[:,0], residuals[:,1], bins=50)    
     
     edge_positions_x = np.arange(len(xedges)) - 0.5
     edge_positions_y = np.arange(len(yedges)) - 0.5
+
+    im = plt.imshow(H.T, interpolation='nearest', origin='lower', 
+                    extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+                    aspect='auto', cmap='RdBu_r')
+
+    cbar = plt.colorbar(im)
+    cbar.set_label('Residual Count')
 
 
     plt.xticks(edge_positions_x, [f"{e:.2f}" for e in xedges], rotation=45)
@@ -1073,7 +1081,12 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     cf = ax.contourf(X2, X1, Z3, levels=filled_levels, cmap='Greys_r',norm=norm)
     cs = ax.contour(X2, X1, Z3, levels=contour_levels, colors='crimson', linewidths=1.1)
 
-    ax.clabel(cs, inline=False, fontsize=8, fmt='%.2f', colors='crimson', inline_spacing=0.01)
+    clbls = ax.clabel(cs, inline=False, fontsize=8, fmt='%.2f', colors='crimson')
+
+    plt.setp(clbls, path_effects=[
+        PathEffects.withStroke(linewidth=2, foreground="white")
+    ])
+
 
     # Set log scales
     ax.set_xscale('log')
