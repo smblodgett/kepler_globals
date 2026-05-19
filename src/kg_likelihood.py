@@ -9,7 +9,7 @@ from kg_priors import PriorArgs
 
 from kg_constants import N_PHODYMM_SYSTEMS
 
-from kg_probability_distributions import synthetic_catalog_to_grid, generate_catalog, get_probability_distributions, voxel_model_count
+from kg_probability_distributions import synthetic_catalog_to_grid, generate_catalog, get_probability_distributions
 
 stellar_df = None
 voxel_grid = None
@@ -200,6 +200,7 @@ def parametric_log_likelihood(params, model_id):
     print("logL: ",logL,flush=True)
 
     return (logL if np.isfinite(logL) else -np.inf, rng_metadata, rank)
+
 
 
 def parametric_log_probability(params):

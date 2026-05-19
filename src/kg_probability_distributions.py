@@ -5,7 +5,7 @@ from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
 from scipy.stats import lognorm, truncnorm #, gaussian_kde
-from scipy.stats import gamma as gamma_dist
+# from scipy.stats import gamma as gamma_dist
 from scipy.special import gamma
 
 
@@ -61,7 +61,7 @@ class PeriodDistribution:
 
         P_pdf = np.piecewise(Period,piecewise_conditions,piecewise_func_list)
         
-        return P_pdf / np.trapezoid(P_pdf,Period)
+        return P_pdf / np.trapezoid(P_pdf,Period) #Period)
 
     def Period_pdf_area(self,Period_lower, Period_upper):
         mask = (self.period_fine_grid > Period_lower) & (self.period_fine_grid <= Period_upper)
@@ -350,7 +350,7 @@ def random_seed_generation(master_seed,*args):
     return int(seed_seq.generate_state(1)[0] & 0xFFFFFFFF)
 
 
-def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=None):
+def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=10):
     
     # np.random.seed(22)
 
@@ -366,14 +366,16 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     
     if master_seed is None:
         master_seed = 22
-    if time_seed is None:
-        time_seed = int(time.time()) & 0xFFFFFF
+    # if time_seed is None:
+    #     time_seed = int(time.time()) & 0xFFFFFF
 
     rng_metadata = {"master_seed":master_seed,
-                    "rank":rank,"time_seed":time_seed} 
+                    "time_seed":time_seed} 
 
-    rng_seed = random_seed_generation(master_seed,rank,time_seed)
+    rng_seed = random_seed_generation(master_seed,time_seed)
+    print("rng_seed: ", rng_seed)
     rng = np.random.default_rng(seed=rng_seed)
+
 
     fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
 
@@ -422,12 +424,14 @@ def get_probability_distributions(params):
     # period
     Period_fine_grid = np.linspace(0.1,500,10000)
     pdf_Period = PeriodDistribution(Period_fine_grid,[β1,β2],[Period_break_1],power_laws=2).Period_pdf(Period_fine_grid)
-    p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
+    pmf_Period = normalize_pdf_to_pmf(pdf_Period,Period_fine_grid)
+    # p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
 
     # mass
-    mass_fine_grid = np.logspace(-1,4,10000)
+    mass_fine_grid = np.linspace(0.1,10000,100000) # used to be np.logspace(-1,4,10000) that might be right?
     pdf_mass = MassDistribution(mass_fine_grid,ln_a,ln_beta).mass_pdf()
-    p_mass = normalize_pdf_to_pmf(pdf_mass, mass_fine_grid)
+    pmf_mass = normalize_pdf_to_pmf(pdf_mass,mass_fine_grid)
+
     # print("pmass: ", p_mass)
     # print("area under mass distribution: ", np.trapezoid(pdf_mass, mass_fine_grid))
     
@@ -436,7 +440,7 @@ def get_probability_distributions(params):
     # ecc
     eccentricity_grid = np.linspace(0,1,10000)
     pdf_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e).eccentricity_pdf(eccentricity_grid)
-    p_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_grid)
+    pmf_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_grid)
     # print("p_ecc: ", p_ecc)
     # print("alpha: ", α)
     # print("lambda: ", λ)
@@ -444,39 +448,27 @@ def get_probability_distributions(params):
     # print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
 
     
-    if (is_nan_in_pmfs := (np.isnan(p_ecc).any() or np.isnan(p_Period).any() or np.isnan(p_mass).any())):
+    if (is_nan_in_pmfs := (np.isnan(pmf_ecc).any() or np.isnan(pmf_Period).any() or np.isnan(pmf_mass).any())):
         print("Warning: PMFs contain NaN. This parameter draw is bad, let's skip it!")
 
-    if (is_inf_in_pmfs := (not np.isfinite(p_ecc).any() or not np.isfinite(p_Period).any() or not np.isfinite(p_mass).any())):
+    if (is_inf_in_pmfs := (not np.isfinite(pmf_ecc).any() or not np.isfinite(pmf_Period).any() or not np.isfinite(pmf_mass).any())):
         print("Warning: PMFs contain inf. This parameter draw is bad, let's skip it!")
 
-    if (is_neg_in_pmfs := (np.any(p_ecc < 0) or np.any(p_Period < 0) or np.any(p_mass < 0))):
+    if (is_neg_in_pmfs := (np.any(pmf_ecc < 0) or np.any(pmf_Period < 0) or np.any(pmf_mass < 0))):
         print("Warning: PMFs contain negative values. This parameter draw is bad, let's skip it!")
 
 
 
-    return p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs
+    return pmf_Period, Period_fine_grid, pmf_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, pmf_ecc, eccentricity_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs
 
 
 def normalize_pdf_to_pmf(pdf, grid):
-    """
-    Converts a continuous PDF sampled on a grid to a PMF usable in np.random.choice.
-    
-    Parameters:
-        pdf (np.ndarray): PDF values evaluated on the grid.
-        grid (np.ndarray): Grid values corresponding to the PDF.
-    
-    Returns:
-        np.ndarray: A PMF (probability weights) that sums to 1.
-    """
-    dx = np.diff(grid)
-    # print("dx: ", dx)
-    dx = np.append(dx, dx[-1])  # Extend last interval to preserve length
+
+    dx = np.gradient(grid)
+
     pmf = pdf * dx
     pmf /= np.sum(pmf)
-    # print("pmf: ", pmf)
-    if np.isnan(pmf).any():
-        print("Warning: PMF contains NaN values. This may indicate an issue with the PDF or grid.")
+
     return pmf
 
 
@@ -572,8 +564,11 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
         voxel_grid.likelihood_array[:,:,:,:,:,1] = 0
         return voxel_grid
 
-    r_idx = r_idx[valid]; p_idx = p_idx[valid]; m_idx = m_idx[valid]
-    e_idx = e_idx[valid]; o_idx = o_idx[valid]
+    r_idx = r_idx[valid] 
+    p_idx = p_idx[valid]
+    m_idx = m_idx[valid]
+    e_idx = e_idx[valid] 
+    o_idx = o_idx[valid]
     w = completeness[valid]
 
     # print("r_idx shape: ", r_idx.shape)
@@ -614,95 +609,95 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     return voxel_grid
 
 
-def pack_points_fast(cat, voxel_grid, completeness):
-    n = cat.shape[0]
-    for i in range(n):
-        c0 = cat[i, 0]  # radius
-        c1 = cat[i, 1]  # period
-        c2 = cat[i, 2]  # mass
-        c3 = cat[i, 3]  # ecc
-        c4 = cat[i, 4]  # omega
-        # print("c0: ",c0)
-        # print("c1: ",c1)
-        # print("c2: ",c2)
-        # print("c3: ",c3)
-        # print("c4: ",c4)
-        # print("voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4): ", voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4))
-        # print("type(voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4)) :",type(voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4)))
-        indices = (*voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4) , 1)
-        voxel_grid.likelihood_array[indices] += completeness[i]
+# def pack_points_fast(cat, voxel_grid, completeness):
+#     n = cat.shape[0]
+#     for i in range(n):
+#         c0 = cat[i, 0]  # radius
+#         c1 = cat[i, 1]  # period
+#         c2 = cat[i, 2]  # mass
+#         c3 = cat[i, 3]  # ecc
+#         c4 = cat[i, 4]  # omega
+#         # print("c0: ",c0)
+#         # print("c1: ",c1)
+#         # print("c2: ",c2)
+#         # print("c3: ",c3)
+#         # print("c4: ",c4)
+#         # print("voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4): ", voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4))
+#         # print("type(voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4)) :",type(voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4)))
+#         indices = (*voxel_grid.get_voxel_grid_indices(c0,c1,c2,c3,c4) , 1)
+#         voxel_grid.likelihood_array[indices] += completeness[i]
 
-    return voxel_grid
+#     return voxel_grid
 
-@njit(fastmath=True)
-def pack_points(cat,
-                p_lo, p_hi,
-                m_lo, m_hi,
-                r_lo, r_hi,
-                e_lo, e_hi,
-                w_lo, w_hi,
-                out_points):
-    """
-    Scan catalog row by row, check voxel bounds, and if row is inside,
-    write directly into out_points with reordered columns.
-    Returns number of rows written.
-    """
-    j = 0
-    n = cat.shape[0]
-    for i in range(n):
-        c0 = cat[i, 0]  # period
-        c1 = cat[i, 1]  # mass
-        c2 = cat[i, 2]  # radius
-        c3 = cat[i, 3]  # ecc
-        c4 = cat[i, 4]  # omega
+# @njit(fastmath=True)
+# def pack_points(cat,
+#                 p_lo, p_hi,
+#                 m_lo, m_hi,
+#                 r_lo, r_hi,
+#                 e_lo, e_hi,
+#                 w_lo, w_hi,
+#                 out_points):
+#     """
+#     Scan catalog row by row, check voxel bounds, and if row is inside,
+#     write directly into out_points with reordered columns.
+#     Returns number of rows written.
+#     """
+#     j = 0
+#     n = cat.shape[0]
+#     for i in range(n):
+#         c0 = cat[i, 0]  # period
+#         c1 = cat[i, 1]  # mass
+#         c2 = cat[i, 2]  # radius
+#         c3 = cat[i, 3]  # ecc
+#         c4 = cat[i, 4]  # omega
 
-        if (c0 >= p_lo and c0 < p_hi and
-            c1 >= m_lo and c1 < m_hi and
-            c2 >= r_lo and c2 < r_hi and
-            c3 >= e_lo and c3 < e_hi and
-            c4 >= w_lo and c4 < w_hi):
-            # 
-            out_points[j, 0] = c2  # radius
-            out_points[j, 1] = c0  # period
-            out_points[j, 2] = c1  # mass
-            out_points[j, 3] = c3  # ecc
-            out_points[j, 4] = c4  # omega
-            j += 1
-    return j
+#         if (c0 >= p_lo and c0 < p_hi and
+#             c1 >= m_lo and c1 < m_hi and
+#             c2 >= r_lo and c2 < r_hi and
+#             c3 >= e_lo and c3 < e_hi and
+#             c4 >= w_lo and c4 < w_hi):
+#             # 
+#             out_points[j, 0] = c2  # radius
+#             out_points[j, 1] = c0  # period
+#             out_points[j, 2] = c1  # mass
+#             out_points[j, 3] = c3  # ecc
+#             out_points[j, 4] = c4  # omega
+#             j += 1
+#     return j
 
 
-def voxel_model_count(voxel_grid, voxel, synthetic_catalog, points_buf=None):
-    # pre_packing_time = time.time()
-    n = synthetic_catalog.shape[0]
+# def voxel_model_count(voxel_grid, voxel, synthetic_catalog, points_buf=None):
+#     # pre_packing_time = time.time()
+#     n = synthetic_catalog.shape[0]
 
-    # Preallocate reusable buffer if not provided
-    if points_buf is None or points_buf.shape[0] < n:
-        points_buf = np.empty((n, 5), dtype=synthetic_catalog.dtype)
+#     # Preallocate reusable buffer if not provided
+#     if points_buf is None or points_buf.shape[0] < n:
+#         points_buf = np.empty((n, 5), dtype=synthetic_catalog.dtype)
 
-    # One-pass filtering + packing
-    n_points = pack_points(
-        synthetic_catalog,
-        voxel.bottom_period, voxel.top_period,
-        voxel.bottom_mass, voxel.top_mass,
-        voxel.bottom_radius, voxel.top_radius,
-        voxel.bottom_eccentricity, voxel.top_eccentricity,
-        voxel.bottom_omega, voxel.top_omega,
-        points_buf
-    )
+#     # One-pass filtering + packing
+#     n_points = pack_points(
+#         synthetic_catalog,
+#         voxel.bottom_period, voxel.top_period,
+#         voxel.bottom_mass, voxel.top_mass,
+#         voxel.bottom_radius, voxel.top_radius,
+#         voxel.bottom_eccentricity, voxel.top_eccentricity,
+#         voxel.bottom_omega, voxel.top_omega,
+#         points_buf
+#     )
 
-    # if n_points == 0:
-    #     return 0.0
-    # print("packing time is ", time.time() - pre_packing_time)
+#     # if n_points == 0:
+#     #     return 0.0
+#     # print("packing time is ", time.time() - pre_packing_time)
 
-    # pre_interp_time = time.time()
-    # Slice down to the valid rows
-    points = points_buf[:n_points]
-    # print(points)
-    # time.sleep(5)
+#     # pre_interp_time = time.time()
+#     # Slice down to the valid rows
+#     points = points_buf[:n_points]
+#     # print(points)
+#     # time.sleep(5)
 
-    # Call vectorized interpolators
-    pd = voxel_grid.p_detection_interp(points)
-    pt = voxel_grid.p_transit_interp(points)
-    # print("interp time is ", time.time() - pre_interp_time)
+#     # Call vectorized interpolators
+#     pd = voxel_grid.p_detection_interp(points)
+#     pt = voxel_grid.p_transit_interp(points)
+#     # print("interp time is ", time.time() - pre_interp_time)
 
-    return float(np.sum(pd * pt, dtype=np.float64)), points_buf
+#     return float(np.sum(pd * pt, dtype=np.float64)), points_buf

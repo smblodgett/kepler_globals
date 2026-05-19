@@ -4,17 +4,17 @@
     "date": "today",
     "time": "now",
     "user": "Steven",
-    "RunGoal" : "testing what happens when we cut out high densities and apply stellar cuts",
+    "RunGoal" : "testing what happens when period has lower binning",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
-    "exclude_high_densities": true,
+    "exclude_bad_densities": true,
     "maximum_density": 10,     # posterior density draws above this value (g/cm^3) will be excluded
     "minimum_density": 0.01,
 
     # Run properties/parameters
     "nwalkers" : 2000,           # number of walkers in emcee ensemble
-    "nburnin" : 100,            # length of burn in
+    "nburnin" : 1000,            # length of burn in
     "ndim" : 19,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 5000,           # number of steps for sampling
+    "nsteps" : 2000,           # number of steps for sampling
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction

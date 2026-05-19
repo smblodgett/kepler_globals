@@ -46,15 +46,15 @@ class PriorArgs:
         self.add_prior('C', 0.2,4.5,"U", [0,1])       
         self.add_prior('mu_M', 0, 10,"U", [0,1])  # N(1,2) 
         self.add_prior('sigma_M', -10, 10,"U", [0,1])  # lnN(1,0.25)
-        self.add_prior('Beta1', 0, 6.0,"U", [0,1])  # N(0.5,0.5)
-        self.add_prior('Beta2', -2.5,0,"U", [0,1])  # N(-0.5,0.5)
+        self.add_prior('Beta1', 0.0, 5.0,"U", [0,1])  # N(0.5,0.5)
+        self.add_prior('Beta2', -5.0, 5.0,"U", [0,1])  # N(-0.5,0.5)
         # self.add_prior('Beta3', -8,8,"U", [0,1])
-        self.add_prior('Pbreak1', 0.2, 50,"U", [0,1])   # lnN(2,1)
+        self.add_prior('Pbreak1', 0.0, 20,"U", [0,1])   # lnN(2,1)
         # self.add_prior('Pbreak2',20,500,"U", [0,1])
         self.add_prior('alpha_e', 0,2,"U", [0,1])
         self.add_prior('lambda_e', 0,50,"U", [0,1])
         self.add_prior('sigma_e',0,1,"U", [0,1])
-        self.add_prior('log10(tau)', -20,20,"U", [1])  
+        self.add_prior('log10(tau)', -9,1,"N", [1])  
         return self
     def load_plot_labels(self):
         self.plot_labels = [r'$\mathrm{log}_{10}(Γ_0)$',

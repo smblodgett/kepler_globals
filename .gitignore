@@ -20,3 +20,4 @@ __pycache__/
 model_run_folder.json
 *.tsv
 *final_kdc.csv
+*.pdf

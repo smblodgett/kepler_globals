@@ -203,7 +203,7 @@ def make_histograms(rpm_grid, results_folder,nburnin, mode, make_gifs=True,
                 for col_idx, voxel_mean in enumerate(row):
                     if voxel_mean == 0:
                         annot[row_idx,col_idx] = f"{voxel_mean:.1f}$^{{+{upper[row_idx,col_idx]:.1f}}}_{{-{lower[row_idx,col_idx]:.1f}}}$%"
-                    elif voxel[0] < 1e-2 and voxel[0] > 1e-3:
+                    elif voxel_mean < 1e-2 and voxel_mean > 1e-3:
                         annot[row_idx,col_idx] = f"{voxel_mean:.3f}$^{{+{upper[row_idx,col_idx]:.3f}}}_{{-{lower[row_idx,col_idx]:.3f}}}$%"
                     elif voxel_mean < 1e-3:
                         annot[row_idx,col_idx] = f"{compact_sci(voxel_mean)}$^{{+{compact_sci(upper[row_idx,col_idx],1)}}}_{{-{compact_sci(lower[row_idx,col_idx],1)}}}$%"
@@ -477,6 +477,11 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df,param_labels):
 
 
+### WHY IS IT NOT FITTING NEIL N ROGERS 2020?
+### PLOT PHYSICAL CATALOG DISTRIBUTIONS TO MAKE SURE THE BETAS LINE UP
+### PLOT DR25 AND COMPARE THIS TO OUR DATA. HOW WELL DO THEY MATCH? 
+### TAKE 100 RANDOM WALKERS FROM A RANDOM STEP AND OVER PLOT THEM WITH THE BEST FITS
+
     print("model id: ", model_id)
 
     backend_folder = os.path.join(results_folder,"param_runs",f"model_{model_id}",model_run_folder)
@@ -516,7 +521,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
         rng_metadata = json.load(f)
     
     master_seed = rng_metadata["master_seed"]
-    rank = rng_metadata["rank"]
+    # rank = rng_metadata["rank"]
     time_seed = rng_metadata["time_seed"]
 
     print("top_samples[0]: ",top_samples[0])
@@ -524,7 +529,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(top_samples[0])
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed,time_seed)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,master_seed,time_seed)
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
@@ -584,6 +589,12 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     # 2D marginals ... can we plot the mass-radius relationship for kmdc vs the model?
 
     # 2D residual - model count minus data count in mass-radius
+
+
+
+    ##### See what the data in a finer grid looks like compared to the model
+
+    #### plots of the physical synthetic catalog itself
 
 
 
@@ -815,7 +826,7 @@ def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_
 
         plt.tight_layout()
         os.makedirs(visualization_plot_folder + "/param_vs_likelihood", exist_ok=True)
-        plt.savefig(f"{visualization_plot_folder}/param_vs_likelihood/{param_labels[i].replace('\\','').replace('mathrm','').replace('{','').replace('}','').replace('$','')}_vs_likelihood.pdf")
+        plt.savefig(f"{visualization_plot_folder}/param_vs_likelihood/{param_labels[i].replace('\\','').replace('mathrm','').replace('{','').replace('}','').replace('$','')}_vs_likelihood.png")
         plt.close()
 
 
@@ -860,55 +871,43 @@ def param_1D_residuals_plot(data_count,model_count,edge_array,visualization_plot
     plt.savefig(visualization_plot_folder+f'/model_{name}.pdf')
     plt.close()
 
-
-def param_2D_residuals_plot(data_count,model_count,edge_array_x,edge_array_y,visualization_plot_folder,name_x,name_y):
     
-    print("data_count.shape: ",data_count.shape)
-    print("model_count.shape: ",model_count.shape)
+def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y, visualization_plot_folder, name_x, name_y):
+    plt.figure(figsize=(10, 8), dpi=300, facecolor='w')
 
-    # assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1
-
-    edges_x = np.asarray(edge_array_x)
-    centers_x = 0.5*(edges_x[:-1] + edges_x[1:])
-    widths = 1
-
-    edges_y = np.asarray(edge_array_y)
-    centers_y = 0.5*(edges_y[:-1] + edges_y[1:])
-    widths = 1
-
-
-    x = np.arange(len(centers_x))
-    y = np.arange(len(centers_y))
-
-    ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
-    plt.figure(dpi=300, facecolor='w')
-
+    # 1. Calculate the residual grid directly
+    # Assuming data_count and model_count are already 2D arrays of the same shape
     residuals = data_count - model_count
 
-    H, xedges, yedges = np.histogram2d(residuals[:,0], residuals[:,1], bins=50)    
-    
-    edge_positions_x = np.arange(len(xedges)) - 0.5
-    edge_positions_y = np.arange(len(yedges)) - 0.5
+    # 2. Use imshow with the actual parameter boundaries
+    # extent = [xmin, xmax, ymin, ymax]
+    im = plt.imshow(
+        residuals.T, # Transpose if necessary to match (x, y) orientation
+        interpolation='nearest', 
+        origin='lower', 
+        extent=[edge_array_x[0], edge_array_x[-1], edge_array_y[0], edge_array_y[-1]],
+        aspect='auto', 
+        cmap='RdBu_r'
+    )
 
-    im = plt.imshow(H.T, interpolation='nearest', origin='lower', 
-                    extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
-                    aspect='auto', cmap='RdBu_r')
-
+    # 3. Add a colorbar with a symmetric range (good for residuals)
+    limit = np.max(np.abs(residuals))
+    im.set_clim(-limit, limit) 
     cbar = plt.colorbar(im)
-    cbar.set_label('Residual Count')
+    cbar.set_label('Residual Count (Data - Model)')
 
+    # 4. Let Matplotlib handle ticks (cleaner)
+    # If you MUST have specific ticks, use a MaxNLocator
+    plt.gca().xaxis.set_major_locator(plt.MaxNLocator(10))
+    plt.gca().yaxis.set_major_locator(plt.MaxNLocator(10))
 
-    plt.xticks(edge_positions_x, [f"{e:.2f}" for e in xedges], rotation=45)
-    plt.yticks(edge_positions_y, [f"{e:.2f}" for e in yedges], rotation=45)
-
-    plt.xlabel(name_x,fontsize=10)
-    plt.ylabel(name_y,fontsize=10)
-
-    plt.legend()
+    plt.xlabel(name_x, fontsize=12)
+    plt.ylabel(name_y, fontsize=12)
     plt.title(f'Close-in Exoplanet {name_x} vs {name_y} Residual')
-    plt.savefig(visualization_plot_folder+f'/model_{name_x}_{name_y}_residual.png')
+    
+    plt.tight_layout()
+    plt.savefig(f"{visualization_plot_folder}/model_{name_x}_{name_y}_residual.png")
     plt.close()
-
 
 
 def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels):
@@ -960,7 +959,12 @@ def param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder
 
     print("reader.accepted: ",  reader.accepted)
 
-    print("reader.accepted / reader.rejected: ", np.mean(reader.accepted / reader.iteration))
+    print("mean reader.accepted / reader.rejected: ", np.mean(reader.accepted / reader.iteration))
+    print("median reader.accepted / reader.rejected: ", np.median(reader.accepted / reader.iteration))
+
+    ###### check that this is the actual acceptance fraction
+
+    ##### do a run with small initialization. Then look at the 2nd step and see how much it varies. 
 
 
     samples = reader.get_chain()
@@ -982,7 +986,9 @@ def param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder
     for i in range(n_params):
         ax = axes[i]
         for walker in range(n_walkers):
-            ax.plot(samples[:, walker, i], alpha=0.1, lw=0.8)
+            ax.plot(samples[:, walker, i], alpha=0.05, lw=0.8)
+            if walker == n_walkers - 1:  # Highlight the last walker for visibility
+                ax.plot(samples[:, walker, i], alpha=0.5,c='r', lw=1)
         ax.set_ylabel(param_labels[i], fontsize=8)
         ax.tick_params(axis='both', which='major', labelsize=7)
 
@@ -1108,7 +1114,7 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     # Axis labels and title
     ax.set_xlabel('Period [days]')
     ax.set_ylabel(r'Radius [$R_{\oplus}$]')
-    ax.set_title(fr'Kepler Completeness, e={ecc_fixed}, $\omega={omega_fixed}$, M={mass_fixed}')
+    ax.set_title(fr'e={ecc_fixed}, $\omega={omega_fixed}$, M={mass_fixed}')
 
     # Colorbar with matching contour levels
     cbar = plt.colorbar(cf, ax=ax)

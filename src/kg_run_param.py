@@ -18,7 +18,7 @@ print(os.system("hostname"))
 
 # space out the walkers by a tenth of a second
 import time
-time.sleep(.01*rank) 
+time.sleep(.005*rank) 
 
 import pandas as pd
 import numpy as np
@@ -130,9 +130,10 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
     timer(runprops["timer"],"backend setup")
 
+    #### CHECK ABOUT STEP SIZE AND ACCEPTANCE FRACTION...SEEMS LIKE A/FRAC IS VERY LOW, POSSIBLE STOCHAISTICITY ISSUE?
     # create the emcee sampler
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool, args=())
+                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool,moves=[(emcee.moves.StretchMove(a=0.5),1.0)], args=())
 
     timer(runprops["timer"],"emcee setup")
 
