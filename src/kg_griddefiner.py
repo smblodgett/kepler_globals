@@ -697,7 +697,7 @@ class RPMeoGrid(RPMGrid):
         """Creates a grid that includes the necessary information for the likelihood evaluation to improve runtime."""
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
         for voxel_values in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
-            i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l, m) position
+            i, j, k, l, m = it.multi_index  # Gives current (r, p, m, e, o) position
             df = self.voxel_array[i,j,k,l,m].df
             if len(df) > 0:
                 for planet in df["unique_planet"].unique():

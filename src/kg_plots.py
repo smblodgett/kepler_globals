@@ -539,7 +539,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
-    combined_mask = ~zero_mask & density_prior_mask
+    combined_mask = ~zero_mask & density_prior_mask # where a voxel isn't zero and the implausible densities are marked false
 
 
     voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
@@ -601,33 +601,33 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     data_count_ecc = np.sum(reconstructed_data, axis=(0,1,2,4))
     model_count_ecc = np.sum(reconstructed_model, axis=(0,1,2,4))
 
-    param_1D_residuals_plot(data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
+    param_1D_residuals_plot(synthetic_catalog[:,3],data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
     data_count_mass = np.sum(reconstructed_data, axis=(0,1,3,4))
     model_count_mass = np.sum(reconstructed_model, axis=(0,1,3,4))
 
-    param_1D_residuals_plot(data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
+    param_1D_residuals_plot(synthetic_catalog[:,1],data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
 
     data_count_radius = np.sum(reconstructed_data, axis=(1,2,3,4))
     model_count_radius = np.sum(reconstructed_model, axis=(1,2,3,4))
 
-    param_1D_residuals_plot(data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
+    param_1D_residuals_plot(synthetic_catalog[:,2],data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
 
     data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
     model_count_period = np.sum(reconstructed_model, axis=(0,2,3,4))
 
-    param_1D_residuals_plot(data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
+    param_1D_residuals_plot(synthetic_catalog[:,0],data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
 
     data_count_omega = np.sum(reconstructed_data, axis=(0,1,2,3))
     model_count_omega = np.sum(reconstructed_model, axis=(0,1,2,3))
 
-    param_1D_residuals_plot(data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
+    param_1D_residuals_plot(synthetic_catalog[:,4],data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
     param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
     param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
-    param_voxel_comparison_plot(reconstructed_data,reconstructed_model,visualization_plot_folder)
+    param_voxel_comparison_plot(reconstructed_data,reconstructed_model,visualization_plot_folder) 
 
     param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
 
@@ -682,10 +682,10 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
                 label_1 = "radius"
                 label_2 = "eccentricity"
             case (1,3,4):
-                grid_array_1 = radius_param_grid_array
-                grid_array_2 = mass_param_grid_array
-                label_1 = "radius"
-                label_2 = "mass"
+                grid_array_2 = radius_param_grid_array
+                grid_array_1 = mass_param_grid_array
+                label_2 = "radius"
+                label_1 = "mass"
             case (2,3,4):
                 grid_array_1 = radius_param_grid_array
                 grid_array_2 = period_param_grid_array
@@ -842,7 +842,7 @@ def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_fo
     plt.close()
 
 
-def param_1D_residuals_plot(data_count,model_count,edge_array,visualization_plot_folder,name):
+def param_1D_residuals_plot(physical_catalog,data_count,model_count,edge_array,visualization_plot_folder,name):
     
     print("data_count.shape: ",data_count.shape)
     print("model_count.shape: ",model_count.shape)
@@ -858,12 +858,13 @@ def param_1D_residuals_plot(data_count,model_count,edge_array,visualization_plot
     ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
     plt.figure(dpi=300, facecolor='w')
     plt.bar(x, data_count, width=widths, alpha=0.5, label='data')
-    plt.bar(x, model_count, width=widths, alpha=0.5, label='model') 
+    plt.bar(x, model_count, width=widths, alpha=0.5, label='observed catalog') 
+    plt.bar(x, physical_catalog, width=widths, alpha=0.5, label='physical catalog') 
+
     
     edge_positions = np.arange(len(edges)) - 0.5
 
     plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
-
 
     plt.xlabel(name,fontsize=10)
     plt.legend()
@@ -877,7 +878,7 @@ def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y,
 
     # 1. Calculate the residual grid directly
     # Assuming data_count and model_count are already 2D arrays of the same shape
-    residuals = data_count - model_count
+    residuals = model_count - data_count
 
     # 2. Use imshow with the actual parameter boundaries
     # extent = [xmin, xmax, ymin, ymax]
@@ -943,6 +944,10 @@ def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folde
 
     import matplotlib
     matplotlib.rcParams['mathtext.fontset'] = 'stix'
+    matplotlib.rcParams['font.family'] = 'STIXGeneral'  # suggestion from claude?
+    # plt.rcParams['mathtext.fontset'] = 'cm' try this if the above two don't work
+
+
     
     corner_plot = corner.corner(samples_2d,labels=param_labels,show_titles=True)
     

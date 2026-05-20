@@ -298,6 +298,7 @@ def main(runprops):
         singles_dr_df = singles_dr_df.reset_index(drop=True)
         # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
         processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df)
+        
         # Remove the planets with densities above or below a certain threshold, because they are unphysical
         if runprops["exclude_bad_densities"]:
             df = df[(df["rho_p"]<runprops["maximum_density"]) & (df["rho_p"]>runprops["minimum_density"])]

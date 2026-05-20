@@ -11,7 +11,7 @@ from kg_constants import N_PHODYMM_SYSTEMS
 
 from kg_probability_distributions import synthetic_catalog_to_grid, generate_catalog, get_probability_distributions
 
-stellar_df = None
+stellar_df = None # this is the stellar_df that is defined and given cuts in kg_initialize_voxel_grid.py. Its length is the same as the synthetic catalog's
 voxel_grid = None
 model_run_dir = None
 model_id = None
@@ -134,18 +134,17 @@ def parametric_log_likelihood(params, model_id):
     print("synthetic_catalog head: ", synthetic_catalog[:5])
     print("shape of synthetic_catalog: ", synthetic_catalog.shape)
 
-    ### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
+    ######################### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
-    voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]       # chat is saying to scale the model count by the number of phodymm systems that we have...? could this be right?
-    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] 
+    voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
+    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]  # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
+     # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
+      # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
+       # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
 
     # print("voxel_num_data.shape: ",voxel_num_data.shape)
     # print("model_count.shape: ",model_count.shape)
-
-    #### If a voxel is outside of the priors of the data, we should exclude it
-
-
 
     # print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
     # print("num of model_count > 0:", len(model_count[model_count > 0]))
