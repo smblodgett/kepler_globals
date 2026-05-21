@@ -54,7 +54,7 @@ class PriorArgs:
         self.add_prior('alpha_e', 0,2,"U", [0,1])
         self.add_prior('lambda_e', 0,50,"U", [0,1])
         self.add_prior('sigma_e',0,1,"U", [0,1])
-        self.add_prior('log10(tau)', -9,1,"N", [1])  
+        self.add_prior('log10(tau)', -9,0.0001,"N", [1])  
         return self
     def load_plot_labels(self):
         self.plot_labels = [r'$\mathrm{log}_{10}(Γ_0)$',

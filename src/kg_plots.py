@@ -600,28 +600,33 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     data_count_ecc = np.sum(reconstructed_data, axis=(0,1,2,4))
     model_count_ecc = np.sum(reconstructed_model, axis=(0,1,2,4))
+    physical_catalog_count_ecc, _ = np.histogram(synthetic_catalog[:,3],bins=eccentricity_param_grid_array)
 
-    param_1D_residuals_plot(synthetic_catalog[:,3],data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
+    param_1D_residuals_plot(physical_catalog_count_ecc,data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
     data_count_mass = np.sum(reconstructed_data, axis=(0,1,3,4))
     model_count_mass = np.sum(reconstructed_model, axis=(0,1,3,4))
+    physical_catalog_count_mass, _ = np.histogram(synthetic_catalog[:,1],bins=mass_param_grid_array)
 
-    param_1D_residuals_plot(synthetic_catalog[:,1],data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
+    param_1D_residuals_plot(physical_catalog_count_mass,data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
 
     data_count_radius = np.sum(reconstructed_data, axis=(1,2,3,4))
     model_count_radius = np.sum(reconstructed_model, axis=(1,2,3,4))
+    physical_catalog_count_radius, _ = np.histogram(synthetic_catalog[:,2],bins=radius_param_grid_array)
 
-    param_1D_residuals_plot(synthetic_catalog[:,2],data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
+    param_1D_residuals_plot(physical_catalog_count_radius,data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
 
     data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
     model_count_period = np.sum(reconstructed_model, axis=(0,2,3,4))
+    physical_catalog_count_period, _ = np.histogram(synthetic_catalog[:,0],bins=period_param_grid_array)
 
-    param_1D_residuals_plot(synthetic_catalog[:,0],data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
+    param_1D_residuals_plot(physical_catalog_count_period,data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
 
     data_count_omega = np.sum(reconstructed_data, axis=(0,1,2,3))
     model_count_omega = np.sum(reconstructed_model, axis=(0,1,2,3))
+    physical_catalog_count_omega, _ = np.histogram(synthetic_catalog[:,4],bins=omega_param_grid_array)
 
-    param_1D_residuals_plot(synthetic_catalog[:,4],data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
+    param_1D_residuals_plot(physical_catalog_count_omega,data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
     param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
@@ -842,7 +847,7 @@ def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_fo
     plt.close()
 
 
-def param_1D_residuals_plot(physical_catalog,data_count,model_count,edge_array,visualization_plot_folder,name):
+def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_array,visualization_plot_folder,name):
     
     print("data_count.shape: ",data_count.shape)
     print("model_count.shape: ",model_count.shape)
@@ -859,7 +864,7 @@ def param_1D_residuals_plot(physical_catalog,data_count,model_count,edge_array,v
     plt.figure(dpi=300, facecolor='w')
     plt.bar(x, data_count, width=widths, alpha=0.5, label='data')
     plt.bar(x, model_count, width=widths, alpha=0.5, label='observed catalog') 
-    plt.bar(x, physical_catalog, width=widths, alpha=0.5, label='physical catalog') 
+    plt.bar(x, physical_catalog_count, width=widths, alpha=0.5, label='physical catalog') 
 
     
     edge_positions = np.arange(len(edges)) - 0.5
@@ -874,40 +879,42 @@ def param_1D_residuals_plot(physical_catalog,data_count,model_count,edge_array,v
 
     
 def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y, visualization_plot_folder, name_x, name_y):
+
     plt.figure(figsize=(10, 8), dpi=300, facecolor='w')
 
-    # 1. Calculate the residual grid directly
-    # Assuming data_count and model_count are already 2D arrays of the same shape
     residuals = model_count - data_count
 
-    # 2. Use imshow with the actual parameter boundaries
-    # extent = [xmin, xmax, ymin, ymax]
-    im = plt.imshow(
-        residuals.T, # Transpose if necessary to match (x, y) orientation
-        interpolation='nearest', 
-        origin='lower', 
-        extent=[edge_array_x[0], edge_array_x[-1], edge_array_y[0], edge_array_y[-1]],
-        aspect='auto', 
-        cmap='RdBu_r'
+    limit = np.max(np.abs(residuals))
+
+    # Make 2D edge grids
+    X, Y = np.meshgrid(edge_array_x, edge_array_y)
+
+    # pcolormesh expects shape:
+    # residuals.shape == (len(y_edges)-1, len(x_edges)-1)
+    im = plt.pcolormesh(
+        X,
+        Y,
+        residuals.T,
+        cmap='RdBu_r',
+        vmin=-limit,
+        vmax=limit,
+        shading='flat'
     )
 
-    # 3. Add a colorbar with a symmetric range (good for residuals)
-    limit = np.max(np.abs(residuals))
-    im.set_clim(-limit, limit) 
     cbar = plt.colorbar(im)
-    cbar.set_label('Residual Count (Data - Model)')
-
-    # 4. Let Matplotlib handle ticks (cleaner)
-    # If you MUST have specific ticks, use a MaxNLocator
-    plt.gca().xaxis.set_major_locator(plt.MaxNLocator(10))
-    plt.gca().yaxis.set_major_locator(plt.MaxNLocator(10))
+    cbar.set_label('Residual Count (Model - Data)')
 
     plt.xlabel(name_x, fontsize=12)
     plt.ylabel(name_y, fontsize=12)
+
     plt.title(f'Close-in Exoplanet {name_x} vs {name_y} Residual')
-    
+
     plt.tight_layout()
-    plt.savefig(f"{visualization_plot_folder}/model_{name_x}_{name_y}_residual.png")
+
+    plt.savefig(
+        f"{visualization_plot_folder}/model_{name_x}_{name_y}_residual.png"
+    )
+
     plt.close()
 
 
@@ -944,8 +951,8 @@ def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folde
 
     import matplotlib
     matplotlib.rcParams['mathtext.fontset'] = 'stix'
-    matplotlib.rcParams['font.family'] = 'STIXGeneral'  # suggestion from claude?
-    # plt.rcParams['mathtext.fontset'] = 'cm' try this if the above two don't work
+    # matplotlib.rcParams['font.family'] = 'STIXGeneral'  # suggestion from claude?
+    plt.rcParams['mathtext.fontset'] = 'cm' # try this if the above two don't work
 
 
     
