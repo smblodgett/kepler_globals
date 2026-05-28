@@ -894,7 +894,7 @@ def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y,
     im = plt.pcolormesh(
         X,
         Y,
-        residuals.T,
+        residuals,
         cmap='RdBu_r',
         vmin=-limit,
         vmax=limit,

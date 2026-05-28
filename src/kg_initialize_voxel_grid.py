@@ -377,7 +377,7 @@ def main(runprops):
         voxel_grid.add_data(final_kdc_df)
 
         # Create a small stellar df with 100 random stars, to set up the completeness grid. (could be expanded to entire stellar catalog)
-        stellar_df_reduced=stellar_df.sample(n=200,random_state=22)
+        stellar_df_reduced=stellar_df.sample(n=400,random_state=22)
 
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
