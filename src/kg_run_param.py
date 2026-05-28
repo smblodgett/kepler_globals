@@ -22,6 +22,7 @@ time.sleep(.005*rank)
 
 import pandas as pd
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 import sys
 import emcee
 from datetime import datetime
@@ -170,12 +171,24 @@ def main(model_id, runprops):
         # read in the voxel grid json object and the column names for its dataframes
         with open(runprops["voxel_json_filename"], "r") as f:
             voxel_grid = json.load(f,object_hook=grid_object_hook)
+        print("read in json voxel file!")
         with open('../data/dataframe_column_names.json', "r") as f:
             df_columns = json.load(f)
         
-        voxel_grid.assign_column_names(df_columns)
+        voxel_grid.assign_column_names(df_columns) # this takes a ton of time, dfs in voxel grid should be handled better
 
-        if runprops["verbose"]: print("[Rank 0] read in voxel grid")
+        print(voxel_grid.completeness_array)
+
+        voxel_grid.completeness_interp = RegularGridInterpolator(
+            (voxel_grid.radius_grid_array,
+            voxel_grid.period_grid_array,
+            voxel_grid.mass_grid_array,
+            voxel_grid.eccentricity_grid_array,
+            voxel_grid.omega_grid_array),
+            voxel_grid.completeness_array
+        )
+
+        if runprops["verbose"]: print("[Rank 0] read in voxel grid, created interpolator")
         
 
         # read in the stellar dataframe

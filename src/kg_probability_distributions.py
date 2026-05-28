@@ -315,7 +315,7 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
 def get_transit_probability(stellar_df, mass, radius, period, ecc, omega):
     # geometric probability
     a = (G * (period*24*3600)**2 * (stellar_df["Mass"].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
-    return ((stellar_df["Rad"].iloc[0]*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))
+    return np.min(1.0,((stellar_df["Rad"].iloc[0]*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2)))
 
 
 def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):
@@ -505,15 +505,17 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
         # print("bad radii are " ,bad_radii)
     # print("len of bad radii are ", len(bad_radii))
     # print("len of synthetic catalog is ", len(synthetic_catalog))
-    # p_d = voxel_grid.p_detection_interp(synthetic_catalog)
-    # p_t = voxel_grid.p_transit_interp(synthetic_catalog)
-    # completeness = p_d * p_t
     # print("synthetic catalog shape after filter: ", synthetic_catalog.shape)
     
 
     completeness = voxel_grid.completeness_interp(synthetic_catalog)
-    # print("completeness shape: ", completeness.shape)
-    # print("completeness head: ", completeness[:5])
+    print("completeness shape: ", completeness.shape)
+    print("completeness head: ", completeness[:5])
+    print("completeness min/max/mean:", completeness.min(), completeness.max(), completeness.mean())
+    print("completeness near-zero fraction:", np.mean(completeness < 0.1))
+    print("completeness above-one fraction:", np.mean(completeness > 1))
+    print("completeness nan count:", np.sum(np.isnan(completeness)))
+
     return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)
     # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
 
@@ -598,6 +600,7 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     # print("reshaped sum(sums): ", np.sum(sums))
 
     # assumes likelihood_array[..., 1] exists and matches shape
+    print("sum of sums after completeness: ", np.sum(sums))
     voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums
 
     model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]

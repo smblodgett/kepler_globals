@@ -847,7 +847,7 @@ def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_fo
     plt.close()
 
 
-def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_array,visualization_plot_folder,name):
+def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_array,visualization_plot_folder,name,y_axis_scale="log"):
     
     print("data_count.shape: ",data_count.shape)
     print("model_count.shape: ",model_count.shape)
@@ -872,12 +872,12 @@ def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_a
     plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
 
     plt.xlabel(name,fontsize=10)
+    plt.yscale(y_axis_scale)
     plt.legend()
     plt.title(f'Close-in Exoplanet {name} Distribution')
     plt.savefig(visualization_plot_folder+f'/model_{name}.pdf')
     plt.close()
 
-    
 def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y, visualization_plot_folder, name_x, name_y):
 
     plt.figure(figsize=(10, 8), dpi=300, facecolor='w')
@@ -886,11 +886,15 @@ def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y,
 
     limit = np.max(np.abs(residuals))
 
-    # Make 2D edge grids
-    X, Y = np.meshgrid(edge_array_x, edge_array_y)
+    # Use equal-sized visual bins instead of physical bin widths
+    nx = residuals.shape[1]
+    ny = residuals.shape[0]
 
-    # pcolormesh expects shape:
-    # residuals.shape == (len(y_edges)-1, len(x_edges)-1)
+    x = np.arange(nx + 1)
+    y = np.arange(ny + 1)
+
+    X, Y = np.meshgrid(x, y)
+
     im = plt.pcolormesh(
         X,
         Y,
@@ -900,6 +904,16 @@ def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y,
         vmax=limit,
         shading='flat'
     )
+
+    # Label bins using actual parameter values
+    xticks = np.arange(nx) + 0.5
+    yticks = np.arange(ny) + 0.5
+
+    xticklabels = [f"{v:.2g}" for v in edge_array_x[:-1]]
+    yticklabels = [f"{v:.2g}" for v in edge_array_y[:-1]]
+
+    plt.xticks(xticks, xticklabels, rotation=45)
+    plt.yticks(yticks, yticklabels)
 
     cbar = plt.colorbar(im)
     cbar.set_label('Residual Count (Model - Data)')

@@ -260,8 +260,10 @@ class RPMeoVoxel(RPMVoxel):
         return coords
     
     def add_column_name(self, columns):
-        if hasattr(self, "df") and len(self.df) > 0:
-            self.df.columns = columns
+        df = getattr(self, "df", None)
+
+        if df is not None and not df.empty:
+            df.columns = columns
         else:
             self.df = pd.DataFrame(columns=columns)
     
@@ -338,7 +340,7 @@ class RPMGrid:
                 voxel.setup_dataframe(columns)
     
     def assign_column_names(self,columns):
-        for voxel in self.voxel_array.flat:
+        for voxel in self.voxel_array.ravel():
             voxel.add_column_name(columns)
                         
     def add_data(self,df):
@@ -629,6 +631,10 @@ class RPMeoGrid(RPMGrid):
                                                                  self.eccentricity_grid_array[l],
                                                                  self.omega_grid_array[m]
                                                                  )
+                if transit_prob > 1:
+                    print("transit_prob > 1! Warning!! transit_prob = ", transit_prob, 
+                          "radius=", self.radius_grid_array[i], "period=",self.period_grid_array[j],
+                          "ecc=",self.eccentricity_grid_array[l], "omega=",self.omega_grid_array[m] )
                 transit_prob_list.append(transit_prob)
                 
                 if n_transits > 2:
@@ -636,6 +642,8 @@ class RPMeoGrid(RPMGrid):
                 else:
                     print(f"n transits = {n_transits}")
                     detection_prob = 0
+                if detection_prob > 1:
+                    print("detection_prob > 1! Warning!! detection_prob = ", detection_prob)
 
                 detection_prob_list.append(detection_prob)
 
@@ -683,6 +691,7 @@ class RPMeoGrid(RPMGrid):
             for (i,j,k,l,m,val) in flat:
                 self.completeness_array[i,j,k,l,m] = val
 
+            print("number of self.completeness_array greater than 1: ", len(self.completeness_array[self.completeness_array > 1]))
             print("self.completeness_array.size: ",self.completeness_array.size)
             self.completeness_interp = RegularGridInterpolator(
                                                               (self.radius_grid_array,
