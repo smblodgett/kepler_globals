@@ -6,6 +6,7 @@ from mpi4py import MPI
 from scipy.special import gamma, gammaln
 from scipy.stats import norm, lognorm, uniform
 from kg_priors import PriorArgs 
+import matplotlib.pyplot as plt
 
 from kg_constants import N_PHODYMM_SYSTEMS
 
@@ -111,7 +112,7 @@ def parametric_log_likelihood(params, model_id):
     Gamma0 = 10**params[0]
     grid_sum = 0.0
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params)
-    
+
     # print(params)
     # print("get probability distribution time is ", time.time() - start_time)
 
@@ -142,7 +143,7 @@ def parametric_log_likelihood(params, model_id):
      # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
       # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
        # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
-
+  
     # print("voxel_num_data.shape: ",voxel_num_data.shape)
     # print("model_count.shape: ",model_count.shape)
 
@@ -166,6 +167,8 @@ def parametric_log_likelihood(params, model_id):
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
     combined_mask = ~zero_mask & density_prior_mask
+
+    print("shape of mask: ", combined_mask.shape)
 
 
     voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
@@ -197,6 +200,41 @@ def parametric_log_likelihood(params, model_id):
     logL = total_grid_sum
 
     print("logL: ",logL,flush=True)
+
+
+    ################################# comparing if Neil and Rogers period is better fit than ours
+    neil_rogers_params = params.copy()
+    neil_rogers_params[12] = 0.69
+    neil_rogers_params[13] = -0.9
+    neil_rogers_params[14] = 7.01
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(neil_rogers_params)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
+    print("synthetic_catalog head: ", synthetic_catalog[:5])
+    print("shape of synthetic_catalog: ", synthetic_catalog.shape)
+    rogers_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
+    voxel_num_data = rogers_voxel_grid.likelihood_array[:,:,:,:,:,0]
+    model_count = Gamma0 * rogers_voxel_grid.likelihood_array[:,:,:,:,:,1]
+    zero_mask = (model_count == 0) & (voxel_num_data == 0)
+    combined_mask = ~zero_mask & density_prior_mask
+    print("shape of mask: ", combined_mask.shape)
+    voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    model_count = model_count[combined_mask] 
+    if model_id == 0:
+        model_count += 1e-7
+    else:
+        model_count += 10 ** params[18] 
+    print("voxel_num_data_rogers.shape post-mask: ", voxel_num_data.shape)
+    print("model_count.shape_rogers post-mask: ", model_count.shape)
+    # model_count = model_count[density_prior_mask]
+    print("sum(model_count_rogers): ",np.sum(model_count))
+    print("sum(voxel_num_data_rogers): ",np.sum(voxel_num_data))
+    grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+    # print("grid_sum: ",grid_sum)
+    total_grid_sum = np.sum(grid_sum)
+    print("grid_sum after summing: ", total_grid_sum)
+    logL_rogers = total_grid_sum
+    print("logL: ", logL, "logL_rogers: ", logL_rogers)
+
 
     return (logL if np.isfinite(logL) else -np.inf, rng_metadata, rank)
 

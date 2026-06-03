@@ -315,7 +315,7 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
 def get_transit_probability(stellar_df, mass, radius, period, ecc, omega):
     # geometric probability
     a = (G * (period*24*3600)**2 * (stellar_df["Mass"].iloc[0]*MSKG + mass*MEKG) / (4 * np.pi**2))**(1/3)  # semi-major axis in meters
-    return np.min(1.0,((stellar_df["Rad"].iloc[0]*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2)))
+    return np.min([1.0,((stellar_df["Rad"].iloc[0]*RSCM/100 + radius*RECM/100) / a) * ((1+ecc*np.sin(omega*np.pi/180))/(1-ecc**2))])
 
 
 def get_detection_probability(MES,a=29.14,b=0.284,c=0.891):
@@ -570,8 +570,9 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     p_idx = p_idx[valid]
     m_idx = m_idx[valid]
     e_idx = e_idx[valid] 
-    o_idx = o_idx[valid]
+    o_idx = o_idx[valid] 
     w = completeness[valid]
+    wflat = np.ones(shape=w.shape)
 
     # print("r_idx shape: ", r_idx.shape)
     # print("p_idx shape: ", p_idx.shape)
@@ -591,6 +592,7 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     # sum weights per flat index
     total_voxels = np.prod(shape)
     sums = np.bincount(flat_idx, weights=w, minlength=total_voxels)
+    flat_sums = np.bincount(flat_idx, weights=wflat, minlength=total_voxels)
 
     # print("sum(sums): ", np.sum(sums))
 
@@ -601,6 +603,7 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
 
     # assumes likelihood_array[..., 1] exists and matches shape
     print("sum of sums after completeness: ", np.sum(sums))
+    print("sum of flat_sums after flat_completeness: ", np.sum(flat_sums))
     voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums
 
     model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]

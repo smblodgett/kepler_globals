@@ -43,6 +43,7 @@ from matplotlib.ticker import ScalarFormatter
 import matplotlib.patheffects as PathEffects
 from PIL import Image
 from scipy.stats import lognorm
+from scipy.interpolate import RegularGridInterpolator
 from itertools import combinations
 
 from kg_param_boundary_arrays import (
@@ -638,7 +639,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
     
-    mass_radius_scatter_plot(voxel_grid,reconstructed_model,visualization_plot_folder)
+    # mass_radius_scatter_plot(voxel_grid,reconstructed_model,visualization_plot_folder)
 
     print("trying the 2d residuals")
     for axis in combinations(range(5), 3):
@@ -1387,6 +1388,14 @@ def main(voxel_id,plottype,model_run_folder_argv):
     with open('../data/dataframe_column_names.json', "r") as f:
         df_columns = json.load(f)
     voxel_grid_param.assign_column_names(df_columns)
+    voxel_grid_param.completeness_interp = RegularGridInterpolator(
+            (voxel_grid_param.radius_grid_array,
+            voxel_grid_param.period_grid_array,
+            voxel_grid_param.mass_grid_array,
+            voxel_grid_param.eccentricity_grid_array,
+            voxel_grid_param.omega_grid_array),
+            voxel_grid_param.completeness_array
+        )
     stellar_df = pd.read_csv(plotprops["processed_stellar_data_filename"])
     
     if plottype != "residual" and plottype != "heatmap":

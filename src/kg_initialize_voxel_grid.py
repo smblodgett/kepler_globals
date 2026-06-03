@@ -59,15 +59,15 @@ class GridJSONEncoder(json.JSONEncoder):
         return str(obj)
 
 
-def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true, rho_star_uncertainty,KIC_id,num_samples):
+def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true, rho_star_uncertainty,KIC_id,num_samples,rng):
     """
     Samples eccentricity and omega for a planet based on its radius and period, using the photoeccentric effect.
     
     See MacDougal, Gilbert, and Pettigura 2023. 
     """
     i=num_samples
-    eccentricity = np.random.uniform(0, 0.99,size=i)  # Sample eccentricity uniformly between 0 and 0.99
-    omega = np.random.uniform(0, 360,size=i)  # Sample omega uniformly between 0 and 360 degrees
+    eccentricity = rng.uniform(0, 0.99,size=i)  # Sample eccentricity uniformly between 0 and 0.99
+    omega = rng.uniform(0, 360,size=i)  # Sample omega uniformly between 0 and 360 degrees
 
 
     rho_star_sample = np.zeros(i)  # Initialize an array to store the sampled stellar densities
@@ -91,7 +91,7 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
 
     print("weight :",weight)
 
-    indices = np.random.choice(range(i), size=i, p=weight)  # Sample indices based on the weights
+    indices = rng.choice(range(i), size=i, p=weight)  # Sample indices based on the weights
 
     eccentricity = eccentricity[indices]  # Sample eccentricity based on the weights
     omega = omega[indices]  # Sample omega based on the weights
@@ -104,17 +104,19 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
     return eccentricity, omega
 
 
-def process_singles_df(singles_dr_df,stellar_df):
+def process_singles_df(singles_dr_df,stellar_df,seed=2222):
 
     num_posteriors_per_planet = 1000
 
     final_singles_array = np.zeros((len(singles_dr_df)*num_posteriors_per_planet,6)) # radius, period, mass, eccentricity, omega
+    
+    rng = np.random.default_rng(seed=seed)
 
     ##### graphing GJ436 for validation - using Lanotte et al 2014
-    radius = np.random.normal(3.96,0.05,size=num_posteriors_per_planet)
-    period = np.random.normal(2.6438979,0.0000003,size=num_posteriors_per_planet)
-    b = np.random.normal(0.8521,0.0021,size=num_posteriors_per_planet)
-    T_14 = np.random.normal(0.04227*24,0.00016*24,size=num_posteriors_per_planet)
+    radius = rng.normal(3.96,0.05,size=num_posteriors_per_planet)
+    period = rng.normal(2.6438979,0.0000003,size=num_posteriors_per_planet)
+    b = rng.normal(0.8521,0.0021,size=num_posteriors_per_planet)
+    T_14 = rng.normal(0.04227*24,0.00016*24,size=num_posteriors_per_planet)
     rho_star_true = (0.452 * MSKG * 1000) / ((4/3) * np.pi * (0.455 * RSCM)**3) * 1000
     rho_star_uncertainty_lower = ((0.452 - 0.012) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 + 0.014) * RSCM)**3) * 1000
     rho_star_uncertainty_upper = ((0.452 + 0.014) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 - 0.012) * RSCM)**3) * 1000
@@ -122,16 +124,16 @@ def process_singles_df(singles_dr_df,stellar_df):
     star_planet_radius_ratio = radius * RECM / (0.455 * RSCM)
     print("GJ rho star true: ",rho_star_true)
     print("GJ rho star uncertainty: ",rho_star_uncertainty)
-    sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_posteriors_per_planet)
+    sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_posteriors_per_planet,rng)
     #####
 
     for index, row in singles_dr_df.iterrows():
-        radius = np.random.normal(row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])),size=num_posteriors_per_planet)
-        period = np.random.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=num_posteriors_per_planet)
+        radius = rng.normal(row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])),size=num_posteriors_per_planet)
+        period = rng.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=num_posteriors_per_planet)
         print("period with max abs error:", row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])))
 
-        b = np.random.normal(row["koi_impact"], np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"])),size=num_posteriors_per_planet)
-        T_14 = np.random.normal(row["koi_duration"], np.maximum(np.abs(row["koi_duration_err1"]), np.abs(row["koi_duration_err2"])),size=num_posteriors_per_planet)
+        b = rng.normal(row["koi_impact"], np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"])),size=num_posteriors_per_planet)
+        T_14 = rng.normal(row["koi_duration"], np.maximum(np.abs(row["koi_duration_err1"]), np.abs(row["koi_duration_err2"])),size=num_posteriors_per_planet)
 
         print("radius: ",radius)
         print("number of NaN in radius: ",np.sum(np.isnan(radius)))
@@ -143,7 +145,7 @@ def process_singles_df(singles_dr_df,stellar_df):
         print("number of NaN in T_14: ",np.sum(np.isnan(T_14)))
 
 
-        density = np.random.uniform(0.01, 10, size=num_posteriors_per_planet) 
+        density = rng.uniform(0.01, 10, size=num_posteriors_per_planet) 
         mass = mass_given_density_radius(density, radius)
 
         print("mass: ",mass)
@@ -163,7 +165,7 @@ def process_singles_df(singles_dr_df,stellar_df):
         radius_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_Rad"].values[0]
         radius_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_Rad"].values[0]
         radius_star_uncertainty = np.maximum(np.abs(radius_star_upper_uncertainty), np.abs(radius_star_lower_uncertainty))
-        radius_star = np.random.normal(radius_star_val, radius_star_uncertainty, size=num_posteriors_per_planet)
+        radius_star = rng.normal(radius_star_val, radius_star_uncertainty, size=num_posteriors_per_planet)
 
 
         planet_star_radius_ratio = radius * RECM / (radius_star * RSCM) 
@@ -173,7 +175,7 @@ def process_singles_df(singles_dr_df,stellar_df):
         print("number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
         print("number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
 
-        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_posteriors_per_planet)
+        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_posteriors_per_planet,rng)
 
         final_singles_array[index*num_posteriors_per_planet:(index+1)*num_posteriors_per_planet] = np.array([radius, period, mass, eccentricity, omega,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
 
