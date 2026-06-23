@@ -688,10 +688,10 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
                 label_1 = "radius"
                 label_2 = "eccentricity"
             case (1,3,4):
-                grid_array_2 = radius_param_grid_array
-                grid_array_1 = mass_param_grid_array
-                label_2 = "radius"
-                label_1 = "mass"
+                grid_array_1 = radius_param_grid_array
+                grid_array_2 = mass_param_grid_array
+                label_1 = "radius"
+                label_2 = "mass"
             case (2,3,4):
                 grid_array_1 = radius_param_grid_array
                 grid_array_2 = period_param_grid_array
@@ -838,13 +838,13 @@ def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_
 
 
 def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder):
-    plt.figure(figsize=(8,8),dpi=150)
+    plt.figure(figsize=(8,8),dpi=200)
     plt.scatter(model_count.flatten(),voxel_num_data.flatten(),alpha=0.005,s=0.25)
     plt.plot(np.linspace(0,np.max(model_count),100),np.linspace(0,np.max(model_count),100),c='r',linestyle='dashed')
     plt.xlabel("Model Count")
     plt.ylabel("Data Count")
     plt.title("Voxel Count Comparison")
-    plt.savefig(visualization_plot_folder+"/voxel_comparison.pdf")
+    plt.savefig(visualization_plot_folder+"/voxel_comparison.png")
     plt.close()
 
 
@@ -883,7 +883,7 @@ def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y,
 
     plt.figure(figsize=(10, 8), dpi=300, facecolor='w')
 
-    residuals = model_count - data_count
+    residuals = (model_count - data_count).T
 
     limit = np.max(np.abs(residuals))
 

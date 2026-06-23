@@ -139,10 +139,8 @@ def parametric_log_likelihood(params, model_id):
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]  # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
-     # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
-      # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
-       # SOLVE MYSTERY OF POSTERIOR VS PLANET DRAWS
+    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] 
+
   
     # print("voxel_num_data.shape: ",voxel_num_data.shape)
     # print("model_count.shape: ",model_count.shape)
@@ -175,6 +173,10 @@ def parametric_log_likelihood(params, model_id):
     model_count = model_count[combined_mask] 
 
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    data_voxels = voxel_num_data > 0
+    print("num of data containing voxels: ", np.sum(data_voxels))
+    print("data voxels with low model:", np.sum((model_count[data_voxels] <= 1e-13)))
+    print("total observed voxels:", np.sum(data_voxels))
     
     if model_id == 0:
         model_count += 1e-7
@@ -189,8 +191,16 @@ def parametric_log_likelihood(params, model_id):
     print("sum(model_count): ",np.sum(model_count))
     print("sum(voxel_num_data): ",np.sum(voxel_num_data))
 
+    my_model_count = model_count.copy()
+    my_synthetic_catalog = synthetic_catalog.copy()
+    my_combined_mask = combined_mask.copy()
+
 
     grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+
+    my_grid_sum = grid_sum.copy()
+    ##### histogram of grid_sum (seeing if like 10 voxels are controlling everything)
+
     # print("grid_sum: ",grid_sum)
     total_grid_sum = np.sum(grid_sum)
     print("grid_sum after summing: ", total_grid_sum)
@@ -202,11 +212,10 @@ def parametric_log_likelihood(params, model_id):
     print("logL: ",logL,flush=True)
 
 
-    ################################# comparing if Neil and Rogers period is better fit than ours
+    ################################## comparing if Neil and Rogers period is better fit than ours
     neil_rogers_params = params.copy()
-    neil_rogers_params[12] = 0.69
-    neil_rogers_params[13] = -0.9
-    neil_rogers_params[14] = 7.01
+    neil_rogers_params[13] = -0.79
+    Gamma0 = 0.85
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(neil_rogers_params)
     synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     print("synthetic_catalog head: ", synthetic_catalog[:5])
@@ -234,6 +243,84 @@ def parametric_log_likelihood(params, model_id):
     print("grid_sum after summing: ", total_grid_sum)
     logL_rogers = total_grid_sum
     print("logL: ", logL, "logL_rogers: ", logL_rogers)
+
+
+    if np.random.random() < 0.005:
+
+
+        plt.hist(my_grid_sum.flatten(),bins=75)
+        plt.xlabel("logL")
+        plt.yscale('log')
+        plt.savefig("grid_sum.png")
+        plt.close()
+
+      
+
+
+        period_param_grid_array = [0.2,0.75,1.0,1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0,5.5,6.0,6.5,7.0,7.5,8.0,8.5,9.0,9.5,10.0,12.0,14.0,16.0,20.0,24.0,28.0,32.0,40.0,48.0,64.0,128.0,192.0,256.0,360.0,500.0]
+
+        original_shape = combined_mask.shape
+
+        reconstructed_my_grid_sum = np.zeros(original_shape)
+        reconstructed_my_grid_sum[my_combined_mask] = my_grid_sum
+        count_my_grid_sum_period = np.sum(reconstructed_my_grid_sum, axis=(0,2,3,4))
+        reconstructed_nr_grid_sum = np.zeros(original_shape)
+        reconstructed_nr_grid_sum[combined_mask] = grid_sum
+        count_nr_grid_sum_period = np.sum(reconstructed_nr_grid_sum, axis=(0,2,3,4))
+
+        edges = np.asarray(period_param_grid_array)
+        centers = 0.5*(edges[:-1] + edges[1:])
+        widths = 1
+        x = np.arange(len(centers))
+
+        plt.figure(dpi=150, facecolor='w')
+        plt.bar(x, -1*count_my_grid_sum_period, width=widths, alpha=0.5, label='my grid sum')
+        plt.bar(x, -1*count_nr_grid_sum_period, width=widths, alpha=0.5, label='nr grid sum')
+        plt.legend()
+        plt.xlabel("grid sum *-1 by period")
+        plt.savefig("grid_sum_compare.png")
+        plt.close()
+
+        assert original_shape == voxel_grid.likelihood_array[:,:,:,:,:,0].shape, "The original shape of the data and model arrays should match the shape of the combined mask."
+
+        reconstructed_nr_model = np.zeros(original_shape)
+        reconstructed_my_model = np.zeros(original_shape)
+        reconstructed_data = np.zeros(original_shape)
+
+
+        reconstructed_my_model[my_combined_mask] = my_model_count
+        reconstructed_nr_model[combined_mask] = model_count
+        reconstructed_data[combined_mask] = voxel_num_data
+
+        data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
+        my_model_count_period = np.sum(reconstructed_my_model, axis=(0,2,3,4))
+        nr_model_count_period = np.sum(reconstructed_nr_model, axis=(0,2,3,4))
+        my_physical_catalog_count_period, _ = np.histogram(my_synthetic_catalog[:,1],bins=period_param_grid_array)
+        nr_physical_catalog_count_period, _ = np.histogram(synthetic_catalog[:,1],bins=period_param_grid_array)
+        
+
+
+        ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
+        plt.figure(dpi=200, facecolor='w')
+        plt.bar(x, data_count_period, width=widths, alpha=0.5, label='data')
+        plt.bar(x, my_model_count_period, width=widths, alpha=0.5, label='inferred observed catalog') 
+        plt.bar(x, nr_model_count_period, width=widths, alpha=0.5, label='N&R observed catalog') 
+        plt.bar(x, nr_physical_catalog_count_period, width=widths, alpha=0.5, label='N&R physical catalog')
+        plt.bar(x, my_physical_catalog_count_period, width=widths, alpha=0.5, label='my physical catalog') 
+
+        
+        edge_positions = np.arange(len(edges)) - 0.5
+
+        plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
+
+        plt.xlabel(rf"Period - my $\beta_1=${params[12]:.2f} $\beta_2=${params[13]:.2f} Pbreak={params[14]:.2f} Gamma={10**params[0]:.2f} : \n nr $\beta_1=${neil_rogers_params[12]:.2f} $\beta_2=${neil_rogers_params[13]:.2f} Pbreak={neil_rogers_params[14]:.2f} Gamma=1",fontsize=7)
+        plt.yscale('log')
+        plt.legend()
+        plt.title(f'period:: logL N&R - {logL_rogers:.2f} :: logL mine - {logL:.2f}')
+        plt.tight_layout()
+        plt.savefig(f'model_period_test.png')
+        plt.close()
+        raise ValueError()
 
 
     return (logL if np.isfinite(logL) else -np.inf, rng_metadata, rank)

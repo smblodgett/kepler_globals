@@ -385,6 +385,8 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
         print("Some masses are less than 0.1 M_E, regenerating...")
         fake_catalog[:,1][mask] = rng.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
     
+    print("number of M greater than 5000: ", np.sum(fake_catalog[:,1]>5000))    
+    
     # print("make radius distribution...")
     fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
@@ -410,8 +412,8 @@ def get_probability_distributions(params):
     mass_break_1 = params[7]
     mass_break_2 = params[8]
     C = params[9]
-    ln_a = params[10]
-    ln_beta = params[11]
+    mu_M = params[10]
+    sigma_M = params[11]
     β1 = params[12]
     β2 = params[13]
     # β3 = params[14]
@@ -428,8 +430,8 @@ def get_probability_distributions(params):
     # p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
 
     # mass
-    mass_fine_grid = np.linspace(0.1,10000,100000) # used to be np.logspace(-1,4,10000) that might be right?
-    pdf_mass = MassDistribution(mass_fine_grid,ln_a,ln_beta).mass_pdf()
+    mass_fine_grid = np.logspace(-1,4,10000) # used to be np.linspace(.1,10000,100000) that might be right?
+    pdf_mass = MassDistribution(mass_fine_grid,mu_M,sigma_M).mass_pdf()
     pmf_mass = normalize_pdf_to_pmf(pdf_mass,mass_fine_grid)
 
     # print("pmass: ", p_mass)

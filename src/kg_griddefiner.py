@@ -260,12 +260,9 @@ class RPMeoVoxel(RPMVoxel):
         return coords
     
     def add_column_name(self, columns):
-        df = getattr(self, "df", None)
-
-        if df is not None and not df.empty:
-            df.columns = columns
-        else:
-            self.df = pd.DataFrame(columns=columns)
+        if hasattr(self, "df_raw"):
+            self.df = pd.DataFrame(self.df_raw, columns=columns)
+            del self.df_raw
     
     def __str__(self):
         """Returns a string representation of the voxel."""
@@ -707,8 +704,8 @@ class RPMeoGrid(RPMGrid):
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
         for voxel_values in range((self.r_len) * (self.p_len) * (self.m_len) * (self.e_len) * (self.o_len)):
             i, j, k, l, m = it.multi_index  # Gives current (r, p, m, e, o) position
-            df = self.voxel_array[i,j,k,l,m].df
-            if len(df) > 0:
+            df = getattr(self.voxel_array[i,j,k,l,m], "df", None)
+            if df is not None and len(df) > 0:
                 for planet in df["unique_planet"].unique():
                     self.likelihood_array[i, j, k, l, m, 0] += len(df[df["unique_planet"]==planet]) / self.kic_dict[planet] # assign the number of planets that make the cut in the voxel to the 1st index of the likelihood function computing grid.
             it.iternext()                                                                        # remember that each member in the df is only 1/1000 of a planet
