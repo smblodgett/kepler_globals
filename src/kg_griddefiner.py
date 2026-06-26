@@ -28,6 +28,7 @@ from kg_constants import *
 from kg_utilities import radius_given_density_mass, mass_given_density_radius, num_data_with_weighting
 from kg_probability_distributions import get_MES, get_transit_probability, get_detection_probability_hsu
 from scipy.interpolate import RegularGridInterpolator
+from scipy.ndimage import map_coordinates
 
 
 class RPMVoxel:
@@ -515,11 +516,11 @@ class RPMeoGrid(RPMGrid):
     """
     def __init__(self,radius_grid_array,period_grid_array,mass_grid_array,eccentricity_grid_array,omega_grid_array):
         """ Initializes the RPMeoGRID with the given radius, period, mass, and eccentricity grid arrays."""
-        self.radius_grid_array = radius_grid_array
-        self.period_grid_array = period_grid_array
-        self.mass_grid_array = mass_grid_array
-        self.eccentricity_grid_array = eccentricity_grid_array
-        self.omega_grid_array = omega_grid_array
+        self.radius_grid_array = np.asarray(radius_grid_array)
+        self.period_grid_array = np.asarray(period_grid_array)
+        self.mass_grid_array = np.asarray(mass_grid_array)
+        self.eccentricity_grid_array = np.asarray(eccentricity_grid_array)
+        self.omega_grid_array = np.asarray(omega_grid_array)
   
         self.r_len = len(radius_grid_array) - 1
         self.p_len = len(period_grid_array) - 1
@@ -698,7 +699,38 @@ class RPMeoGrid(RPMGrid):
                                                               self.omega_grid_array),
                                                               self.completeness_array
                                                               )
+    def interpolate_completeness(self, points):
+        """
+        points: np.ndarray of shape (N, 5)
+                columns: (radius, period, mass, eccentricity, omega)
         
+        Drop-in replacement for self.completeness_interp(points)
+        using map_coordinates for speed.
+        """
+        def to_index(val, grid):
+            idx = np.searchsorted(grid, val, side='right') - 1
+            idx = np.clip(idx, 0, len(grid) - 2)
+            lo = grid[idx]
+            hi = grid[idx + 1]
+            frac = (val - lo) / (hi - lo)
+            return idx + frac
+
+        coords = np.array([
+            to_index(points[:, 0], self.radius_grid_array),
+            to_index(points[:, 1], self.period_grid_array),
+            to_index(points[:, 2], self.mass_grid_array),
+            to_index(points[:, 3], self.eccentricity_grid_array),
+            to_index(points[:, 4], self.omega_grid_array),
+        ])  # shape (5, N)
+
+        return map_coordinates(
+            self.completeness_array,
+            coords,
+            order=1,
+            mode='nearest'
+        )    
+    
+
     def setup_likelihood_grid(self):
         """Creates a grid that includes the necessary information for the likelihood evaluation to improve runtime."""
         it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])

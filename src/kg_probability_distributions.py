@@ -397,9 +397,7 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     fake_catalog[:,4] = rng.uniform(0,360,len_stellar_df)  # omega (argument of periastron)
     # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
-    # print("fake catalog has been created!")
 
-    print("fake catalog shape no 2: ",fake_catalog.shape)
     return fake_catalog, rng_metadata
 
 
@@ -506,13 +504,19 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
         ~((synthetic_catalog[:,4] < np.min(voxel_grid.omega_grid_array)) |
         (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
         ]    
-        # print("bad radii are " ,bad_radii)
-    # print("len of bad radii are ", len(bad_radii))
-    # print("len of synthetic catalog is ", len(synthetic_catalog))
-    # print("synthetic catalog shape after filter: ", synthetic_catalog.shape)
     
-
+    before_reg_interp_time = time.time()
     completeness = voxel_grid.completeness_interp(synthetic_catalog)
+    print("RegGridInterp time: ", after_reg_interp_time:=(time.time() - before_reg_interp_time))
+
+
+    completeness_alt = voxel_grid.interpolate_completeness(synthetic_catalog)
+    print("map interp time: ", after_map_interp_time:=(time.time() - after_reg_interp_time))
+
+
+    print("max(abs(diff)) for map vs RegGridInterp methods :", np.max(np.abs(completeness - completeness_alt)))
+
+
     # print("completeness shape: ", completeness.shape)
     # print("completeness head: ", completeness[:5])
     # print("completeness min/max/mean:", completeness.min(), completeness.max(), completeness.mean())
@@ -541,101 +545,5 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     # Max absolute difference among violations: 0.00012738
     # Max relative difference among violations: 0.08264412
     # a tiny error that results from edge handling, we are just going with histogramdd.
-
-    return voxel_grid
-    # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
-
-
-def pack_points_vectorized(cat, voxel_grid, completeness):
-    """
-    Assumes voxel_grid exposes bin edges for each axis, e.g.:
-      voxel_grid.r_edges  length r_len+1
-      voxel_grid.p_edges  length p_len+1
-      voxel_grid.m_edges  length m_len+1
-      voxel_grid.e_edges  length e_len+1
-      voxel_grid.o_edges  length o_len+1
-
-    And likelihood_array has shape (r_len, p_len, m_len, e_len, o_len, something)
-    We accumulate into likelihood_array[..., 1].
-    """
-    # coordinates
-    r = cat[:,0]
-    p = cat[:,1]
-    m = cat[:,2]
-    e = cat[:,3]
-    o = cat[:,4]
-
-    # digitize -> returns bin indices in [1..len(edges)-1], convert to 0-based
-    r_idx = np.digitize(r, voxel_grid.radius_grid_array) - 1
-    p_idx = np.digitize(p, voxel_grid.period_grid_array) - 1
-    m_idx = np.digitize(m, voxel_grid.mass_grid_array) - 1
-    e_idx = np.digitize(e, voxel_grid.eccentricity_grid_array) - 1
-    o_idx = np.digitize(o, voxel_grid.omega_grid_array) - 1
-
-    # print("r_idx: ",r_idx)
-    # print("p_idx: ",p_idx)
-    # print("m_idx: ",m_idx)
-    # print("e_idx: ",e_idx)
-    # print("o_idx: ",o_idx)
-
-
-    # # mask valid (inside grid)
-    valid = (
-        (r_idx >= 0) & (r_idx < voxel_grid.r_len) &
-        (p_idx >= 0) & (p_idx < voxel_grid.p_len) &
-        (m_idx >= 0) & (m_idx < voxel_grid.m_len) &
-        (e_idx >= 0) & (e_idx < voxel_grid.e_len) &
-        (o_idx >= 0) & (o_idx < voxel_grid.o_len)
-    )
-    if not np.any(valid):
-        print("no valid points to pack! Returning empty voxel grid")
-        voxel_grid.likelihood_array[:,:,:,:,:,1] = 0
-        return voxel_grid
-
-    r_idx = r_idx[valid] 
-    p_idx = p_idx[valid]
-    m_idx = m_idx[valid]
-    e_idx = e_idx[valid] 
-    o_idx = o_idx[valid] 
-    w = completeness[valid]
-    wflat = np.ones(shape=w.shape)
-
-    # print("r_idx shape: ", r_idx.shape)
-    # print("p_idx shape: ", p_idx.shape)
-    # print("m_idx shape: ", m_idx.shape)
-    # print("e_idx shape: ", e_idx.shape)
-    # print("o_idx shape: ", o_idx.shape)
-    # print("w shape: ", w.shape)
-    # print("w: ", w)
-
-    # flatten the multi-index to 1D
-    shape = (voxel_grid.r_len, voxel_grid.p_len, voxel_grid.m_len,
-             voxel_grid.e_len, voxel_grid.o_len)
-    flat_idx = np.ravel_multi_index((r_idx, p_idx, m_idx, e_idx, o_idx), shape)
-
-    # print("flat_idx shape: ", flat_idx.shape)
-    # print("flat_idx head: ", flat_idx[:5])
-    # sum weights per flat index
-    total_voxels = np.prod(shape)
-    sums = np.bincount(flat_idx, weights=w, minlength=total_voxels)
-    flat_sums = np.bincount(flat_idx, weights=wflat, minlength=total_voxels)
-
-    # print("sum(sums): ", np.sum(sums))
-
-    # reshape and add into likelihood array's last index (1)
-    sums = sums.reshape(shape)
-
-    # print("reshaped sum(sums): ", np.sum(sums))
-
-    # assumes likelihood_array[..., 1] exists and matches shape
-    print("sum of sums after completeness: ", np.sum(sums))
-    print("sum of flat_sums after flat_completeness: ", np.sum(flat_sums))
-    voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums  / 200
-
-    model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
-
-    # print("sum of voxel grid model count: ", np.sum(voxel_grid.likelihood_array[:,:,:,:,:,1]))
-    # print("num of model_count > 0 inside pack_points: ", len(model_count[model_count > 0]))
-    # print("num of model_count > 1 inside pack_points: ", len(model_count[model_count > 1]))
 
     return voxel_grid

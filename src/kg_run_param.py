@@ -171,7 +171,7 @@ def main(model_id, runprops):
         # read in the voxel grid json object and the column names for its dataframes
         with open(runprops["voxel_json_filename"], "r") as f:
             voxel_grid = json.load(f,object_hook=grid_object_hook)
-        print("read in json voxel file!")
+        if runprops["verbose"]: print("read in json voxel file!")
         with open('../data/dataframe_column_names.json', "r") as f:
             df_columns = json.load(f)
         
@@ -193,8 +193,8 @@ def main(model_id, runprops):
 
         # read in the stellar dataframe
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
-        print("len(stellar_df) after reading in: ",len(stellar_df))
-        print("[Rank 0] read in stellar df")
+        if runprops["verbose"]: print("len(stellar_df) after reading in: ",len(stellar_df))
+        if runprops["verbose"]: print("[Rank 0] read in stellar df")
         
         # set up the model run output directory (coded by date/time)
         if runprops["date"] == "today":
@@ -238,7 +238,7 @@ def main(model_id, runprops):
         density_prior_mask = voxel_grid.get_density_prior_mask()
 
         # print("density_prior_mask: ", density_prior_mask)
-        print("density_prior_mask: ", density_prior_mask.shape)
+        # print("density_prior_mask shape: ", density_prior_mask.shape)
 
     
 
@@ -256,8 +256,8 @@ def main(model_id, runprops):
     kg_likelihood.model_id = model_id
     kg_likelihood.density_prior_mask = density_prior_mask
 
-    print("kg_likelihood.stellar_df : ",kg_likelihood.stellar_df )
-    print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))
+    # print("kg_likelihood.stellar_df : ",kg_likelihood.stellar_df )
+    # print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))
 
 
     # set up the MPI pool and run emcee
