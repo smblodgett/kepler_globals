@@ -114,7 +114,7 @@ def parametric_log_likelihood(params, model_id):
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params)
 
     # print(params)
-    # print("get probability distribution time is ", time.time() - start_time)
+    print("get probability distribution time is ", prob_dist_time:=(time.time() - start_time))
 
 
     if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
@@ -132,25 +132,19 @@ def parametric_log_likelihood(params, model_id):
     synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
 
-    print("synthetic_catalog head: ", synthetic_catalog[:5])
-    print("shape of synthetic_catalog: ", synthetic_catalog.shape)
+    print("generate catalog time is ", gen_cat_time:=(time.time() - prob_dist_time))
+
 
     ######################### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
+    print("catalog to grid time is ", cat_grid_time:=(time.time() - gen_cat_time))
+
+
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
     model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] 
 
-  
-    # print("voxel_num_data.shape: ",voxel_num_data.shape)
-    # print("model_count.shape: ",model_count.shape)
 
-    # print("num of voxel_num_data > 0:", len(voxel_num_data[voxel_num_data > 0]))
-    # print("num of model_count > 0:", len(model_count[model_count > 0]))
-    # print("shape of voxel_num_data > 0:", voxel_num_data[voxel_num_data > 0].shape)
-    # print("shape of model_count > 0:", model_count[model_count > 0].shape)
-    # print("num of voxel_num_data > 1:", len(voxel_num_data[voxel_num_data > 1]))
-    # print("num of model_count > 1:", len(model_count[model_count > 1]))
 
     if np.any((voxel_num_data < 0) | (np.isnan(voxel_num_data))):
         print("aaaaa")
@@ -160,167 +154,211 @@ def parametric_log_likelihood(params, model_id):
         return -np.inf, rng_metadata, rank
     
 
-    print("voxel_num_data.shape pre-mask: ", voxel_num_data.shape)
-    print("model_count.shape pre-mask: ", model_count.shape)
+    yes_data_yes_model_voxels = (voxel_num_data > 0) & (model_count > 0)
+    yes_data_no_model_voxels = (voxel_num_data > 0) & (model_count == 0)
+    no_data_yes_model_voxels = (voxel_num_data == 0) & (model_count > 0)
+    no_data_no_model_voxels = (voxel_num_data == 0) & (model_count == 0)
+    print("yes data yes model: ", np.sum(yes_data_yes_model_voxels),"yes data no model: ", np.sum(yes_data_no_model_voxels),"no data yes model: ", np.sum(no_data_yes_model_voxels),"no data no model: ", np.sum(no_data_no_model_voxels))
+
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
-    combined_mask = ~zero_mask & density_prior_mask
+    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
 
-    print("shape of mask: ", combined_mask.shape)
+    combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
+    combined_noise_mask = density_prior_mask & no_model_mask
+    # print("shape of mask: ", combined_mask.shape)
 
+    voxel_num_data_poisson = voxel_num_data[combined_poisson_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    model_count_poisson = model_count[combined_poisson_mask] 
 
-    voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
-    model_count = model_count[combined_mask] 
-
+    voxel_num_data_noise = voxel_num_data[combined_noise_mask]
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
-    data_voxels = voxel_num_data > 0
-    print("num of data containing voxels: ", np.sum(data_voxels))
-    print("data voxels with low model:", np.sum((model_count[data_voxels] <= 1e-13)))
-    print("total observed voxels:", np.sum(data_voxels))
-    
-    if model_id == 0:
-        model_count += 1e-7
-    else:
-        model_count += 10 ** params[18] 
 
-    print("voxel_num_data.shape post-mask: ", voxel_num_data.shape)
-    print("model_count.shape post-mask: ", model_count.shape)
+    ##### print out # of yes data/yes model, yes data/no model, no data/yes model, no/no 
+    grid_sum_poisson = (voxel_num_data_poisson * np.log(model_count_poisson) - model_count_poisson - gammaln(voxel_num_data_poisson+1))
 
-    # model_count = model_count[density_prior_mask]
+    # find contribution of log-likelihood of typical voxel
+    median_logP_contribution = np.median(grid_sum_poisson)
 
-    print("sum(model_count): ",np.sum(model_count))
-    print("sum(voxel_num_data): ",np.sum(voxel_num_data))
+    # penalize the no model, yes data case by the typical log likelihood times however much data is there
+    # this HAS to be a fixed value (otherwise MCMC will just trade off between this likelihood and the Poisson)
+    grid_sum_noise = median_logP_contribution * voxel_num_data_noise
 
-    my_model_count = model_count.copy()
-    my_synthetic_catalog = synthetic_catalog.copy()
-    my_combined_mask = combined_mask.copy()
-
-
-    grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
-
-    my_grid_sum = grid_sum.copy()
-    ##### histogram of grid_sum (seeing if like 10 voxels are controlling everything)
-
+    # apply to grid_sum
     # print("grid_sum: ",grid_sum)
-    total_grid_sum = np.sum(grid_sum)
-    print("grid_sum after summing: ", total_grid_sum)
+    logL = np.sum(grid_sum_poisson) + np.sum(grid_sum_noise)
+
+    print("mask and sum time is ", mask_sum_time:=(time.time() - cat_grid_time))
+
+
+    ########## testing stuff
+
+    # if total_grid_sum > best_total_grid_sum:
+    #     my_grid_sum = grid_sum
+    #     logL = total_grid_sum
+    #     best_total_grid_sum = total_grid_sum
+    #     best_my_model_count = model_count
+    #     best_my_tau = test_threshold
     
-    end_time = time.time()
+    # if model_id == 0:
+    #     model_count += 1e-7
+    # else:
+    #     model_count += 10 ** params[18] 
 
-    logL = total_grid_sum
+    # print("voxel_num_data.shape post-mask: ", voxel_num_data.shape)
+    # print("model_count.shape post-mask: ", model_count.shape)
 
-    print("logL: ",logL,flush=True)
+    # # model_count = model_count[density_prior_mask]
+
+    # print("my sum(model_count): ",np.sum(model_count))
+    # print("my sum(voxel_num_data): ",np.sum(voxel_num_data))
+
+    # my_model_count = model_count.copy()
+    # my_synthetic_catalog = synthetic_catalog.copy()
+    # my_combined_mask = combined_mask.copy()
+
+
+    # grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+
+    # my_grid_sum = grid_sum.copy()
+    # ##### histogram of grid_sum (seeing if like 10 voxels are controlling everything)
+
+    # # print("grid_sum: ",grid_sum)
+    # total_grid_sum = np.sum(grid_sum)
+    # print("grid_sum after summing: ", total_grid_sum)
+    
+    # end_time = time.time()
+
+    # logL = total_grid_sum
+
+    # print("logL: ",logL,flush=True)
 
 
     ################################## comparing if Neil and Rogers period is better fit than ours
-    neil_rogers_params = params.copy()
-    neil_rogers_params[13] = -0.79
-    Gamma0 = 0.85
-    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(neil_rogers_params)
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
-    print("synthetic_catalog head: ", synthetic_catalog[:5])
-    print("shape of synthetic_catalog: ", synthetic_catalog.shape)
-    rogers_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
-    voxel_num_data = rogers_voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Gamma0 * rogers_voxel_grid.likelihood_array[:,:,:,:,:,1]
-    zero_mask = (model_count == 0) & (voxel_num_data == 0)
-    combined_mask = ~zero_mask & density_prior_mask
-    print("shape of mask: ", combined_mask.shape)
-    voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
-    model_count = model_count[combined_mask] 
-    if model_id == 0:
-        model_count += 1e-7
-    else:
-        model_count += 10 ** params[18] 
-    print("voxel_num_data_rogers.shape post-mask: ", voxel_num_data.shape)
-    print("model_count.shape_rogers post-mask: ", model_count.shape)
-    # model_count = model_count[density_prior_mask]
-    print("sum(model_count_rogers): ",np.sum(model_count))
-    print("sum(voxel_num_data_rogers): ",np.sum(voxel_num_data))
-    grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
-    # print("grid_sum: ",grid_sum)
-    total_grid_sum = np.sum(grid_sum)
-    print("grid_sum after summing: ", total_grid_sum)
-    logL_rogers = total_grid_sum
-    print("logL: ", logL, "logL_rogers: ", logL_rogers)
+    # neil_rogers_params = params.copy()
+    # neil_rogers_params[13] = -0.76
+    # Gamma0 = 0.89
+    # p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(neil_rogers_params)
+    # synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
+    # print("synthetic_catalog head: ", synthetic_catalog[:5])
+    # print("shape of synthetic_catalog: ", synthetic_catalog.shape)
+    # rogers_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
+    # voxel_num_data = rogers_voxel_grid.likelihood_array[:,:,:,:,:,0]
+    # model_count = Gamma0 * rogers_voxel_grid.likelihood_array[:,:,:,:,:,1]
+    # zero_mask = (model_count == 0) & (voxel_num_data == 0)
+    # combined_mask = ~zero_mask & density_prior_mask
+    # print("shape of mask: ", combined_mask.shape)
+    # voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    # nr_model_count = model_count[combined_mask] 
+    # best_neil_rogers_total_grid_sum = -np.inf
+
+    # for test_threshold in [-21,-17,-13,-10,-7,-4]:
+    #     neil_rogers_params[18] = test_threshold
+    #     if model_id == 0:
+    #         model_count += 1e-7
+    #     else:
+    #         model_count = nr_model_count + 10 ** neil_rogers_params[18] 
+    #     print("voxel_num_data_rogers.shape post-mask: ", voxel_num_data.shape)
+    #     print("model_count.shape_rogers post-mask: ", model_count.shape)
+    #     # model_count = model_count[density_prior_mask]
+
+    #     grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+    #     # print("grid_sum: ",grid_sum)
+    #     total_grid_sum = np.sum(grid_sum)
+    #     if total_grid_sum > best_neil_rogers_total_grid_sum:
+    #         rogers_grid_sum = grid_sum
+    #         logL_rogers = total_grid_sum
+    #         best_neil_rogers_total_grid_sum = total_grid_sum
+    #         best_nr_model_count = model_count
+    #         best_tau = test_threshold
+
+    #     print("grid_sum after summing: ", total_grid_sum)
+    #     print("logL: ", logL, "logL_rogers: ", logL_rogers)
 
 
-    if np.random.random() < 0.005:
+    # print("sum(model_count_rogers): ",np.sum(model_count))
+    # print("sum(voxel_num_data_rogers): ",np.sum(voxel_num_data))
+    # if np.random.random() < 0.005:
 
 
-        plt.hist(my_grid_sum.flatten(),bins=75)
-        plt.xlabel("logL")
-        plt.yscale('log')
-        plt.savefig("grid_sum.png")
-        plt.close()
+    #     plt.hist(my_grid_sum.flatten(),bins=75)
+    #     plt.xlabel("logL")
+    #     plt.yscale('log')
+    #     plt.savefig("grid_sum.png")
+    #     plt.close()
 
       
 
 
-        period_param_grid_array = [0.2,0.75,1.0,1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0,5.5,6.0,6.5,7.0,7.5,8.0,8.5,9.0,9.5,10.0,12.0,14.0,16.0,20.0,24.0,28.0,32.0,40.0,48.0,64.0,128.0,192.0,256.0,360.0,500.0]
+    #     period_param_grid_array = [0.2,0.75,1.0,1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0,5.5,6.0,6.5,7.0,7.5,8.0,8.5,9.0,9.5,10.0,12.0,14.0,16.0,20.0,24.0,28.0,32.0,40.0,48.0,64.0,128.0,192.0,256.0,360.0,500.0]
 
-        original_shape = combined_mask.shape
+    #     original_shape = combined_mask.shape
 
-        reconstructed_my_grid_sum = np.zeros(original_shape)
-        reconstructed_my_grid_sum[my_combined_mask] = my_grid_sum
-        count_my_grid_sum_period = np.sum(reconstructed_my_grid_sum, axis=(0,2,3,4))
-        reconstructed_nr_grid_sum = np.zeros(original_shape)
-        reconstructed_nr_grid_sum[combined_mask] = grid_sum
-        count_nr_grid_sum_period = np.sum(reconstructed_nr_grid_sum, axis=(0,2,3,4))
+    #     reconstructed_my_grid_sum = np.zeros(original_shape)
+    #     reconstructed_my_grid_sum[my_combined_mask] = my_grid_sum
+    #     count_my_grid_sum_period = np.sum(reconstructed_my_grid_sum, axis=(0,2,3,4))
+    #     reconstructed_nr_grid_sum = np.zeros(original_shape)
+    #     reconstructed_nr_grid_sum[combined_mask] = rogers_grid_sum
+    #     count_nr_grid_sum_period = np.sum(reconstructed_nr_grid_sum, axis=(0,2,3,4))
 
-        edges = np.asarray(period_param_grid_array)
-        centers = 0.5*(edges[:-1] + edges[1:])
-        widths = 1
-        x = np.arange(len(centers))
+    #     edges = np.asarray(period_param_grid_array)
+    #     centers = 0.5*(edges[:-1] + edges[1:])
+    #     widths = 1
+    #     x = np.arange(len(centers))
 
-        plt.figure(dpi=150, facecolor='w')
-        plt.bar(x, -1*count_my_grid_sum_period, width=widths, alpha=0.5, label='my grid sum')
-        plt.bar(x, -1*count_nr_grid_sum_period, width=widths, alpha=0.5, label='nr grid sum')
-        plt.legend()
-        plt.xlabel("grid sum *-1 by period")
-        plt.savefig("grid_sum_compare.png")
-        plt.close()
+    #     plt.figure(dpi=150, facecolor='w')
+    #     plt.bar(x, -1*count_my_grid_sum_period, width=widths, alpha=0.5, label='my grid sum')
+    #     plt.bar(x, -1*count_nr_grid_sum_period, width=widths, alpha=0.5, label='nr grid sum')
+        
+    #     edge_positions = np.arange(len(edges)) - 0.5
+    #     plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
+    #     plt.legend()
+    #     plt.xlabel("grid sum *-1 by period")
+    #     plt.savefig("grid_sum_compare.png")
+    #     plt.close()
 
-        assert original_shape == voxel_grid.likelihood_array[:,:,:,:,:,0].shape, "The original shape of the data and model arrays should match the shape of the combined mask."
+    #     assert original_shape == voxel_grid.likelihood_array[:,:,:,:,:,0].shape, "The original shape of the data and model arrays should match the shape of the combined mask."
 
-        reconstructed_nr_model = np.zeros(original_shape)
-        reconstructed_my_model = np.zeros(original_shape)
-        reconstructed_data = np.zeros(original_shape)
+    #     reconstructed_nr_model = np.zeros(original_shape)
+    #     reconstructed_my_model = np.zeros(original_shape)
+    #     reconstructed_data = np.zeros(original_shape)
 
 
-        reconstructed_my_model[my_combined_mask] = my_model_count
-        reconstructed_nr_model[combined_mask] = model_count
-        reconstructed_data[combined_mask] = voxel_num_data
+    #     reconstructed_my_model[my_combined_mask] = best_my_model_count
+    #     reconstructed_nr_model[combined_mask] = best_nr_model_count
+    #     reconstructed_data[combined_mask] = voxel_num_data
 
-        data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
-        my_model_count_period = np.sum(reconstructed_my_model, axis=(0,2,3,4))
-        nr_model_count_period = np.sum(reconstructed_nr_model, axis=(0,2,3,4))
-        my_physical_catalog_count_period, _ = np.histogram(my_synthetic_catalog[:,1],bins=period_param_grid_array)
-        nr_physical_catalog_count_period, _ = np.histogram(synthetic_catalog[:,1],bins=period_param_grid_array)
+    #     data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
+    #     my_model_count_period = np.sum(reconstructed_my_model, axis=(0,2,3,4))
+    #     nr_model_count_period = np.sum(reconstructed_nr_model, axis=(0,2,3,4))
+    #     my_physical_catalog_count_period, _ = np.histogram(my_synthetic_catalog[:,0],bins=period_param_grid_array)
+    #     nr_physical_catalog_count_period, _ = np.histogram(synthetic_catalog[:,0],bins=period_param_grid_array)
         
 
 
-        ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
-        plt.figure(dpi=200, facecolor='w')
-        plt.bar(x, data_count_period, width=widths, alpha=0.5, label='data')
-        plt.bar(x, my_model_count_period, width=widths, alpha=0.5, label='inferred observed catalog') 
-        plt.bar(x, nr_model_count_period, width=widths, alpha=0.5, label='N&R observed catalog') 
-        plt.bar(x, nr_physical_catalog_count_period, width=widths, alpha=0.5, label='N&R physical catalog')
-        plt.bar(x, my_physical_catalog_count_period, width=widths, alpha=0.5, label='my physical catalog') 
+    #     ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
+    #     plt.figure(dpi=200, facecolor='w')
+    #     plt.bar(x, data_count_period, width=widths, alpha=0.5, label='data')
+    #     plt.bar(x, my_model_count_period, width=widths, alpha=0.5, label='inferred observed catalog') 
+    #     plt.bar(x, nr_model_count_period, width=widths, alpha=0.5, label='N&R observed catalog') 
+    #     plt.bar(x, nr_physical_catalog_count_period, width=widths, alpha=0.5, label='N&R physical catalog')
+    #     plt.bar(x, my_physical_catalog_count_period, width=widths, alpha=0.5, label='my physical catalog') 
 
         
-        edge_positions = np.arange(len(edges)) - 0.5
+    #     edge_positions = np.arange(len(edges)) - 0.5
 
-        plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
+    #     plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
 
-        plt.xlabel(rf"Period - my $\beta_1=${params[12]:.2f} $\beta_2=${params[13]:.2f} Pbreak={params[14]:.2f} Gamma={10**params[0]:.2f} : \n nr $\beta_1=${neil_rogers_params[12]:.2f} $\beta_2=${neil_rogers_params[13]:.2f} Pbreak={neil_rogers_params[14]:.2f} Gamma=1",fontsize=7)
-        plt.yscale('log')
-        plt.legend()
-        plt.title(f'period:: logL N&R - {logL_rogers:.2f} :: logL mine - {logL:.2f}')
-        plt.tight_layout()
-        plt.savefig(f'model_period_test.png')
-        plt.close()
-        raise ValueError()
+    #     plt.xlabel(rf"P- $\tau=${best_my_tau:.1f} my $\beta_1=${params[12]:.2f} $\beta_2=${params[13]:.2f} Pbreak={params[14]:.2f} Gamma={10**params[0]:.2f} : \n nr $\beta_1=${neil_rogers_params[12]:.2f} $\beta_2=${neil_rogers_params[13]:.2f} Pbreak={neil_rogers_params[14]:.2f} Gamma={Gamma0:.1f} $\tau=${best_tau:.1f}",fontsize=5)
+    #     plt.yscale('log')
+    #     plt.legend()
+    #     plt.title(f'period:: logL N&R - {logL_rogers:.2f} :: logL mine - {logL:.2f}')
+    #     plt.tight_layout()
+    #     plt.savefig(f'model_period_test.png')
+    #     plt.close()
+    #     raise ValueError()
+
+        ################ TESTING GRAPHS
 
 
     return (logL if np.isfinite(logL) else -np.inf, rng_metadata, rank)

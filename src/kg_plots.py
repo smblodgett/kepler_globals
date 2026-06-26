@@ -44,6 +44,7 @@ import matplotlib.patheffects as PathEffects
 from PIL import Image
 from scipy.stats import lognorm
 from scipy.interpolate import RegularGridInterpolator
+from scipy.special import gammaln
 from itertools import combinations
 
 from kg_param_boundary_arrays import (
@@ -525,12 +526,14 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     # rank = rng_metadata["rank"]
     time_seed = rng_metadata["time_seed"]
 
+    rank_seed = rng_metadata["rank_seed"]
+
     print("top_samples[0]: ",top_samples[0])
     print("model_params: ",model_params)
 
     
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(top_samples[0])
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,master_seed,time_seed)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,master_seed=master_seed,time_seed=time_seed)
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
@@ -546,15 +549,30 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
     model_count = model_count[combined_mask] 
 
-    
+
+    grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+
+    # find contribution of log-likelihood of typical voxel
+    median_logP_contribution = np.median(grid_sum[grid_sum != -np.inf])
+
+    # penalize the no model, yes data case by the typical log likelihood times however much data is there
+    no_model_yes_data = median_logP_contribution * voxel_num_data[grid_sum == -np.inf]
+
+    # apply to grid_sum
+    grid_sum[grid_sum == -np.inf] = no_model_yes_data
+
+    # print("grid_sum: ",grid_sum)
+    total_grid_sum = np.sum(grid_sum)
+    logL = total_grid_sum
+    assert logL == top_log_prob
 
 
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
     
-    if model_id == 0:
-        model_count += 1e-7
-    else:
-        model_count += 10**top_samples[0,18]
+    # if model_id == 0:
+    #     model_count += 1e-7
+    # else:
+    #     model_count += 10**top_samples[0,18]
 
     
     original_shape = combined_mask.shape
@@ -638,6 +656,15 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
 
     eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
+
+    param_voxel_count_hist(reconstructed_data,visualization_plot_folder,"data")
+
+    param_voxel_count_hist(reconstructed_model,visualization_plot_folder,"model")
+
+    param_voxel_count_hist(grid_sum,visualization_plot_folder,"grid sum")
+
+
+
     
     # mass_radius_scatter_plot(voxel_grid,reconstructed_model,visualization_plot_folder)
 
@@ -701,6 +728,14 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
                 raise ValueError("Invalid axis combination for 2D residuals plot.")
         param_2D_residuals_plot(data_count_2D,model_count_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2)
     
+
+def param_voxel_count_hist(voxel_count,visualization_plot_folder,name):
+    """takes in a per-voxel count of something and makes a histogram"""
+    plt.figure(dpi=200)
+    plt.hist(voxel_count,bins=75)
+    plt.xlabel(f"{name} count per voxel")
+    plt.savefig(visualization_plot_folder + f"/{name}_voxel_count.png")
+    plt.close()
 
 
 def eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder):
@@ -1102,7 +1137,6 @@ def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/"
     print("Z3 shape: ", Z3.shape)
     print("min Z3: ", np.min(Z3))
 
-    # issues: cubic interpolation is possibly dipping negative, which would be devastating for the completeness calculations.
 
     filled_levels = np.linspace(0, 1, 300)
     contour_levels = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75,1.0]

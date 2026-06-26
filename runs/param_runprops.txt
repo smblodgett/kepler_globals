@@ -4,17 +4,17 @@
     "date": "today",
     "time": "now",
     "user": "Steven",
-    "RunGoal" : "testing what happens when period has lower binning",
+    "RunGoal" : "NEW noise function. removing threshold, now running with a linear penalty to 0=model >0 data",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
     "exclude_bad_densities": true,
     "maximum_density": 10,     # posterior density draws above this value (g/cm^3) will be excluded
     "minimum_density": 0.01,
 
     # Run properties/parameters
-    "nwalkers" : 2000,           # number of walkers in emcee ensemble
-    "nburnin" : 1000,            # length of burn in
-    "ndim" : 19,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 2000,           # number of steps for sampling
+    "nwalkers" : 500,           # number of walkers in emcee ensemble
+    "nburnin" : 100,            # length of burn in
+    "ndim" : 18,                 # number of floating parameters/dimension of sample space
+    "nsteps" : 500,           # number of steps for sampling
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction

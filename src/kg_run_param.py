@@ -167,7 +167,7 @@ def main(model_id, runprops):
     # rank 0 reads in the voxel grid and stellar dataframe, then broadcasts to all ranks
     comm = MPI.COMM_WORLD
     if comm.Get_rank() == 0:
-        print("[Rank 0] reading csv and voxel grid")
+        if runprops["verbose"]: print("[Rank 0] reading csv and voxel grid")
         # read in the voxel grid json object and the column names for its dataframes
         with open(runprops["voxel_json_filename"], "r") as f:
             voxel_grid = json.load(f,object_hook=grid_object_hook)

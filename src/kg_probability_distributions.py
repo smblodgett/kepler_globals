@@ -11,6 +11,7 @@ from scipy.special import gamma
 
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
 from kg_utilities import radius_given_density_mass
+from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 
 
 class PeriodDistribution:
@@ -358,7 +359,7 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     print("len_stellar_df: ",len(stellar_df))
 
 
-    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)),5)) # change if including impact parameter or other dimension!
+    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)*200),5)) # times 10 to test effects of undersampling
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
 
@@ -370,9 +371,10 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     #     time_seed = int(time.time()) & 0xFFFFFF
 
     rng_metadata = {"master_seed":master_seed,
+                    "rank_seed":rank,
                     "time_seed":time_seed} 
 
-    rng_seed = random_seed_generation(master_seed,time_seed)
+    rng_seed = random_seed_generation(master_seed,rank,time_seed)
     print("rng_seed: ", rng_seed)
     rng = np.random.default_rng(seed=rng_seed)
 
@@ -511,14 +513,36 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     
 
     completeness = voxel_grid.completeness_interp(synthetic_catalog)
-    print("completeness shape: ", completeness.shape)
-    print("completeness head: ", completeness[:5])
-    print("completeness min/max/mean:", completeness.min(), completeness.max(), completeness.mean())
-    print("completeness near-zero fraction:", np.mean(completeness < 0.1))
-    print("completeness above-one fraction:", np.mean(completeness > 1))
-    print("completeness nan count:", np.sum(np.isnan(completeness)))
+    # print("completeness shape: ", completeness.shape)
+    # print("completeness head: ", completeness[:5])
+    # print("completeness min/max/mean:", completeness.min(), completeness.max(), completeness.mean())
+    # print("completeness near-zero fraction:", np.mean(completeness < 0.1))
+    # print("completeness above-one fraction:", np.mean(completeness > 1))
+    # print("completeness nan count:", np.sum(np.isnan(completeness)))
 
-    return pack_points_vectorized(synthetic_catalog,voxel_grid,completeness)
+    bins = [
+        radius_grid_array,
+        period_grid_array,
+        mass_grid_array,
+        eccentricity_grid_array,
+        omega_grid_array
+    ]
+
+    histtestsums, edges = np.histogramdd(synthetic_catalog, bins=bins, weights=completeness)
+    histtestsums /= 200
+
+    voxel_grid.likelihood_array[:,:,:,:,:, 1] = histtestsums
+    # packpointssums =  pack_points_vectorized(synthetic_catalog,voxel_grid,completeness).likelihood_array[:,:,:,:,:,1]
+    
+    # assert np.testing.assert_array_almost_equal(packpointssums, histtestsums), "similarity test FAILED"
+    ## if this is true, we should get rid of pack_points vectorized sheesh
+    ## after tests, only 50/2e6 voxels failed:
+    # Mismatched elements: 50 / 2010960 (0.00249%)
+    # Max absolute difference among violations: 0.00012738
+    # Max relative difference among violations: 0.08264412
+    # a tiny error that results from edge handling, we are just going with histogramdd.
+
+    return voxel_grid
     # return pack_points_fast(synthetic_catalog,voxel_grid,completeness)
 
 
@@ -606,7 +630,7 @@ def pack_points_vectorized(cat, voxel_grid, completeness):
     # assumes likelihood_array[..., 1] exists and matches shape
     print("sum of sums after completeness: ", np.sum(sums))
     print("sum of flat_sums after flat_completeness: ", np.sum(flat_sums))
-    voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums
+    voxel_grid.likelihood_array[:,:,:,:,:, 1] = sums  / 200
 
     model_count = voxel_grid.likelihood_array[:,:,:,:,:,1]
 

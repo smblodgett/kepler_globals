@@ -1,8 +1,8 @@
 #!/bin/bash --login
 
 #SBATCH --time=12:00:00
-#SBATCH --ntasks=1001
-#SBATCH --mem-per-cpu=16G
+#SBATCH --ntasks=501
+#SBATCH --mem-per-cpu=32G
 #SBATCH -J "kepler_globals_param"
 
 export PMIX_MCA_psec=^munge
@@ -31,7 +31,7 @@ PY
 
 echo "beginning srun"
 
-model_id=1
+model_id=0
 
 # mpirun -np $SLURM_NTASKS python kg_run_param.py 0
 srun -n $SLURM_NTASKS --mpi=pmix python -u kg_run_param.py $model_id
