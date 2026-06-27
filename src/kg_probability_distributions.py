@@ -4,9 +4,9 @@ import time
 from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
-from scipy.stats import lognorm, truncnorm #, gaussian_kde
+from scipy.stats import lognorm # truncnorm #, gaussian_kde
 # from scipy.stats import gamma as gamma_dist
-from scipy.special import gamma
+from scipy.special import gamma, ndtr, ndtri
 
 
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
@@ -98,8 +98,7 @@ class MassDistribution:
 
 
 class RadiusDistribution:
-    def __init__(self,mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C):
-        self.mass_fine_grid = mass_fine_grid # one question: what exactly...is this?
+    def __init__(self,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C):
         self.γ0 = γ0
         self.γ1 = γ1
         self.γ2 = γ2
@@ -141,33 +140,21 @@ class RadiusDistribution:
                 + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
                 )
 
-    def sample_radius_given_mass(self,masses,rng):
-        radii = np.empty_like(masses)
+    def sample_radius_given_mass(self,mass_distribution,rng):
+        # recently rewritten...this version is 2x faster or so than the old truncnorm call. but see RadiusDistribution.ipynb for verification
+        radii = np.empty_like(mass_distribution)
 
-        mu = self.mu_total(masses)
-        sigma = mu * self.sigma_total(masses)
-        # print("sigma: ", sigma)
-        # print("mu: ", mu)
-        if not np.all(sigma > 0):
-            print("self.γ0",self.γ0)
-            print("self.γ1",self.γ1)
-            print("self.γ2",self.γ2)
-            print("self.mass_break_1",self.mass_break_1)
-            print("self.mass_break_2",self.mass_break_2)
-            print("self.σ0",self.σ0)
-            print("self.σ1",self.σ1)
-            print("self.σ2",self.σ2)
-            print("self.C",self.C) 
-        assert np.all(sigma > 0), "Sigma must be positive, but got sigma = {}".format(sigma)
-        # print("min(masses),max(masses): ", min(masses),max(masses))
-        # print("min(mu),max(mu): ", min(mu),max(mu))
-
-        lower_radius_bound = radius_given_density_mass(10, masses) # this is the upper density limit of 10 g/cm^3
-        a = (lower_radius_bound - mu) / sigma # ummm... shouldn't this be 0.01 instead of 10? wtfreak
-        # print("lower_density_bound: ",lower_radius_bound)
-        # print("a:" , a)
-        b = np.full_like(a, np.inf)
-        radii = truncnorm.rvs(a,b, loc=mu, scale=sigma, random_state=rng)
+        mu = self.mu_total(mass_distribution)
+        sigma = mu * self.sigma_total(mass_distribution)
+        
+        lower_radius_bound = radius_given_density_mass(10, mass_distribution)
+        a = (lower_radius_bound - mu) / sigma
+        
+        # Inverse CDF sampling — no rejection, O(N)
+        Phi_a = ndtr(a)  # CDF at lower bound
+        u = rng.uniform(0, 1, size=len(mass_distribution))
+        radii = mu + sigma * ndtri(Phi_a + u * (1 - Phi_a))
+        
         # print("min(radii),max(radii): ",min(radii),max(radii))
         # print("radii: ",radii)
         if not np.all(radii > 0.25):
@@ -185,7 +172,7 @@ class RadiusDistribution:
         """
         Returns the area under the radius probability density function between low_radius and high_radius.
         """
-        radii = self.radius_pdf(self.mass_fine_grid)
+        radii = self.radius_pdf(self.mass_distribution)
         mask = (radii > low_radius) & (radii <= high_radius)
         return len(radii[mask]) / len(radii)
     
@@ -355,15 +342,17 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     
     # np.random.seed(22)
 
-    print("begin generating fake catalog...")
-    print("len_stellar_df: ",len(stellar_df))
 
+    # print("begin generating fake catalog...")
+    # print("len_stellar_df: ",len(stellar_df))
+
+    begin_time = time.time()
 
     fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)*200),5)) # times 10 to test effects of undersampling
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
 
-    print("fake_catalog shape: ", fake_catalog.shape)
+    # print("fake_catalog shape: ", fake_catalog.shape)
     
     if master_seed is None:
         master_seed = 22
@@ -378,8 +367,13 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     print("rng_seed: ", rng_seed)
     rng = np.random.default_rng(seed=rng_seed)
 
+    print("generation init time: ", (init_time:=time.time()) - begin_time)
+
 
     fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
+
+    print("period gen time: ", (period_gen_time:=time.time()) - init_time)
+
 
     fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
     mask = fake_catalog[:,1] < 0.1
@@ -387,16 +381,24 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
         print("Some masses are less than 0.1 M_E, regenerating...")
         fake_catalog[:,1][mask] = rng.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
     
-    print("number of M greater than 5000: ", np.sum(fake_catalog[:,1]>5000))    
+    print("mass gen time: ", (mass_gen_time:=time.time()) - period_gen_time)
+
+    
+    # print("number of M greater than 5000: ", np.sum(fake_catalog[:,1]>5000))    
     
     # print("make radius distribution...")
-    fake_catalog[:,2] = RadiusDistribution(fake_catalog[:,1],γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
+    fake_catalog[:,2] = RadiusDistribution(γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
+    print("radius gen time: ", (radius_gen_time:=time.time()) - mass_gen_time)
     
     fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
+
+    print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
+
     fake_catalog[:,4] = rng.uniform(0,360,len_stellar_df)  # omega (argument of periastron)
     # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
+    print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
 
     return fake_catalog, rng_metadata
 
@@ -505,16 +507,21 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
         (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
         ]    
     
-    before_reg_interp_time = time.time()
-    completeness = voxel_grid.completeness_interp(synthetic_catalog)
-    print("RegGridInterp time: ", after_reg_interp_time:=(time.time() - before_reg_interp_time))
+    ### RegGridInterp is 5x or worse slower than map_interp, and gives identical results, we're removing it
+    # before_reg_interp_time = time.time()
+    # completeness = voxel_grid.completeness_interp(synthetic_catalog)
+    # print("RegGridInterp time: ", (after_reg_interp_time:=time.time()) - before_reg_interp_time)
+
+    before_map_interp_time = time.time()
+    completeness = voxel_grid.interpolate_completeness(synthetic_catalog)
+    print("map interp time: ", (after_map_interp_time:=time.time()) - before_map_interp_time)
 
 
-    completeness_alt = voxel_grid.interpolate_completeness(synthetic_catalog)
-    print("map interp time: ", after_map_interp_time:=(time.time() - after_reg_interp_time))
+    # print("max(abs(diff)) for map vs RegGridInterp methods :", np.max(np.abs(completeness - completeness_alt)))
+    
+    ## the max abs diff for the two is 10e-15, seems like these methods are essentially the same
 
 
-    print("max(abs(diff)) for map vs RegGridInterp methods :", np.max(np.abs(completeness - completeness_alt)))
 
 
     # print("completeness shape: ", completeness.shape)

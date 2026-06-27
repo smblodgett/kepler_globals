@@ -229,11 +229,11 @@ def main(model_id, runprops):
             json.dump(priors, f, indent=4)
 
 
-        assert voxel_grid.radius_grid_array == radius_grid_array, "The read-in voxel grid's radius boundary array is not correct!"
-        assert voxel_grid.mass_grid_array == mass_grid_array, "The read-in voxel grid's mass boundary array is not correct!"
-        assert voxel_grid.period_grid_array == period_grid_array, "The read-in voxel grid's period boundary array is not correct!"
-        assert voxel_grid.eccentricity_grid_array == eccentricity_grid_array, "The read-in voxel grid's eccentricity boundary array is not correct!"
-        assert voxel_grid.omega_grid_array == omega_grid_array, "The read-in voxel grid's omega boundary array is not correct!"
+        assert all(voxel_grid.radius_grid_array == np.asarray(radius_grid_array)), "The read-in voxel grid's radius boundary array is not correct!"
+        assert all(voxel_grid.mass_grid_array == np.asarray(mass_grid_array)), "The read-in voxel grid's mass boundary array is not correct!"
+        assert all(voxel_grid.period_grid_array == np.asarray(period_grid_array)), "The read-in voxel grid's period boundary array is not correct!"
+        assert all(voxel_grid.eccentricity_grid_array == np.asarray(eccentricity_grid_array)), "The read-in voxel grid's eccentricity boundary array is not correct!"
+        assert all(voxel_grid.omega_grid_array == np.asarray(omega_grid_array)), "The read-in voxel grid's omega boundary array is not correct!"
 
         density_prior_mask = voxel_grid.get_density_prior_mask()
 

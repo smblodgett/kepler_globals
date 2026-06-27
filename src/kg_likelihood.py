@@ -105,6 +105,9 @@ def parametric_log_likelihood(params, model_id):
     # print(f"[log-prob on rank {rank}]", flush=True)
     # print(os.getpid())
 
+    ######################################### to do monday: testing on why gen catalog is so slow! and other speedups if possible 
+    ######################################### to do monday: also look at graphs, analyze performance of new model 
+
 
     # len_stellar_df = len(stellar_df)
     print("params: ", params)
@@ -114,7 +117,7 @@ def parametric_log_likelihood(params, model_id):
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params)
 
     # print(params)
-    print("get probability distribution time is ", prob_dist_time:=(time.time() - start_time))
+    print("get probability distribution time is ", (prob_dist_time:=time.time()) - start_time)
 
 
     if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
@@ -132,13 +135,13 @@ def parametric_log_likelihood(params, model_id):
     synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
 
-    print("generate catalog time is ", gen_cat_time:=(time.time() - prob_dist_time))
+    print("generate catalog time is ", (gen_cat_time:=time.time()) - prob_dist_time)
 
 
     ######################### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
 
-    print("catalog to grid time is ", cat_grid_time:=(time.time() - gen_cat_time))
+    print("catalog to grid time is ", (cat_grid_time:=time.time()) - gen_cat_time)
 
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
@@ -188,7 +191,7 @@ def parametric_log_likelihood(params, model_id):
     # print("grid_sum: ",grid_sum)
     logL = np.sum(grid_sum_poisson) + np.sum(grid_sum_noise)
 
-    print("mask and sum time is ", mask_sum_time:=(time.time() - cat_grid_time))
+    print("mask and sum time is ", (mask_sum_time:=time.time()) - cat_grid_time)
 
 
     ########## testing stuff
