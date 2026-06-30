@@ -18,6 +18,7 @@ model_run_dir = None
 model_id = None
 density_prior_mask = None
 local_best_logProb = -np.inf
+synthetic_multiplier = None
 
 prior_args = PriorArgs().load_priors()
 
@@ -97,7 +98,7 @@ def parametric_log_likelihood(params, model_id):
     
     start_time = time.time()
 
-    global voxel_grid, stellar_df
+    global voxel_grid, stellar_df, synthetic_multiplier
 
     print("len(stellar_df): ", len(stellar_df))
 
@@ -132,14 +133,14 @@ def parametric_log_likelihood(params, model_id):
         print("negative values in pmfs!")
         return -np.inf, {}, rank
     
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,synthetic_multiplier)
     ######## implement making sure that the random generated one 
 
     print("generate catalog time is ", (gen_cat_time:=time.time()) - prob_dist_time)
 
 
     ######################### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
-    local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
+    local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,synthetic_multiplier)
 
     print("catalog to grid time is ", (cat_grid_time:=time.time()) - gen_cat_time)
 
@@ -181,11 +182,11 @@ def parametric_log_likelihood(params, model_id):
     grid_sum_poisson = (voxel_num_data_poisson * np.log(model_count_poisson) - model_count_poisson - gammaln(voxel_num_data_poisson+1))
 
     # find contribution of log-likelihood of typical voxel
-    median_logP_contribution = np.median(grid_sum_poisson)
+    # median_logP_contribution = np.median(grid_sum_poisson)
 
     # penalize the no model, yes data case by the typical log likelihood times however much data is there
     # this HAS to be a fixed value (otherwise MCMC will just trade off between this likelihood and the Poisson)
-    grid_sum_noise = median_logP_contribution * voxel_num_data_noise
+    grid_sum_noise = -2 * voxel_num_data_noise
 
     # apply to grid_sum
     # print("grid_sum: ",grid_sum)

@@ -1,7 +1,7 @@
 #!/bin/bash --login
 
 #SBATCH --time=12:00:00
-#SBATCH --ntasks=1001
+#SBATCH --ntasks=101
 #SBATCH --mem-per-cpu=32G
 #SBATCH -J "kepler_globals_param"
 

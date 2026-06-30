@@ -337,7 +337,9 @@ class RPMGrid:
             for voxel in self.voxel_array.flat:
                 voxel.setup_dataframe(columns)
     
+
     def assign_column_names(self,columns):
+        ##
         for voxel in self.voxel_array.ravel():
             voxel.add_column_name(columns)
                         

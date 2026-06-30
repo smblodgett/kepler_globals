@@ -523,18 +523,38 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
         rng_metadata = json.load(f)
     
     master_seed = rng_metadata["master_seed"]
+    print("master seed: ", master_seed)
     # rank = rng_metadata["rank"]
     time_seed = rng_metadata["time_seed"]
+    print("time seed: ", time_seed)
 
     rank_seed = rng_metadata["rank_seed"]
+    print("rank seed: ", rank_seed)
 
     print("top_samples[0]: ",top_samples[0])
     print("model_params: ",model_params)
 
-    
+    synthetic_multiplier = 200
+
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(top_samples[0])
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,master_seed=master_seed,time_seed=time_seed)
-    voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid)
+    plt.scatter(mass_fine_grid,p_mass)
+    plt.xlabel("p_mass")
+    plt.savefig("p_mass.png")
+    
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,synthetic_multiplier,master_seed=master_seed,time_seed=time_seed)
+    print("initial shape of synthetic catalog: ", synthetic_catalog.shape)
+    print("initial num radii between 1.2 and 2.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,2] < 2) & (synthetic_catalog[:,2] > 1.2)))
+    print("ninitial num period between 2.5 and 3.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,0] < 3) & (synthetic_catalog[:,0] > 2.5)))
+
+    synthetic_catalog_test, rng_metadata_test = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,synthetic_multiplier,master_seed=5555,time_seed=101)
+    print("initial shape of synthetic catalog test: ", synthetic_catalog_test.shape)
+    print("initial num radii between 1.2 and 2.0 in synthetic catalog test: ", np.sum((synthetic_catalog_test[:,2] < 2) & (synthetic_catalog_test[:,2] > 1.2)))
+    print("ninitial num period between 2.5 and 3.0 in synthetic catalog test: ", np.sum((synthetic_catalog_test[:,0] < 3) & (synthetic_catalog_test[:,0] > 2.5)))
+
+
+    
+    
+    voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,synthetic_multiplier)
 
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
     model_count = 10**top_samples[0,0] * voxel_grid.likelihood_array[:,:,:,:,:,1] 
@@ -543,28 +563,36 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
-    combined_mask = ~zero_mask & density_prior_mask # where a voxel isn't zero and the implausible densities are marked false
+    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
 
+    combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
+    combined_noise_mask = density_prior_mask & no_model_mask
+    # print("shape of mask: ", combined_mask.shape)
 
-    voxel_num_data = voxel_num_data[combined_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
-    model_count = model_count[combined_mask] 
+    voxel_num_data_poisson = voxel_num_data[combined_poisson_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    model_count_poisson = model_count[combined_poisson_mask] 
 
+    voxel_num_data_noise = voxel_num_data[combined_noise_mask]
+    # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
 
-    grid_sum = (voxel_num_data * np.log(model_count) - model_count - gammaln(voxel_num_data+1))
+    ##### print out # of yes data/yes model, yes data/no model, no data/yes model, no/no 
+    grid_sum_poisson = (voxel_num_data_poisson * np.log(model_count_poisson) - model_count_poisson - gammaln(voxel_num_data_poisson+1))
 
     # find contribution of log-likelihood of typical voxel
-    median_logP_contribution = np.median(grid_sum[grid_sum != -np.inf])
+    # median_logP_contribution = np.median(grid_sum_poisson)
 
     # penalize the no model, yes data case by the typical log likelihood times however much data is there
-    no_model_yes_data = median_logP_contribution * voxel_num_data[grid_sum == -np.inf]
+    # this HAS to be a fixed value (otherwise MCMC will just trade off between this likelihood and the Poisson)
+    grid_sum_noise = -2 * voxel_num_data_noise
+
+    print("grid_sum_noise: ",np.sum(grid_sum_noise))
 
     # apply to grid_sum
-    grid_sum[grid_sum == -np.inf] = no_model_yes_data
-
     # print("grid_sum: ",grid_sum)
-    total_grid_sum = np.sum(grid_sum)
-    logL = total_grid_sum
-    assert logL == top_log_prob
+    logL = np.sum(grid_sum_poisson) + np.sum(grid_sum_noise)
+
+    print("logL vs top_log_prob: ", logL, top_log_prob[0])
+    # assert logL == top_log_prob[0]
 
 
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
@@ -575,23 +603,38 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     #     model_count += 10**top_samples[0,18]
 
     
-    original_shape = combined_mask.shape
+    original_shape = combined_poisson_mask.shape
 
     assert original_shape == voxel_grid.likelihood_array[:,:,:,:,:,0].shape, "The original shape of the data and model arrays should match the shape of the combined mask."
 
     reconstructed_model = np.zeros(original_shape)
     reconstructed_data = np.zeros(original_shape)
+    reconstructed_grid_sum = np.zeros(original_shape)
 
-    reconstructed_model[combined_mask] = model_count
-    reconstructed_data[combined_mask] = voxel_num_data
+    reconstructed_model[combined_poisson_mask] = model_count_poisson
+    reconstructed_data[combined_poisson_mask] = voxel_num_data_poisson
+    reconstructed_grid_sum[combined_poisson_mask] = grid_sum_poisson
+    reconstructed_grid_sum[combined_noise_mask] = grid_sum_noise
 
-    print("sum(model_count) after the no model mask: ",np.sum(model_count))
-    print("sum(voxel_num_data) after the no model mask: ",np.sum(voxel_num_data))
     print("sum(reconstructed_model): ",np.sum(reconstructed_model))
     print("sum(reconstructed_data): ",np.sum(reconstructed_data))
 
     print("shape reconstructed model: ",reconstructed_model.shape)
     print("shape reconstructed data: ",reconstructed_data.shape)
+
+    # print("density_prior_mask any:", density_prior_mask.any())
+    print("voxels with data > 0:", (voxel_num_data > 0).sum())
+    print("voxels with data > 0 AND in density_prior:", (density_prior_mask & (voxel_num_data > 0)).sum())
+    print("voxels with data > 0 AND model > 0:", ((model_count > 0) & (voxel_num_data > 0)).sum())
+    print("voxels with data > 0 in combined_poisson_mask:", (combined_poisson_mask & (voxel_num_data > 0)).sum())
+
+    print("reconstructed_data sum over radius axis:", np.sum(reconstructed_data, axis=(1,2,3,4)))
+    print("voxel_num_data nonzero count:", np.sum(voxel_num_data > 0))
+    print("combined_poisson_mask nonzero count:", np.sum(combined_poisson_mask))
+
+    print("shape of synthetic catalog: ", synthetic_catalog.shape)
+    print("num radii between 1.2 and 2.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,2] < 2) & (synthetic_catalog[:,2] > 1.2)))
+    print("num period between 2.5 and 3.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,0] < 3) & (synthetic_catalog[:,0] > 2.5)))
 
 
     
@@ -617,33 +660,39 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
 
 
-    data_count_ecc = np.sum(reconstructed_data, axis=(0,1,2,4))
+    data_count_ecc = np.sum(voxel_num_data, axis=(0,1,2,4))
     model_count_ecc = np.sum(reconstructed_model, axis=(0,1,2,4))
     physical_catalog_count_ecc, _ = np.histogram(synthetic_catalog[:,3],bins=eccentricity_param_grid_array)
+    physical_catalog_count_ecc = physical_catalog_count_ecc / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_ecc,data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
-    data_count_mass = np.sum(reconstructed_data, axis=(0,1,3,4))
+    data_count_mass = np.sum(voxel_num_data, axis=(0,1,3,4))
     model_count_mass = np.sum(reconstructed_model, axis=(0,1,3,4))
     physical_catalog_count_mass, _ = np.histogram(synthetic_catalog[:,1],bins=mass_param_grid_array)
+    physical_catalog_count_mass = physical_catalog_count_mass / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_mass,data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
 
-    data_count_radius = np.sum(reconstructed_data, axis=(1,2,3,4))
+    data_count_radius = np.sum(voxel_num_data, axis=(1,2,3,4))
     model_count_radius = np.sum(reconstructed_model, axis=(1,2,3,4))
     physical_catalog_count_radius, _ = np.histogram(synthetic_catalog[:,2],bins=radius_param_grid_array)
+    physical_catalog_count_radius = physical_catalog_count_radius / synthetic_multiplier
+
 
     param_1D_residuals_plot(physical_catalog_count_radius,data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
 
-    data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
+    data_count_period = np.sum(voxel_num_data, axis=(0,2,3,4))
     model_count_period = np.sum(reconstructed_model, axis=(0,2,3,4))
     physical_catalog_count_period, _ = np.histogram(synthetic_catalog[:,0],bins=period_param_grid_array)
+    physical_catalog_count_period = physical_catalog_count_period / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_period,data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
 
-    data_count_omega = np.sum(reconstructed_data, axis=(0,1,2,3))
+    data_count_omega = np.sum(voxel_num_data, axis=(0,1,2,3))
     model_count_omega = np.sum(reconstructed_model, axis=(0,1,2,3))
     physical_catalog_count_omega, _ = np.histogram(synthetic_catalog[:,4],bins=omega_param_grid_array)
+    physical_catalog_count_omega = physical_catalog_count_omega / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_omega,data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
@@ -661,7 +710,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     param_voxel_count_hist(reconstructed_model,visualization_plot_folder,"model")
 
-    param_voxel_count_hist(grid_sum,visualization_plot_folder,"grid sum")
+    param_voxel_count_hist(reconstructed_grid_sum,visualization_plot_folder,"grid sum")
 
 
 
@@ -732,7 +781,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 def param_voxel_count_hist(voxel_count,visualization_plot_folder,name):
     """takes in a per-voxel count of something and makes a histogram"""
     plt.figure(dpi=200)
-    plt.hist(voxel_count,bins=75)
+    plt.hist(voxel_count.flatten(),bins=75)
+    plt.xscale('log')
+    plt.yscale('log')
     plt.xlabel(f"{name} count per voxel")
     plt.savefig(visualization_plot_folder + f"/{name}_voxel_count.png")
     plt.close()
@@ -1121,21 +1172,17 @@ def ecc_omega_singles_posterior_plot(eccentricity,omega,visualization_plot_folde
 
 ### ADD OPTION TO DO LOGSCALE COLORING
 ### ADD SPLINES 
-def MES_grid_plot(completeness_interp,save_path="../results/plots/completeness/",mass_fixed=1.0,ecc_fixed=0.0,omega_fixed=0.0):
+def MES_grid_plot(voxel_grid,save_path="../results/plots/completeness/",mass_fixed=1.0,ecc_fixed=0.0,omega_fixed=0.0):
     os.makedirs(os.path.dirname(save_path + '/completeness/'), exist_ok=True)
-    radius_param_grid_array,period_param_grid_array,mass_param_grid_array,eccentricity_param_grid_array,omega_param_grid_array = completeness_interp.grid
+    radius_param_grid_array = voxel_grid.radius_grid_array
+    period_param_grid_array = voxel_grid.period_grid_array
 
     X1, X2 = np.meshgrid(radius_param_grid_array, period_param_grid_array, indexing='ij')
 
     pts = np.column_stack([X1.ravel(), X2.ravel(), np.full(X1.size, mass_fixed),
                            np.full(X1.size, ecc_fixed), np.full(X1.size, omega_fixed)])
     
-    # Z1 = detection_interp(pts).reshape(X1.shape)
-    # Z2 = transit_interp(pts).reshape(X1.shape)
-    Z3 = completeness_interp(pts).reshape(X1.shape)
-
-    print("Z3 shape: ", Z3.shape)
-    print("min Z3: ", np.min(Z3))
+    Z3 = voxel_grid.interpolate_completeness(pts).reshape(X1.shape)
 
 
     filled_levels = np.linspace(0, 1, 300)

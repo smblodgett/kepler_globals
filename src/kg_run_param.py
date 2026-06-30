@@ -163,6 +163,7 @@ def main(model_id, runprops):
     stellar_df = None
     model_run_dir = None
     density_prior_mask = None
+    synthetic_multiplier = None
 
     # rank 0 reads in the voxel grid and stellar dataframe, then broadcasts to all ranks
     comm = MPI.COMM_WORLD
@@ -172,21 +173,14 @@ def main(model_id, runprops):
         with open(runprops["voxel_json_filename"], "r") as f:
             voxel_grid = json.load(f,object_hook=grid_object_hook)
         if runprops["verbose"]: print("read in json voxel file!")
-        with open('../data/dataframe_column_names.json', "r") as f:
-            df_columns = json.load(f)
+
+        ####### this functionality is unneccesary now with the likelihood array, methinks
+        # with open('../data/dataframe_column_names.json', "r") as f:
+        #     df_columns = json.load(f)
         
-        voxel_grid.assign_column_names(df_columns) # this takes a ton of time, dfs in voxel grid should be handled better
+        # voxel_grid.assign_column_names(df_columns) # this takes a ton of time, dfs in voxel grid should be handled better
+        ######
 
-        print(voxel_grid.completeness_array)
-
-        voxel_grid.completeness_interp = RegularGridInterpolator(
-            (voxel_grid.radius_grid_array,
-            voxel_grid.period_grid_array,
-            voxel_grid.mass_grid_array,
-            voxel_grid.eccentricity_grid_array,
-            voxel_grid.omega_grid_array),
-            voxel_grid.completeness_array
-        )
 
         if runprops["verbose"]: print("[Rank 0] read in voxel grid, created interpolator")
         
@@ -209,7 +203,8 @@ def main(model_id, runprops):
         if runprops["plot_completeness"]:
             for ecc in [0,0.1,0.5,0.99]:
                 for omega in [0,45,90,135,180,225,270,315,360]:
-                    MES_grid_plot(voxel_grid.completeness_interp,model_run_dir,ecc_fixed=ecc,omega_fixed=omega)
+                    MES_grid_plot(voxel_grid,model_run_dir,ecc_fixed=ecc,omega_fixed=omega)
+                    
             
             if runprops["verbose"]: print("Rank 0 made mes grid plot!")
         
@@ -240,6 +235,8 @@ def main(model_id, runprops):
         # print("density_prior_mask: ", density_prior_mask)
         # print("density_prior_mask shape: ", density_prior_mask.shape)
 
+        synthetic_multiplier = runprops["synthetic_multiplier"]
+
     
 
     # broadcast the voxel grid and stellar dataframe to all ranks
@@ -247,6 +244,7 @@ def main(model_id, runprops):
     stellar_df = comm.bcast(stellar_df,root=0)
     model_run_dir = comm.bcast(model_run_dir,root=0)
     density_prior_mask = comm.bcast(density_prior_mask,root=0)
+    synthetic_multiplier = comm.bcast(synthetic_multiplier,root=0)
     
     if runprops["verbose"]: print("---BROADCAST HAS BEEN COMPLETED---")
     
@@ -255,6 +253,7 @@ def main(model_id, runprops):
     kg_likelihood.model_run_dir = model_run_dir
     kg_likelihood.model_id = model_id
     kg_likelihood.density_prior_mask = density_prior_mask
+    kg_likelihood.synthetic_multiplier = synthetic_multiplier
 
     # print("kg_likelihood.stellar_df : ",kg_likelihood.stellar_df )
     # print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))

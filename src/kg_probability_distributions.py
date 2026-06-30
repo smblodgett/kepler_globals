@@ -338,7 +338,7 @@ def random_seed_generation(master_seed,*args):
     return int(seed_seq.generate_state(1)[0] & 0xFFFFFFFF)
 
 
-def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=10):
+def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,synthetic_multiplier,master_seed=None,time_seed=10):
     
     # np.random.seed(22)
 
@@ -348,7 +348,7 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
 
     begin_time = time.time()
 
-    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)*200),5)) # times 10 to test effects of undersampling
+    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)*synthetic_multiplier),5)) # times 10 to test effects of undersampling
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
 
@@ -380,6 +380,8 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     while np.any(mask):
         print("Some masses are less than 0.1 M_E, regenerating...")
         fake_catalog[:,1][mask] = rng.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
+
+    print("number of mass 4 - 24: ", np.sum((fake_catalog[:,1] > 4) & (fake_catalog[:,1] < 24)))
     
     print("mass gen time: ", (mass_gen_time:=time.time()) - period_gen_time)
 
@@ -476,7 +478,7 @@ def normalize_pdf_to_pmf(pdf, grid):
     return pmf
 
 
-def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
+def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplier):
     print("synthetic catalog original shape: ", synthetic_catalog.shape)
     # print("synthetic catalog head: ", synthetic_catalog[:5,:])
     # print("synthetic catalog count: ", np.sum(synthetic_catalog))
@@ -540,7 +542,7 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid):
     ]
 
     histtestsums, edges = np.histogramdd(synthetic_catalog, bins=bins, weights=completeness)
-    histtestsums /= 200
+    histtestsums /= synthetic_multiplier
 
     voxel_grid.likelihood_array[:,:,:,:,:, 1] = histtestsums
     # packpointssums =  pack_points_vectorized(synthetic_catalog,voxel_grid,completeness).likelihood_array[:,:,:,:,:,1]
