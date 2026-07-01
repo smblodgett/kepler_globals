@@ -585,11 +585,11 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
                     - gammaln(voxel_num_data_all + 1))
 
     # Noise branch — also evaluated on ALL voxels
-    logL_noise_i = voxel_num_data_all * top_samples[0,18]   # whatever form this takes
+    logL_noise_i = voxel_num_data_all * -10 ** top_samples[0,18]   # whatever form this takes
 
     # Per-voxel mixture, NOT a weighted sum of sums
-    log_pi = np.log(top_samples[0,19])
-    log_1m_pi = np.log(1 - top_samples[0,19])
+    log_pi = np.log(10**top_samples[0,19])
+    log_1m_pi = np.log(1 - 10**top_samples[0,19])
 
     logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
 

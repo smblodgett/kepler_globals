@@ -128,24 +128,27 @@ class RadiusDistribution:
     def _mu2(self,M):
         return self.C*self.mass_break_1**(self.γ0-self.γ1)*self.mass_break_2**(self.γ1-self.γ2)*M**self.γ2
 
-    def mu_total(self,M):
-        return ((1-self._SN(M,self.mass_break_1))*self._mu0(M) 
-                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self._mu1(M)
-                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self._mu2(M)
+    def mu_total(self,M,SN1,SN2):
+        return ((1-SN1)*self._mu0(M) 
+                + SN1*(1-SN2)*self._mu1(M)
+                + SN1*SN2*self._mu2(M)
                 )
 
-    def sigma_total(self,M):
-        return ((1-self._SN(M,self.mass_break_1))*self.σ0 
-                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self.σ1
-                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
+    def sigma_total(self,SN1,SN2):
+        return ((1-SN1)*self.σ0 
+                + SN1*(1-SN2)*self.σ1
+                + SN1*SN2*self.σ2
                 )
 
     def sample_radius_given_mass(self,mass_distribution,rng):
         # recently rewritten...this version is 2x faster or so than the old truncnorm call. but see RadiusDistribution.ipynb for verification
         radii = np.empty_like(mass_distribution)
 
-        mu = self.mu_total(mass_distribution)
-        sigma = mu * self.sigma_total(mass_distribution)
+        SN1 = self._SN(mass_distribution,self.mass_break_1)
+        SN2 = self._SN(mass_distribution,self.mass_break_2)
+        
+        mu = self.mu_total(mass_distribution,SN1,SN2)
+        sigma = mu * self.sigma_total(SN1,SN2)
         
         lower_radius_bound = radius_given_density_mass(10, mass_distribution)
         a = (lower_radius_bound - mu) / sigma
@@ -364,7 +367,7 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
                     "time_seed":time_seed} 
 
     rng_seed = random_seed_generation(master_seed,rank,time_seed)
-    print("rng_seed: ", rng_seed)
+    # print("rng_seed: ", rng_seed)
     rng = np.random.default_rng(seed=rng_seed)
 
     print("generation init time: ", (init_time:=time.time()) - begin_time)
@@ -381,7 +384,7 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
         print("Some masses are less than 0.1 M_E, regenerating...")
         fake_catalog[:,1][mask] = rng.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
 
-    print("number of mass 4 - 24: ", np.sum((fake_catalog[:,1] > 4) & (fake_catalog[:,1] < 24)))
+    # print("number of mass 4 - 24: ", np.sum((fake_catalog[:,1] > 4) & (fake_catalog[:,1] < 24)))
     
     print("mass gen time: ", (mass_gen_time:=time.time()) - period_gen_time)
 
@@ -469,12 +472,9 @@ def get_probability_distributions(params):
 
 
 def normalize_pdf_to_pmf(pdf, grid):
-
     dx = np.gradient(grid)
-
     pmf = pdf * dx
     pmf /= np.sum(pmf)
-
     return pmf
 
 
@@ -484,8 +484,6 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
     # print("synthetic catalog count: ", np.sum(synthetic_catalog))
     # originally synthetic catalog is in order period, mass, radius, ecc, omega confirmed 12/19 that this is working right
     synthetic_catalog = synthetic_catalog[:, [2, 0, 1, 3, 4]]
-    # print("rearranged catalog shape: ", synthetic_catalog.shape)
-    # print("rearranged synthetic catalog head: ", synthetic_catalog[:5,:])
 
     # print("rearranged catalog: ", synthetic_catalog)
     synthetic_catalog = synthetic_catalog[
@@ -509,6 +507,11 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
         (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
         ]    
     
+    ### need to implement a "realistic" filter
+    ### wherein 
+
+
+
     ### RegGridInterp is 5x or worse slower than map_interp, and gives identical results, we're removing it
     # before_reg_interp_time = time.time()
     # completeness = voxel_grid.completeness_interp(synthetic_catalog)

@@ -178,7 +178,7 @@ def parametric_log_likelihood(params, model_id):
                     - gammaln(voxel_num_data_all + 1))
 
     # Noise branch — also evaluated on ALL voxels
-    logL_noise_i = voxel_num_data_all * params[18]   # whatever form this takes
+    logL_noise_i = voxel_num_data_all * -10 ** params[18]   # whatever form this takes
 
     # Per-voxel mixture, NOT a weighted sum of sums
     log_pi = np.log(10**params[19])

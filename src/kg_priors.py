@@ -54,7 +54,7 @@ class PriorArgs:
         self.add_prior('alpha_e', 0,2,"U", [0,1])
         self.add_prior('lambda_e', 0,50,"U", [0,1])
         self.add_prior('sigma_e',0,1,"U", [0,1])
-        self.add_prior('m', -10000,0,"U", [0])  
+        self.add_prior('Log10(m)', -6,6,"U", [0])  
         self.add_prior('Log10(p_noise)',-20,0,"U", [0])  
 
 
@@ -80,8 +80,8 @@ class PriorArgs:
                             '$α_e$',
                             '$λ_e$',
                             '$σ_e$',
-                            'm',
-                            r'$\mathrm{log}_{10}(Γ_0)$'
+                            r'$\mathrm{log}_{10}(m)$',
+                            r'$\mathrm{log}_{10}(P_{noise})$'
                             ]
     def get_plot_labels(self, model_id):
         self.load_plot_labels()
