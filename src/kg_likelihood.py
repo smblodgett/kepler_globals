@@ -100,7 +100,7 @@ def parametric_log_likelihood(params, model_id):
 
     global voxel_grid, stellar_df, synthetic_multiplier
 
-    print("len(stellar_df): ", len(stellar_df))
+    # print("len(stellar_df): ", len(stellar_df))
 
     rank = MPI.COMM_WORLD.Get_rank()
     # print(f"[log-prob on rank {rank}]", flush=True)
@@ -168,31 +168,57 @@ def parametric_log_likelihood(params, model_id):
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
     no_model_mask = (model_count == 0) & (voxel_num_data > 0)
 
-    combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
-    combined_noise_mask = density_prior_mask & no_model_mask
-    # print("shape of mask: ", combined_mask.shape)
+    # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
+    ALPHA = 1e-6
+    model_count_smoothed = model_count[density_prior_mask] + ALPHA
+    voxel_num_data_all = voxel_num_data[density_prior_mask]
 
-    voxel_num_data_poisson = voxel_num_data[combined_poisson_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
-    model_count_poisson = model_count[combined_poisson_mask] 
+    logL_poisson_i = (voxel_num_data_all * np.log(model_count_smoothed)
+                    - model_count_smoothed
+                    - gammaln(voxel_num_data_all + 1))
 
-    voxel_num_data_noise = voxel_num_data[combined_noise_mask]
-    # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    # Noise branch — also evaluated on ALL voxels
+    logL_noise_i = voxel_num_data_all * params[18]   # whatever form this takes
 
-    ##### print out # of yes data/yes model, yes data/no model, no data/yes model, no/no 
-    grid_sum_poisson = (voxel_num_data_poisson * np.log(model_count_poisson) - model_count_poisson - gammaln(voxel_num_data_poisson+1))
+    # Per-voxel mixture, NOT a weighted sum of sums
+    log_pi = np.log(10**params[19])
+    log_1m_pi = np.log(1 - 10**params[19])
 
-    # find contribution of log-likelihood of typical voxel
-    # median_logP_contribution = np.median(grid_sum_poisson)
+    logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
 
-    # penalize the no model, yes data case by the typical log likelihood times however much data is there
-    # this HAS to be a fixed value (otherwise MCMC will just trade off between this likelihood and the Poisson)
-    grid_sum_noise = -2 * voxel_num_data_noise
+    logL = np.sum(logL_i)
 
-    # apply to grid_sum
-    # print("grid_sum: ",grid_sum)
-    logL = np.sum(grid_sum_poisson) + np.sum(grid_sum_noise)
+    # combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
+    # combined_noise_mask = density_prior_mask 
+    # # print("shape of mask: ", combined_mask.shape)
+
+    # voxel_num_data_poisson = voxel_num_data[combined_poisson_mask] # if both the model and data say there's nothing in a voxel, let's count it as a neutral contribution
+    # model_count_poisson = model_count[combined_poisson_mask] 
+
+    # voxel_num_data_noise = voxel_num_data[combined_noise_mask]
+    # # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+
+    # ##### print out # of yes data/yes model, yes data/no model, no data/yes model, no/no 
+    # grid_sum_poisson = (voxel_num_data_poisson * np.log(model_count_poisson) - model_count_poisson - gammaln(voxel_num_data_poisson+1))
+
+    # # find contribution of log-likelihood of typical voxel
+    # # median_logP_contribution = np.median(grid_sum_poisson)
+
+    # # penalize the no model, yes data case by the typical log likelihood times however much data is there
+    # # this HAS to be a fixed value (otherwise MCMC will just trade off between this likelihood and the Poisson)
+    # grid_sum_noise = params[18] * voxel_num_data_noise
+
+    # # apply to grid_sum
+    # # print("grid_sum: ",grid_sum)
+    # logL = np.sum((1-params[19])* grid_sum_poisson) + np.sum(params[19] * grid_sum_noise)
 
     print("mask and sum time is ", (mask_sum_time:=time.time()) - cat_grid_time)
+
+    print("total eval time is ", (time.time() - start_time))
+
+    print("logL: ",logL,flush=True)
+
+
 
 
     ########## testing stuff
@@ -235,7 +261,6 @@ def parametric_log_likelihood(params, model_id):
 
     # logL = total_grid_sum
 
-    # print("logL: ",logL,flush=True)
 
 
     ################################## comparing if Neil and Rogers period is better fit than ours
