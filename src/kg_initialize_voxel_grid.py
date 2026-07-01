@@ -104,7 +104,7 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
     return eccentricity, omega
 
 
-def process_singles_df(singles_dr_df,stellar_df,seed=2222):
+def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222):
 
     num_posteriors_per_planet = 1000
 
@@ -145,7 +145,7 @@ def process_singles_df(singles_dr_df,stellar_df,seed=2222):
         print("number of NaN in T_14: ",np.sum(np.isnan(T_14)))
 
 
-        density = rng.uniform(0.01, 10, size=num_posteriors_per_planet) 
+        density = rng.uniform(lower_rho, upper_rho, size=num_posteriors_per_planet) 
         mass = mass_given_density_radius(density, radius)
 
         print("mass: ",mass)
@@ -299,12 +299,11 @@ def main(runprops):
         # Reset the index so we can iterate through singles df
         singles_dr_df = singles_dr_df.reset_index(drop=True)
         # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
-        processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df)
+        processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,runprops["minimum_density"],runprops["maximum_density"])
         
         # Remove the planets with densities above or below a certain threshold, because they are unphysical
         if runprops["exclude_bad_densities"]:
             df = df[(df["rho_p"]<runprops["maximum_density"]) & (df["rho_p"]>runprops["minimum_density"])]
-
 
         print("length of df after before requiring stability: ",len(df))
         # Exclude any posterior draw that has a periastron less than 2 stellar radii
@@ -379,7 +378,7 @@ def main(runprops):
         voxel_grid.add_data(final_kdc_df)
 
         # Create a small stellar df with 100 random stars, to set up the completeness grid. (could be expanded to entire stellar catalog)
-        stellar_df_reduced=stellar_df.sample(n=400,random_state=22)
+        stellar_df_reduced=stellar_df.sample(n=1000,random_state=22)
 
 
     voxel_grid = comm.bcast(voxel_grid,root=0)

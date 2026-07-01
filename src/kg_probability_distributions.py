@@ -508,7 +508,8 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
         ]    
     
     ### need to implement a "realistic" filter
-    ### wherein 
+    ### wherein planets that go too close to their star (and possibly do anything else unphysical) are removed
+    
 
 
 
