@@ -540,13 +540,16 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     plt.scatter(mass_fine_grid,p_mass)
     plt.xlabel("p_mass")
     plt.savefig("p_mass.png")
+
+    stellar_info = stellar_df[["radius","mass"]].to_numpy(dtype=np.float32)
+    stellar_info = np.repeat(stellar_info,synthetic_multiplier,axis=0)
     
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,synthetic_multiplier,master_seed=master_seed,time_seed=time_seed)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,master_seed=master_seed,time_seed=time_seed)
     print("initial shape of synthetic catalog: ", synthetic_catalog.shape)
     print("initial num radii between 1.2 and 2.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,2] < 2) & (synthetic_catalog[:,2] > 1.2)))
     print("ninitial num period between 2.5 and 3.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,0] < 3) & (synthetic_catalog[:,0] > 2.5)))
 
-    synthetic_catalog_test, rng_metadata_test = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,synthetic_multiplier,master_seed=5555,time_seed=101)
+    synthetic_catalog_test, rng_metadata_test = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,master_seed=5555,time_seed=101)
     print("initial shape of synthetic catalog test: ", synthetic_catalog_test.shape)
     print("initial num radii between 1.2 and 2.0 in synthetic catalog test: ", np.sum((synthetic_catalog_test[:,2] < 2) & (synthetic_catalog_test[:,2] > 1.2)))
     print("ninitial num period between 2.5 and 3.0 in synthetic catalog test: ", np.sum((synthetic_catalog_test[:,0] < 3) & (synthetic_catalog_test[:,0] > 2.5)))

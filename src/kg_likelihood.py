@@ -12,7 +12,7 @@ from kg_constants import N_PHODYMM_SYSTEMS
 
 from kg_probability_distributions import synthetic_catalog_to_grid, generate_catalog, get_probability_distributions
 
-stellar_df = None # this is the stellar_df that is defined and given cuts in kg_initialize_voxel_grid.py. Its length is the same as the synthetic catalog's
+stellar_info = None # this is a np array from the stellar_df that is defined and given cuts in kg_initialize_voxel_grid.py. Its length is the same as the synthetic catalog's
 voxel_grid = None
 model_run_dir = None
 model_id = None
@@ -98,7 +98,7 @@ def parametric_log_likelihood(params, model_id):
     
     start_time = time.time()
 
-    global voxel_grid, stellar_df, synthetic_multiplier
+    global voxel_grid, stellar_info, synthetic_multiplier
 
     # print("len(stellar_df): ", len(stellar_df))
 
@@ -111,6 +111,7 @@ def parametric_log_likelihood(params, model_id):
 
 
     # len_stellar_df = len(stellar_df)
+    params = params.astype(np.float32)
     print("params: ", params)
 
     Gamma0 = 10**params[0]
@@ -133,7 +134,7 @@ def parametric_log_likelihood(params, model_id):
         print("negative values in pmfs!")
         return -np.inf, {}, rank
     
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,synthetic_multiplier)
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
 
     print("generate catalog time is ", (gen_cat_time:=time.time()) - prob_dist_time)
@@ -165,8 +166,8 @@ def parametric_log_likelihood(params, model_id):
     print("yes data yes model: ", np.sum(yes_data_yes_model_voxels),"yes data no model: ", np.sum(yes_data_no_model_voxels),"no data yes model: ", np.sum(no_data_yes_model_voxels),"no data no model: ", np.sum(no_data_no_model_voxels))
 
 
-    zero_mask = (model_count == 0) & (voxel_num_data == 0)
-    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    # zero_mask = (model_count == 0) & (voxel_num_data == 0)
+    # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
 
     # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
     ALPHA = 1e-6
@@ -412,7 +413,7 @@ def parametric_log_probability(params):
     # print("prior: ",prior,flush=True)
 
 
-    logProb = prior + logL if np.isfinite(prior) else -np.inf
+    logProb = prior + logL
 
     rng_metadata |= {"logProb":logProb}
 

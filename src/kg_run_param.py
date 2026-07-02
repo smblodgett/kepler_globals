@@ -118,7 +118,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
     initial_guess_filename = best_guess_filename if runprops["initial_guess_method"] == "previous_best" else ""
     # get initial guess positions for the walkers
     p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
-
+    assert p0.dtype == np.float32, "params should be a float32"
 
     # create the emcee backend
     backend_folder = model_run_dir
@@ -187,6 +187,11 @@ def main(model_id, runprops):
 
         # read in the stellar dataframe
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
+
+        # extract the relevant stellar_df info into a np array 
+        stellar_info = stellar_df[["radius","mass"]].to_numpy(dtype=np.float32)
+        stellar_info = np.repeat(stellar_info,runprops["synthetic_multiplier"],axis=0)
+
         if runprops["verbose"]: print("len(stellar_df) after reading in: ",len(stellar_df))
         if runprops["verbose"]: print("[Rank 0] read in stellar df")
         
@@ -241,7 +246,7 @@ def main(model_id, runprops):
 
     # broadcast the voxel grid and stellar dataframe to all ranks
     voxel_grid = comm.bcast(voxel_grid,root=0)
-    stellar_df = comm.bcast(stellar_df,root=0)
+    stellar_info = comm.bcast(stellar_info,root=0)
     model_run_dir = comm.bcast(model_run_dir,root=0)
     density_prior_mask = comm.bcast(density_prior_mask,root=0)
     synthetic_multiplier = comm.bcast(synthetic_multiplier,root=0)
@@ -249,7 +254,7 @@ def main(model_id, runprops):
     if runprops["verbose"]: print("---BROADCAST HAS BEEN COMPLETED---")
     
     kg_likelihood.voxel_grid = voxel_grid
-    kg_likelihood.stellar_df = stellar_df
+    kg_likelihood.stellar_info = stellar_info
     kg_likelihood.model_run_dir = model_run_dir
     kg_likelihood.model_id = model_id
     kg_likelihood.density_prior_mask = density_prior_mask

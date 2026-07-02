@@ -4,7 +4,7 @@ from kg_priors import PriorArgs
 
 def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename=""):
     if method == "priors":
-        p0 = np.zeros((nwalkers, ndim))  # Initialize an array for the initial guess
+        p0 = np.zeros((nwalkers, ndim),dtype=np.float32)  # Initialize an array for the initial guess
         prior_args = PriorArgs().load_priors()
         priors = prior_args.get_priors(model_id)
         assert ndim == len(priors), "Number of dimensions must match the number of prior parameters!"
@@ -16,14 +16,14 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
     elif method == "previous_best":
         assert previous_filename is not None, "Enter the filename of the run you want to take!"
 
-        p0 = np.zeros((nwalkers,ndim))
+        p0 = np.zeros((nwalkers,ndim),dtype=np.float32)
 
         best_params = get_initial_guess_from_previous(previous_filename)
         assert len(best_params) == ndim, "Mismatch between loaded best params and expected ndim!"
 
         scale = 1e-2 * np.maximum(np.abs(best_params), 1e-1) # if any best param is zero, it needs to use a small fixed scale
         np.random.seed(42)
-        p0 = np.random.normal(best_params,scale=scale,size=(nwalkers,len(best_params)))
+        p0 = np.random.normal(best_params,scale=scale,size=(nwalkers,len(best_params))).astype(np.float32)
         print("using previous best initialization method")
     elif method == "custom":
         pass
@@ -42,5 +42,5 @@ def get_initial_guess_from_previous(filename):
     # previous_best_likelihood = previous_best["log_prob"]
     print("previous best: ",previous_best["params"])
 
-    return np.array(previous_best["params"])
+    return np.array(previous_best["params"],dtype=np.float32)
 

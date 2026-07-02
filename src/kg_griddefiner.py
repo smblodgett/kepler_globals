@@ -693,14 +693,14 @@ class RPMeoGrid(RPMGrid):
 
             print("number of self.completeness_array greater than 1: ", len(self.completeness_array[self.completeness_array > 1]))
             print("self.completeness_array.size: ",self.completeness_array.size)
-            self.completeness_interp = RegularGridInterpolator(
-                                                              (self.radius_grid_array,
-                                                              self.period_grid_array,
-                                                              self.mass_grid_array,
-                                                              self.eccentricity_grid_array,
-                                                              self.omega_grid_array),
-                                                              self.completeness_array
-                                                              )
+            # self.completeness_interp = RegularGridInterpolator(
+            #                                                   (self.radius_grid_array,
+            #                                                   self.period_grid_array,
+            #                                                   self.mass_grid_array,
+            #                                                   self.eccentricity_grid_array,
+            #                                                   self.omega_grid_array),
+            #                                                   self.completeness_array
+            #                                                   )
     def interpolate_completeness(self, points):
         """
         points: np.ndarray of shape (N, 5)

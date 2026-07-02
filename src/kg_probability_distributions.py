@@ -341,7 +341,7 @@ def random_seed_generation(master_seed,*args):
     return int(seed_seq.generate_state(1)[0] & 0xFFFFFFFF)
 
 
-def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,synthetic_multiplier,master_seed=None,time_seed=10):
+def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=10):
     
     # np.random.seed(22)
 
@@ -351,7 +351,7 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
 
     begin_time = time.time()
 
-    fake_catalog = np.zeros(((len_stellar_df:=len(stellar_df)*synthetic_multiplier),5)) # times 10 to test effects of undersampling
+    fake_catalog = np.zeros(((len_stellar_info:=len(stellar_info)),5),dtype=np.float32) # times 10 to test effects of undersampling
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
 
@@ -373,12 +373,12 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     print("generation init time: ", (init_time:=time.time()) - begin_time)
 
 
-    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_df,p=p_Period)  # Period
+    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_info,p=p_Period)  # Period
 
     print("period gen time: ", (period_gen_time:=time.time()) - init_time)
 
 
-    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_df,p=p_mass)  # Mass
+    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_info,p=p_mass)  # Mass
     mask = fake_catalog[:,1] < 0.1
     while np.any(mask):
         print("Some masses are less than 0.1 M_E, regenerating...")
@@ -393,14 +393,14 @@ def generate_catalog(stellar_df,p_Period, Period_fine_grid, p_mass, mass_fine_gr
     
     # print("make radius distribution...")
     fake_catalog[:,2] = RadiusDistribution(γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
-    # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_df,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
+    # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_info,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     print("radius gen time: ", (radius_gen_time:=time.time()) - mass_gen_time)
     
-    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_df,p=p_ecc)  # Eccentricity
+    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_info,p=p_ecc)  # Eccentricity
 
     print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
 
-    fake_catalog[:,4] = rng.uniform(0,360,len_stellar_df)  # omega (argument of periastron)
+    fake_catalog[:,4] = rng.uniform(0,360,len_stellar_info)  # omega (argument of periastron)
     # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
     print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
@@ -431,13 +431,13 @@ def get_probability_distributions(params):
     σ_e = params[17]
 
     # period
-    Period_fine_grid = np.linspace(0.1,500,10000)
+    Period_fine_grid = np.linspace(0.1,500,10000,dtype=np.float32)
     pdf_Period = PeriodDistribution(Period_fine_grid,[β1,β2],[Period_break_1],power_laws=2).Period_pdf(Period_fine_grid)
     pmf_Period = normalize_pdf_to_pmf(pdf_Period,Period_fine_grid)
     # p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
 
     # mass
-    mass_fine_grid = np.logspace(-1,4,10000) # used to be np.linspace(.1,10000,100000) that might be right?
+    mass_fine_grid = np.logspace(-1,4,10000,dtype=np.float32) # used to be np.linspace(.1,10000,100000) that might be right?
     pdf_mass = MassDistribution(mass_fine_grid,mu_M,sigma_M).mass_pdf()
     pmf_mass = normalize_pdf_to_pmf(pdf_mass,mass_fine_grid)
 
@@ -447,7 +447,7 @@ def get_probability_distributions(params):
     # radius 
 
     # ecc
-    eccentricity_grid = np.linspace(0,1,10000)
+    eccentricity_grid = np.linspace(0,1,10000,dtype=np.float32)
     pdf_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e).eccentricity_pdf(eccentricity_grid)
     pmf_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_grid)
     # print("p_ecc: ", p_ecc)
