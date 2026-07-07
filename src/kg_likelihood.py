@@ -3,7 +3,7 @@ import time
 import os
 import json
 from mpi4py import MPI
-from scipy.special import gamma, gammaln
+from scipy.special import gamma, gammaln, log_expit
 from scipy.stats import norm, lognorm, uniform
 from kg_priors import PriorArgs 
 import matplotlib.pyplot as plt
@@ -111,7 +111,6 @@ def parametric_log_likelihood(params, model_id):
 
 
     # len_stellar_df = len(stellar_df)
-    params = params.astype(np.float32)
     print("params: ", params)
 
     Gamma0 = 10**params[0]
@@ -179,15 +178,17 @@ def parametric_log_likelihood(params, model_id):
                     - gammaln(voxel_num_data_all + 1))
 
     # Noise branch — also evaluated on ALL voxels
-    logL_noise_i = voxel_num_data_all * -10 ** params[18]   # whatever form this takes
+    # log_norm_const = np.log1p(-np.exp(-10 ** params[18]))
+    # logL_noise_i = log_norm_const - 10 ** params[18] * voxel_num_data_all
 
-    # Per-voxel mixture, NOT a weighted sum of sums
-    log_pi = np.log(10**params[19])
-    log_1m_pi = np.log(1 - 10**params[19])
+    # # Per-voxel mixture, NOT a weighted sum of sums
 
-    logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
+    # log_pi = log_expit(params[19])            # log(sigmoid(x)), numerically stable
+    # log_1m_pi = log_expit(-params[19])
 
-    logL = np.sum(logL_i)
+    # logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
+
+    logL = np.sum(logL_poisson_i)
 
     # combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
     # combined_noise_mask = density_prior_mask 

@@ -48,21 +48,19 @@ class PriorArgs:
         self.add_prior('sigma_M', -10, 10,"U", [0,1])  # lnN(1,0.25)
         self.add_prior('Beta1', 0.0, 5.0,"U", [0,1])  # N(0.5,0.5)
         self.add_prior('Beta2', -5.0, 5.0,"U", [0,1])  # N(-0.5,0.5)
-        # self.add_prior('Beta3', -8,8,"U", [0,1])
         self.add_prior('Pbreak1', 0.0, 20,"U", [0,1])   # lnN(2,1)
-        # self.add_prior('Pbreak2',20,500,"U", [0,1])
         self.add_prior('alpha_e', 0,2,"U", [0,1])
         self.add_prior('lambda_e', 0,50,"U", [0,1])
         self.add_prior('sigma_e',0,1,"U", [0,1])
-        self.add_prior('Log10(m)', -6,6,"U", [0])  
-        self.add_prior('Log10(p_noise)',-20,0,"U", [0])  
+        # self.add_prior('Log10(m)', -8,8,"U", [0])  
+        # self.add_prior('Logit(p_noise)',-10,10,"U", [0])  
 
 
         return self
     def load_plot_labels(self):
         self.plot_labels = [r'$\mathrm{log}_{10}(Γ_0)$',
                             '$γ_0$',
-                            '$γ_1$',  
+                            '$γ_1$', 
                             '$γ_2$',  
                             '$σ_0$',  
                             '$σ_1$',   
@@ -81,7 +79,7 @@ class PriorArgs:
                             '$λ_e$',
                             '$σ_e$',
                             r'$\mathrm{log}_{10}(m)$',
-                            r'$\mathrm{log}_{10}(P_{noise})$'
+                            r'$\mathrm{logit}(P_{noise})$'
                             ]
     def get_plot_labels(self, model_id):
         self.load_plot_labels()

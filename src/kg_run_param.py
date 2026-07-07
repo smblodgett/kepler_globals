@@ -118,7 +118,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
     initial_guess_filename = best_guess_filename if runprops["initial_guess_method"] == "previous_best" else ""
     # get initial guess positions for the walkers
     p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
-    assert p0.dtype == np.float32, "params should be a float32"
+    # assert p0.dtype == np.float32, "params should be a float32"
 
     # create the emcee backend
     backend_folder = model_run_dir
@@ -164,6 +164,7 @@ def main(model_id, runprops):
     model_run_dir = None
     density_prior_mask = None
     synthetic_multiplier = None
+    stellar_info = None
 
     # rank 0 reads in the voxel grid and stellar dataframe, then broadcasts to all ranks
     comm = MPI.COMM_WORLD
@@ -185,11 +186,13 @@ def main(model_id, runprops):
         if runprops["verbose"]: print("[Rank 0] read in voxel grid, created interpolator")
         
 
+        # print(runprops["processed_stellar_data_filename"])
         # read in the stellar dataframe
         stellar_df = pd.read_csv(runprops["processed_stellar_data_filename"],engine='pyarrow')
+        # print(stellar_df.columns)
 
         # extract the relevant stellar_df info into a np array 
-        stellar_info = stellar_df[["radius","mass"]].to_numpy(dtype=np.float32)
+        stellar_info = stellar_df[["Rad","Mass"]].to_numpy()
         stellar_info = np.repeat(stellar_info,runprops["synthetic_multiplier"],axis=0)
 
         if runprops["verbose"]: print("len(stellar_df) after reading in: ",len(stellar_df))

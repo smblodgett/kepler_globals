@@ -128,35 +128,46 @@ class RadiusDistribution:
     def _mu2(self,M):
         return self.C*self.mass_break_1**(self.γ0-self.γ1)*self.mass_break_2**(self.γ1-self.γ2)*M**self.γ2
 
-    def mu_total(self,M,SN1,SN2):
-        return ((1-SN1)*self._mu0(M) 
-                + SN1*(1-SN2)*self._mu1(M)
-                + SN1*SN2*self._mu2(M)
+    def mu_total(self,M):
+        return ((1-self._SN(M,self.mass_break_1))*self._mu0(M) 
+                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self._mu1(M)
+                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self._mu2(M)
                 )
 
-    def sigma_total(self,SN1,SN2):
-        return ((1-SN1)*self.σ0 
-                + SN1*(1-SN2)*self.σ1
-                + SN1*SN2*self.σ2
+    def sigma_total(self,M):
+        return ((1-self._SN(M,self.mass_break_1))*self.σ0 
+                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self.σ1
+                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
                 )
 
     def sample_radius_given_mass(self,mass_distribution,rng):
         # recently rewritten...this version is 2x faster or so than the old truncnorm call. but see RadiusDistribution.ipynb for verification
+        t = time.time()
         radii = np.empty_like(mass_distribution)
 
-        SN1 = self._SN(mass_distribution,self.mass_break_1)
-        SN2 = self._SN(mass_distribution,self.mass_break_2)
+        mass_distribution = mass_distribution # needs to be float64 or ndtr() and ndtri() have overflow/underflow issues
+        print("cast time: ", (cast_time:=time.time()) - t)
+
         
-        mu = self.mu_total(mass_distribution,SN1,SN2)
-        sigma = mu * self.sigma_total(SN1,SN2)
+        mu = self.mu_total(mass_distribution)
+        sigma = mu * self.sigma_total(mass_distribution)
+        print("SN mu and sigma time: ", (SN_mu_simga_time:=time.time()) - cast_time)
+
         
         lower_radius_bound = radius_given_density_mass(10, mass_distribution)
         a = (lower_radius_bound - mu) / sigma
+        del lower_radius_bound
+
+        print("lrb and a time: ", (lrb_a_time:=time.time()) - SN_mu_simga_time)
+
         
         # Inverse CDF sampling — no rejection, O(N)
         Phi_a = ndtr(a)  # CDF at lower bound
         u = rng.uniform(0, 1, size=len(mass_distribution))
         radii = mu + sigma * ndtri(Phi_a + u * (1 - Phi_a))
+
+        print("radii calc time: ", (radii_time:=time.time()) - lrb_a_time)
+
         
         # print("min(radii),max(radii): ",min(radii),max(radii))
         # print("radii: ",radii)
@@ -167,7 +178,7 @@ class RadiusDistribution:
             print("sigma[bad_places]: ", sigma[bad_places])
             print("lower_density_bound[bad_places]: ", lower_radius_bound[bad_places])
             # print("radiis[np.where(radii <= 0.25)]: ", radii[np.where(radii <= 0.25)])
-            raise ValueError("Radii must be above 0.25, but got radii = {}".format(radii))
+            raise ValueError("Radii must be above 0.25, but got radii lower")
 
         return radii
     
@@ -351,7 +362,7 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
 
     begin_time = time.time()
 
-    fake_catalog = np.zeros(((len_stellar_info:=len(stellar_info)),5),dtype=np.float32) # times 10 to test effects of undersampling
+    fake_catalog = np.zeros(((len_stellar_info:=len(stellar_info)),5)) # times 10 to test effects of undersampling
     # print("area under period distribution: ", np.trapezoid(p_Period, Period_fine_grid))
     # print("np.sum(p_Period): ", np.sum(p_Period))
 

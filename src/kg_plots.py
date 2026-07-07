@@ -44,7 +44,8 @@ import matplotlib.patheffects as PathEffects
 from PIL import Image
 from scipy.stats import lognorm
 from scipy.interpolate import RegularGridInterpolator
-from scipy.special import gammaln
+from scipy.special import gammaln, log_expit
+
 from itertools import combinations
 
 from kg_param_boundary_arrays import (
@@ -541,7 +542,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     plt.xlabel("p_mass")
     plt.savefig("p_mass.png")
 
-    stellar_info = stellar_df[["radius","mass"]].to_numpy(dtype=np.float32)
+    stellar_info = stellar_df[["Rad","Mass"]].to_numpy(dtype=np.float32)
     stellar_info = np.repeat(stellar_info,synthetic_multiplier,axis=0)
     
     synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,master_seed=master_seed,time_seed=time_seed)
@@ -588,15 +589,17 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
                     - gammaln(voxel_num_data_all + 1))
 
     # Noise branch — also evaluated on ALL voxels
-    logL_noise_i = voxel_num_data_all * -10 ** top_samples[0,18]   # whatever form this takes
+    # log_norm_const = np.log1p(-np.exp(-10 ** params[18]))
+    # logL_noise_i = log_norm_const - 10 ** params[18] * voxel_num_data_all
 
-    # Per-voxel mixture, NOT a weighted sum of sums
-    log_pi = np.log(10**top_samples[0,19])
-    log_1m_pi = np.log(1 - 10**top_samples[0,19])
+    # # Per-voxel mixture, NOT a weighted sum of sums
 
-    logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
+    # log_pi = log_expit(params[19])            # log(sigmoid(x)), numerically stable
+    # log_1m_pi = log_expit(-params[19])
 
-    logL = np.sum(logL_i)
+    # logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
+
+    logL = np.sum(logL_poisson_i)
 
     # combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
     # combined_noise_mask = density_prior_mask & no_model_mask
@@ -646,7 +649,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     reconstructed_model[density_prior_mask] = model_count_smoothed
     reconstructed_data[density_prior_mask] = voxel_num_data_all
-    reconstructed_grid_sum[density_prior_mask] = logL_i
+    reconstructed_grid_sum[density_prior_mask] = logL_poisson_i
 
 
     

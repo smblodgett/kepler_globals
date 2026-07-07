@@ -59,13 +59,13 @@ def grid_object_hook(dct):
             grid.voxel_array = np.array(dct["voxel_array"], dtype=object)
 
             grid.completeness_array = np.asarray(
-                dct["completeness_array"],dtype=np.float32
+                dct["completeness_array"]
             )
 
             grid.id_array = np.asarray(dct["id_array"])
 
             grid.likelihood_array = np.asarray(
-                dct["likelihood_array"],dtype=np.float32
+                dct["likelihood_array"]
             )
 
             # lazy interpolator
