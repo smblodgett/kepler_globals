@@ -134,7 +134,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
     #### CHECK ABOUT STEP SIZE AND ACCEPTANCE FRACTION...SEEMS LIKE A/FRAC IS VERY LOW, POSSIBLE STOCHAISTICITY ISSUE?
     # create the emcee sampler
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool,moves=[(emcee.moves.StretchMove(a=0.05),1.0)], args=())
+                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool,moves=[(emcee.moves.StretchMove(a=1.0),0.7),(emcee.moves.DEMove(),0.2),(emcee.moves.DESnookerMove(),0.1)], args=())
 
     timer(runprops["timer"],"emcee setup")
 
@@ -150,6 +150,12 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
         state = sampler.run_mcmc(p0, runprops['nburnin']+runprops["nsteps"], progress = True, progress_kwargs={'file':sys.stdout}, store = True)
 
     timer(runprops["timer"],"emcee run")
+
+    print(
+    "Max param autocorrelation time: {0:.2f} steps".format(np.max(sampler.get_autocorr_time())),
+    f"\n found in param {np.argmax(np.max(sampler.get_autocorr_time()))}"
+    )
+
 
     # save the best model parameters found during this run
     save_best_model(best_guess_filename,model_run_dir,backend)

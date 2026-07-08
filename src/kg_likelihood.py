@@ -169,7 +169,7 @@ def parametric_log_likelihood(params, model_id):
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
 
     # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
-    ALPHA = 1e-6
+    ALPHA = 1e-3
     model_count_smoothed = model_count[density_prior_mask] + ALPHA
     voxel_num_data_all = voxel_num_data[density_prior_mask]
 

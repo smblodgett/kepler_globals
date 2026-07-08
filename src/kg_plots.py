@@ -60,7 +60,7 @@ from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_g
 from kg_griddefiner import RPMGrid, RPMeoGrid
 from kg_constants import *
 from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
-from kg_probability_distributions import get_probability_distributions, generate_catalog, synthetic_catalog_to_grid
+from kg_probability_distributions import get_probability_distributions, generate_catalog, synthetic_catalog_to_grid, synthetic_catalog_with_weights
 from kg_grid_object_hook import grid_object_hook
 from kg_priors import PriorArgs
 
@@ -560,6 +560,8 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     
     voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,synthetic_multiplier)
 
+    rearranged_synthetic_catalog, completeness = synthetic_catalog_with_weights(synthetic_catalog,voxel_grid)
+
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
     model_count = 10**top_samples[0,0] * voxel_grid.likelihood_array[:,:,:,:,:,1] 
 
@@ -580,7 +582,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
 
      # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
-    ALPHA = 1e-6
+    ALPHA = 1e-3
     model_count_smoothed = model_count[density_prior_mask] + ALPHA
     voxel_num_data_all = voxel_num_data[density_prior_mask]
 
@@ -728,6 +730,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     param_voxel_count_hist(reconstructed_grid_sum,visualization_plot_folder,"grid sum")
 
 
+    region_object_list = [
+    save_region_of_interest_summation(rearranged_synthetic_catalog, completeness, region_object_list, save_path)
+
 
     
     # mass_radius_scatter_plot(voxel_grid,reconstructed_model,visualization_plot_folder)
@@ -791,7 +796,68 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
             case _:                
                 raise ValueError("Invalid axis combination for 2D residuals plot.")
         param_2D_residuals_plot(data_count_2D,model_count_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2)
-    
+
+class RegionOfInterest:
+    def __init__(self, radius_range=[], period_range=[], mass_range=[], ecc_range=[], omega_range=[]):
+        self.radius_range = radius_range
+        self.period_range = period_range
+        self.mass_range = mass_range
+        self.ecc_range = ecc_range
+        self.omega_range = omega_range
+
+def save_region_of_interest_summation(rearranged_synthetic_catalog,completeness,region_object_list,save_path):
+    for region in region_object_list:
+        total_count = region_of_interest_summation(rearranged_synthetic_catalog, completeness, 
+                                                   radius_range=region.radius_range, 
+                                                   period_range=region.period_range, 
+                                                   mass_range=region.mass_range, 
+                                                   ecc_range=region.ecc_range, 
+                                                   omega_range=region.omega_range)
+        with open(save_path, 'a') as f:
+            f.write(f"Region: {region.__dict__}, Total Count: {total_count}\n")
+
+
+def region_of_interest_summation(rearranged_synthetic_catalog, completeness, radius_range=[], period_range=[], mass_range=[], ecc_range=[], omega_range=[]):
+    """Sums up the total number of planets found within a given range of parameter space"""
+    if radius_range is not []: 
+        radius_low = radius_range[0]
+        radius_high = radius_range[1]
+    else:
+        radius_low = np.min(radius_param_grid_array)
+        radius_high = np.max(radius_param_grid_array)
+    if period_range is not []:
+        period_low = period_range[0]
+        period_high = period_range[1]
+    else:
+        period_low = np.min(period_param_grid_array)
+        period_high = np.max(period_param_grid_array)
+    if mass_range is not []:
+        mass_low = mass_range[0]
+        mass_high = mass_range[1]
+    else:
+        mass_low = np.min(mass_param_grid_array)
+        mass_high = np.max(mass_param_grid_array)
+    if ecc_range is not []:
+        ecc_low = ecc_range[0]
+        ecc_high = ecc_range[1]
+    else:
+        ecc_low = np.min(eccentricity_param_grid_array)
+        ecc_high = np.max(eccentricity_param_grid_array)
+    if omega_range is not []:
+        omega_low = omega_range[0]
+        omega_high = omega_range[1]
+    else:
+        omega_low = np.min(omega_param_grid_array)
+        omega_high = np.max(omega_param_grid_array)
+
+    mask = (rearranged_synthetic_catalog[:,0] > radius_low) & (rearranged_synthetic_catalog[:,0] < radius_high) & \
+           (rearranged_synthetic_catalog[:,1] > period_low) & (rearranged_synthetic_catalog[:,1] < period_high) & \
+           (rearranged_synthetic_catalog[:,2] > mass_low) & (rearranged_synthetic_catalog[:,2] < mass_high) & \
+           (rearranged_synthetic_catalog[:,3] > ecc_low) & (rearranged_synthetic_catalog[:,3] < ecc_high) & \
+           (rearranged_synthetic_catalog[:,4] > omega_low) & (rearranged_synthetic_catalog[:,4] < omega_high)
+
+    return np.sum(completeness[mask])
+
 
 def param_voxel_count_hist(voxel_count,visualization_plot_folder,name):
     """takes in a per-voxel count of something and makes a histogram"""

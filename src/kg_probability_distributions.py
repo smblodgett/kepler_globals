@@ -490,44 +490,16 @@ def normalize_pdf_to_pmf(pdf, grid):
 
 
 def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplier):
-    print("synthetic catalog original shape: ", synthetic_catalog.shape)
     # print("synthetic catalog head: ", synthetic_catalog[:5,:])
     # print("synthetic catalog count: ", np.sum(synthetic_catalog))
     # originally synthetic catalog is in order period, mass, radius, ecc, omega confirmed 12/19 that this is working right
-    synthetic_catalog = synthetic_catalog[:, [2, 0, 1, 3, 4]]
-
-    # print("rearranged catalog: ", synthetic_catalog)
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:, 0] < np.min(voxel_grid.radius_grid_array)) |
-        (synthetic_catalog[:, 0] > np.max(voxel_grid.radius_grid_array)))
-        ]
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,1] < np.min(voxel_grid.period_grid_array)) |
-        (synthetic_catalog[:,1] > np.max(voxel_grid.period_grid_array)))
-        ]
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,2] < np.min(voxel_grid.mass_grid_array)) |
-        (synthetic_catalog[:,2] > np.max(voxel_grid.mass_grid_array)))
-        ]  
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,3] < np.min(voxel_grid.eccentricity_grid_array)) |
-        (synthetic_catalog[:,3] > np.max(voxel_grid.eccentricity_grid_array)))
-        ]      
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,4] < np.min(voxel_grid.omega_grid_array)) |
-        (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
-        ]    
+    synthetic_catalog = synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid)
     
     ### need to implement a "realistic" filter
     ### wherein planets that go too close to their star (and possibly do anything else unphysical) are removed
-    
-
-
 
     ### RegGridInterp is 5x or worse slower than map_interp, and gives identical results, we're removing it
     # before_reg_interp_time = time.time()
-    # completeness = voxel_grid.completeness_interp(synthetic_catalog)
-    # print("RegGridInterp time: ", (after_reg_interp_time:=time.time()) - before_reg_interp_time)
 
     before_map_interp_time = time.time()
     completeness = voxel_grid.interpolate_completeness(synthetic_catalog)
@@ -571,3 +543,37 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
     # a tiny error that results from edge handling, we are just going with histogramdd.
 
     return voxel_grid
+
+def synthetic_catalog_with_weights(synthetic_catalog,voxel_grid):
+    synthetic_catalog = synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid)
+    
+    completeness = voxel_grid.interpolate_completeness(synthetic_catalog)
+    
+    return synthetic_catalog, completeness
+
+
+def synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid):
+    synthetic_catalog = synthetic_catalog[:, [2, 0, 1, 3, 4]]
+
+    # print("rearranged catalog: ", synthetic_catalog)
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:, 0] < np.min(voxel_grid.radius_grid_array)) |
+        (synthetic_catalog[:, 0] > np.max(voxel_grid.radius_grid_array)))
+        ]
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,1] < np.min(voxel_grid.period_grid_array)) |
+        (synthetic_catalog[:,1] > np.max(voxel_grid.period_grid_array)))
+        ]
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,2] < np.min(voxel_grid.mass_grid_array)) |
+        (synthetic_catalog[:,2] > np.max(voxel_grid.mass_grid_array)))
+        ]  
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,3] < np.min(voxel_grid.eccentricity_grid_array)) |
+        (synthetic_catalog[:,3] > np.max(voxel_grid.eccentricity_grid_array)))
+        ]      
+    synthetic_catalog = synthetic_catalog[
+        ~((synthetic_catalog[:,4] < np.min(voxel_grid.omega_grid_array)) |
+        (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
+        ]   
+    return synthetic_catalog
