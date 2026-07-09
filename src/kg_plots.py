@@ -502,6 +502,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     log_prob = reader.get_log_prob(discard=nburnin, flat=True)
     samples = reader.get_chain(discard=nburnin, flat=True)
+    blobs = reader.get_blobs(discard=nburnin, flat=True)
 
     print("not flat samples shape: ", reader.get_chain(discard=nburnin, flat=False).shape)
     print("log_prob shape: ", log_prob.shape)
@@ -510,6 +511,8 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     top_samples = samples[top_idx]
     top_log_prob = log_prob[top_idx]
+    top_blobs = blobs[top_idx]
+
 
     print("max top log prob: ",max(top_log_prob))
     print("max log prob: ",max(log_prob))
@@ -518,13 +521,17 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     order = np.argsort(top_log_prob)[::-1]
     top_samples = top_samples[order]
     top_log_prob = top_log_prob[order]
+    top_blobs = top_blobs[order]
+
+    rng_metadata = {"master_seed": top_blobs[0,0], "rank_seed": top_blobs[0,1], "time_seed": top_blobs[0,2]}
+
 
     print(top_samples)
     print(top_log_prob)
     print("max top log prob: ",max(top_log_prob),"top log prob[0]: ",top_log_prob[0])
 
-    with open(backend_folder+"/rng_metadata.json") as f:
-        rng_metadata = json.load(f)
+    # with open(backend_folder+"/rng_metadata.json") as f:
+    #     rng_metadata = json.load(f)
     
     master_seed = rng_metadata["master_seed"]
     print("master seed: ", master_seed)

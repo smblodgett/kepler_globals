@@ -68,6 +68,11 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
     best_idx = np.argmax(log_prob)
     best_logp = log_prob[best_idx]
     best_params = samples[best_idx].tolist()  # convert to list for JSON
+    best_blobs = backend.get_blobs(flat=True)[best_idx]  # get the blobs for the best sample
+    rng_metadata = {"master_seed": best_blobs[0], "rank_seed": best_blobs[1], "time_seed": best_blobs[2]}
+    print(f"Best log probability: {best_logp}")
+    print(f"Best parameters: {best_params}")
+    print(f"RNG metadata for best run: {rng_metadata}")
 
     # load an existing best guess, if it exists
     if os.path.exists(best_guess_filename):
@@ -92,35 +97,20 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
         print("Existing best parameters are better. No update made.")
 
     # save the rng metadata for the best run from each rank
-    for rng_metadata_file in os.listdir(model_run_dir+"/rank_metadata"):
-        with open(model_run_dir+"/rank_metadata/"+rng_metadata_file,'r') as f:
-            rng_metadata = json.load(f)
-        logP = rng_metadata["logProb"]
+    # for rng_metadata_file in os.listdir(model_run_dir+"/rank_metadata"):
+    #     with open(model_run_dir+"/rank_metadata/"+rng_metadata_file,'r') as f:
+    #         rng_metadata = json.load(f)
+    #     logP = rng_metadata["logProb"]
 
-        # this specifically saves the very best run's metadata into the run output directory
-        if logP == best_logp:
-            with open(model_run_dir+"/rng_metadata.json",'w') as f:
-                json.dump(rng_metadata, f)
-            print("yay! found the metadata for the best run!")
-            break
+    #     # this specifically saves the very best run's metadata into the run output directory
+    #     if logP == best_logp:
+    with open(model_run_dir+"/rng_metadata.json",'w') as f:
+        json.dump(rng_metadata, f)
+    print("yay! found the metadata for the best run!")
+    
 
-            
-
-
-def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.csv",expanded_dr_path="../data/expanded_dr25_singles.csv",hsu_star_path="../data/hsu_stellar_catalog_output.csv"):
-    """Configures and runs the emcee MCMC sampler."""
-
-    # timer(runprops["timer"],"other readin")
-
-    # define the best guess filename based on model ID
-    best_guess_filename = runprops["best_guess_filename"] + f'_{model_id}.json'
-    # determine the initial guess filename based on the method. Possible to add a manual filename later.
-    initial_guess_filename = best_guess_filename if runprops["initial_guess_method"] == "previous_best" else ""
-    # get initial guess positions for the walkers
-    p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
-    # assert p0.dtype == np.float32, "params should be a float32"
-
-    # create the emcee backend
+def get_backend(model_id, runprops, model_run_dir):
+        # create the emcee backend
     backend_folder = model_run_dir
     os.makedirs(backend_folder, exist_ok=True)
     backend_filename = backend_folder + "/model_" + str(model_id) +".h5"
@@ -128,13 +118,30 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
         os.remove(backend_filename)
     backend = emcee.backends.HDFBackend(backend_filename)
     backend.reset(runprops["nwalkers"], runprops["ndim"])
+    return backend
 
-    timer(runprops["timer"],"backend setup")
+
+def run_emcee(model_id,runprops,pool,best_guess_filename,backend):
+    """Configures and runs the emcee MCMC sampler."""
+
+    # timer(runprops["timer"],"other readin")
+
+    # determine the initial guess filename based on the method. Possible to add a manual filename later.
+    initial_guess_filename = best_guess_filename if runprops["initial_guess_method"] == "previous_best" else ""
+    # get initial guess positions for the walkers
+    p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
+    # assert p0.dtype == np.float32, "params should be a float32"
+
 
     #### CHECK ABOUT STEP SIZE AND ACCEPTANCE FRACTION...SEEMS LIKE A/FRAC IS VERY LOW, POSSIBLE STOCHAISTICITY ISSUE?
     # create the emcee sampler
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool,moves=[(emcee.moves.StretchMove(a=runprops["stretch_a"]),1.0)], args=())
+                                    kg_likelihood.parametric_log_probability,backend=backend, 
+                                    pool=pool,moves=[(emcee.moves.StretchMove(a=runprops["stretch_a"]),1.0)], 
+                                    blobs_dtype = [("master_seed", int),
+                                                   ("rank_seed", int),
+                                                   ("time_seed", int),],
+                                    args=())
 
     timer(runprops["timer"],"emcee setup")
 
@@ -151,18 +158,14 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
     timer(runprops["timer"],"emcee run")
 
-    try:
-        print(
-        "Max param autocorrelation time: {0:.2f} steps".format(np.max(sampler.get_autocorr_time())),
-        f"\n found in param {np.argmax(np.max(sampler.get_autocorr_time()))}"
-        )
-    except Exception as e:
-        print("Error calculating autocorrelation time: ", e)
-        print("This may be due to insufficient samples or other issues with the chain.")
-
-
-    # save the best model parameters found during this run
-    save_best_model(best_guess_filename,model_run_dir,backend)
+    # try:
+    #     print(
+    #     "Max param autocorrelation time: {0:.2f} steps".format(np.max(sampler.get_autocorr_time())),
+    #     f"\n found in param {np.argmax(np.max(sampler.get_autocorr_time()))}"
+    #     )
+    # except Exception as e:
+    #     print("Error calculating autocorrelation time: ", e)
+    #     print("This may be due to insufficient samples or other issues with the chain.")
 
 
 
@@ -277,27 +280,38 @@ def main(model_id, runprops):
     # print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))
 
 
+
+
     # set up the MPI pool and run emcee
     with MPIPool() as pool:
         if not pool.is_master():
             pool.wait()
             sys.exit(0)
 
-        try:        
-            run_emcee(model_id,runprops,pool,model_run_dir)
+        # define the best guess filename based on model ID
+        best_guess_filename = runprops["best_guess_filename"] + f'_{model_id}.json'
+
+        # setup the h5 backend for emcee to store the chain and log probabilities
+        backend = get_backend(model_id, runprops, model_run_dir)
+
+        try:  
+            run_emcee(model_id,runprops,pool,best_guess_filename,backend)
             
             # log a successful run
             with open(model_run_dir + '/' + runprops["log_filename"], "a") as file:
                 now = datetime.now().isoformat()
                 file.write("success: Model id "+str(model_id) + " " + now + "\n")
-
             sys.exit(0)
+
         except Exception as e:
             print("Error occurred..." + str(e))
             with open(model_run_dir + '/' + runprops["log_filename"], "a") as file:
                 file.write(str(e)+" Model id: "+str(model_id)+"\n")
                 file.write(f"errored at {datetime.now().isoformat()}!")
+
         finally:
+            # save the best model parameters found during this run
+            save_best_model(best_guess_filename,model_run_dir,backend)
             timer(runprops["timer"],"",mode="final")
     
 

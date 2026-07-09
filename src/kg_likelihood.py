@@ -17,7 +17,7 @@ voxel_grid = None
 model_run_dir = None
 model_id = None
 density_prior_mask = None
-local_best_logProb = -np.inf
+# local_best_logProb = -np.inf
 synthetic_multiplier = None
 
 prior_args = PriorArgs().load_priors()
@@ -122,15 +122,15 @@ def parametric_log_likelihood(params, model_id):
 
 
     if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
-        print("nan in pmfs!")
+        # print("nan in pmfs!")
         return -np.inf, {}, rank
     
     if is_inf_in_pmfs:
-        print("inf in pmfs!")
+        # print("inf in pmfs!")
         return -np.inf, {}, rank
     
     if is_neg_in_pmfs:
-        print("negative values in pmfs!")
+        # print("negative values in pmfs!")
         return -np.inf, {}, rank
     
     synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
@@ -399,15 +399,15 @@ def parametric_log_likelihood(params, model_id):
 def parametric_log_probability(params):
 
     global model_run_dir
-    global local_best_logProb
+    # global local_best_logProb
     global model_id
 
     prior = parametric_log_prior(params,model_id)
 
     if not np.isfinite(prior):
-        print("prior is not finite with this params!!!")
-        print("params: ", params)
-        return -np.inf
+        # print("prior is not finite with this params!!!")
+        # print("params: ", params)
+        return -np.inf , (None, None, None)
 
     logL, rng_metadata, rank = parametric_log_likelihood(params,model_id)
 
@@ -416,20 +416,22 @@ def parametric_log_probability(params):
 
     logProb = prior + logL
 
-    rng_metadata |= {"logProb":logProb}
+    # rng_metadata |= {"logProb":logProb}
 
 
-    if logProb > local_best_logProb:
-        local_best_logProb = logProb
+    # if logProb > local_best_logProb:
+    #     local_best_logProb = logProb
         
-        os.makedirs(model_run_dir+"/rank_metadata",exist_ok=True)
-        with open(model_run_dir+f"/rank_metadata/{rank}.json", "w") as f:
-            json.dump(rng_metadata,f)
+        # os.makedirs(model_run_dir+"/rank_metadata",exist_ok=True)
+        # with open(model_run_dir+f"/rank_metadata/{rank}.json", "w") as f:
+        #     json.dump(rng_metadata,f)
         
-    if logProb == -np.inf:
-        print("logProb is -inf with this params!!!")
-        print("params: ", params)
-        print("prior: ", prior)
-        print("logL: ", logL)
+    # if logProb == -np.inf:
+        # print("logProb is -inf with this params!!!")
+        # print("params: ", params)
+        # print("prior: ", prior)
+        # print("logL: ", logL)
 
-    return logProb
+    blobs = (rng_metadata['master_seed'], rng_metadata['rank_seed'], rng_metadata['time_seed'])
+
+    return logProb, blobs

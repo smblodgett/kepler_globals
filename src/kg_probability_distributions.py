@@ -473,14 +473,14 @@ def get_probability_distributions(params):
     # print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
 
     
-    if (is_nan_in_pmfs := (np.isnan(pmf_ecc).any() or np.isnan(pmf_Period).any() or np.isnan(pmf_mass).any())):
-        print("Warning: PMFs contain NaN. This parameter draw is bad, let's skip it!")
+    is_nan_in_pmfs = (np.isnan(pmf_ecc).any() or np.isnan(pmf_Period).any() or np.isnan(pmf_mass).any())
+    #     # print("Warning: PMFs contain NaN. This parameter draw is bad, let's skip it!")
 
-    if (is_inf_in_pmfs := (not np.isfinite(pmf_ecc).any() or not np.isfinite(pmf_Period).any() or not np.isfinite(pmf_mass).any())):
-        print("Warning: PMFs contain inf. This parameter draw is bad, let's skip it!")
+    is_inf_in_pmfs = (not np.isfinite(pmf_ecc).any() or not np.isfinite(pmf_Period).any() or not np.isfinite(pmf_mass).any())
+    #     # print("Warning: PMFs contain inf. This parameter draw is bad, let's skip it!")
 
-    if (is_neg_in_pmfs := (np.any(pmf_ecc < 0) or np.any(pmf_Period < 0) or np.any(pmf_mass < 0))):
-        print("Warning: PMFs contain negative values. This parameter draw is bad, let's skip it!")
+    is_neg_in_pmfs = (np.any(pmf_ecc < 0) or np.any(pmf_Period < 0) or np.any(pmf_mass < 0))
+        # print("Warning: PMFs contain negative values. This parameter draw is bad, let's skip it!")
 
 
 
