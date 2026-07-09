@@ -503,6 +503,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     log_prob = reader.get_log_prob(discard=nburnin, flat=True)
     samples = reader.get_chain(discard=nburnin, flat=True)
 
+    print("not flat samples shape: ", reader.get_chain(discard=nburnin, flat=False).shape)
+    print("log_prob shape: ", log_prob.shape)
+
     top_idx = np.argsort(log_prob)[-1000:] 
 
     top_samples = samples[top_idx]
@@ -562,8 +565,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     rearranged_synthetic_catalog, completeness = synthetic_catalog_with_weights(synthetic_catalog,voxel_grid)
 
+    Gamma0 = 10**top_samples[0,0]
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = 10**top_samples[0,0] * voxel_grid.likelihood_array[:,:,:,:,:,1] 
+    model_count = Gamma0 * voxel_grid.likelihood_array[:,:,:,:,:,1] 
 
     
 
@@ -731,8 +735,21 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
 
     region_object_list = [
-    save_region_of_interest_summation(rearranged_synthetic_catalog, completeness, region_object_list, save_path)
+        RegionOfInterest(radius_range=[], period_range=[], mass_range=[], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[0.4, 30], period_range=[0.3, 100.0], mass_range=[], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[0.5, 6.0], period_range=[2.0, 400.0], mass_range=[], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[1.4, 28], period_range=[0.3, 100.0], mass_range=[], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[2.0, 4.0], period_range=[0.3, 100.0], mass_range=[], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[], period_range=[0.3, 11], mass_range=[50.0, 10000.0], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[], period_range=[0.3, 50], mass_range=[3.0, 10.0], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[0.8,1.2], period_range=[292, 438], mass_range=[], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[0.8,1.2], period_range=[292, 438], mass_range=[0.5,2.0], ecc_range=[], omega_range=[]),
+        RegionOfInterest(radius_range=[0.8,1.2], period_range=[292, 438], mass_range=[0.5,2.0], ecc_range=[0.0,0.2], omega_range=[])
+    ]
 
+    save_region_of_interest_summation(rearranged_synthetic_catalog, completeness, Gamma0, region_object_list, backend_folder+"/observed_region_of_interest_summation.txt")
+
+    save_region_of_interest_summation(rearranged_synthetic_catalog, np.ones_like(completeness), Gamma0, region_object_list, backend_folder+"/physical_region_of_interest_summation.txt")
 
     
     # mass_radius_scatter_plot(voxel_grid,reconstructed_model,visualization_plot_folder)
@@ -805,45 +822,45 @@ class RegionOfInterest:
         self.ecc_range = ecc_range
         self.omega_range = omega_range
 
-def save_region_of_interest_summation(rearranged_synthetic_catalog,completeness,region_object_list,save_path):
+def save_region_of_interest_summation(rearranged_synthetic_catalog,completeness,Gamma0,region_object_list,save_path):
     for region in region_object_list:
-        total_count = region_of_interest_summation(rearranged_synthetic_catalog, completeness, 
+        total_count = region_of_interest_summation(rearranged_synthetic_catalog, completeness, Gamma0,
                                                    radius_range=region.radius_range, 
                                                    period_range=region.period_range, 
                                                    mass_range=region.mass_range, 
                                                    ecc_range=region.ecc_range, 
                                                    omega_range=region.omega_range)
         with open(save_path, 'a') as f:
-            f.write(f"Region: {region.__dict__}, Total Count: {total_count}\n")
+            f.write(f"Region: {region.__dict__}, Planets in this region / Star: {total_count:.5f}\n")
 
 
-def region_of_interest_summation(rearranged_synthetic_catalog, completeness, radius_range=[], period_range=[], mass_range=[], ecc_range=[], omega_range=[]):
+def region_of_interest_summation(rearranged_synthetic_catalog, completeness, Gamma0, radius_range=[], period_range=[], mass_range=[], ecc_range=[], omega_range=[]):
     """Sums up the total number of planets found within a given range of parameter space"""
-    if radius_range is not []: 
+    if radius_range: 
         radius_low = radius_range[0]
         radius_high = radius_range[1]
     else:
         radius_low = np.min(radius_param_grid_array)
         radius_high = np.max(radius_param_grid_array)
-    if period_range is not []:
+    if period_range:
         period_low = period_range[0]
         period_high = period_range[1]
     else:
         period_low = np.min(period_param_grid_array)
         period_high = np.max(period_param_grid_array)
-    if mass_range is not []:
+    if mass_range:
         mass_low = mass_range[0]
         mass_high = mass_range[1]
     else:
         mass_low = np.min(mass_param_grid_array)
         mass_high = np.max(mass_param_grid_array)
-    if ecc_range is not []:
+    if ecc_range:
         ecc_low = ecc_range[0]
         ecc_high = ecc_range[1]
     else:
         ecc_low = np.min(eccentricity_param_grid_array)
         ecc_high = np.max(eccentricity_param_grid_array)
-    if omega_range is not []:
+    if omega_range:
         omega_low = omega_range[0]
         omega_high = omega_range[1]
     else:
@@ -856,7 +873,7 @@ def region_of_interest_summation(rearranged_synthetic_catalog, completeness, rad
            (rearranged_synthetic_catalog[:,3] > ecc_low) & (rearranged_synthetic_catalog[:,3] < ecc_high) & \
            (rearranged_synthetic_catalog[:,4] > omega_low) & (rearranged_synthetic_catalog[:,4] < omega_high)
 
-    return np.sum(completeness[mask])
+    return Gamma0 * np.sum(completeness[mask]) / len(rearranged_synthetic_catalog) 
 
 
 def param_voxel_count_hist(voxel_count,visualization_plot_folder,name):
@@ -1007,7 +1024,7 @@ def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_
 def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder):
     plt.figure(figsize=(8,8),dpi=200)
     plt.scatter(model_count.flatten(),voxel_num_data.flatten(),alpha=0.005,s=0.25)
-    plt.plot(np.linspace(0,np.max(model_count),100),np.linspace(0,np.max(model_count),100),c='r',linestyle='dashed')
+    plt.plot(np.linspace(0,np.max(model_count)/10,100),np.linspace(0,np.max(model_count)/10,100),c='r',linewidth=0.2,linestyle='dashed')
     plt.xlabel("Model Count")
     plt.ylabel("Data Count")
     plt.title("Voxel Count Comparison")

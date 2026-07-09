@@ -146,27 +146,32 @@ class RadiusDistribution:
         radii = np.empty_like(mass_distribution)
 
         mass_distribution = mass_distribution # needs to be float64 or ndtr() and ndtri() have overflow/underflow issues
-        print("cast time: ", (cast_time:=time.time()) - t)
+        # print("cast time: ", (cast_time:=time.time()) - t)
 
         
         mu = self.mu_total(mass_distribution)
         sigma = mu * self.sigma_total(mass_distribution)
-        print("SN mu and sigma time: ", (SN_mu_simga_time:=time.time()) - cast_time)
+        # print("SN mu and sigma time: ", (SN_mu_simga_time:=time.time()) - cast_time)
 
         
         lower_radius_bound = radius_given_density_mass(10, mass_distribution)
         a = (lower_radius_bound - mu) / sigma
         del lower_radius_bound
 
-        print("lrb and a time: ", (lrb_a_time:=time.time()) - SN_mu_simga_time)
+        # print("lrb and a time: ", (lrb_a_time:=time.time()) - SN_mu_simga_time)
 
         
         # Inverse CDF sampling — no rejection, O(N)
         Phi_a = ndtr(a)  # CDF at lower bound
+
+        ## tiny underflow slowing hypothesis
+        # tiny = np.finfo(np.float64).tiny  # smallest normal double, ~2.2e-308
+        # n_denormal = np.sum((Phi_a > 0) & (Phi_a < tiny))
+
         u = rng.uniform(0, 1, size=len(mass_distribution))
         radii = mu + sigma * ndtri(Phi_a + u * (1 - Phi_a))
 
-        print("radii calc time: ", (radii_time:=time.time()) - lrb_a_time)
+        # print("radii calc time: ", (radii_time:=time.time()) - lrb_a_time) #,f"a range: [{a.min():.1f}, {a.max():.1f}]  denormal Phi_a count: {n_denormal}")
 
         
         # print("min(radii),max(radii): ",min(radii),max(radii))
@@ -381,12 +386,12 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
     # print("rng_seed: ", rng_seed)
     rng = np.random.default_rng(seed=rng_seed)
 
-    print("generation init time: ", (init_time:=time.time()) - begin_time)
+    # print("generation init time: ", (init_time:=time.time()) - begin_time)
 
 
     fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_info,p=p_Period)  # Period
 
-    print("period gen time: ", (period_gen_time:=time.time()) - init_time)
+    # print("period gen time: ", (period_gen_time:=time.time()) - init_time)
 
 
     fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_info,p=p_mass)  # Mass
@@ -397,7 +402,7 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
 
     # print("number of mass 4 - 24: ", np.sum((fake_catalog[:,1] > 4) & (fake_catalog[:,1] < 24)))
     
-    print("mass gen time: ", (mass_gen_time:=time.time()) - period_gen_time)
+    # print("mass gen time: ", (mass_gen_time:=time.time()) - period_gen_time)
 
     
     # print("number of M greater than 5000: ", np.sum(fake_catalog[:,1]>5000))    
@@ -405,16 +410,16 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
     # print("make radius distribution...")
     fake_catalog[:,2] = RadiusDistribution(γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_info,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
-    print("radius gen time: ", (radius_gen_time:=time.time()) - mass_gen_time)
+    # print("radius gen time: ", (radius_gen_time:=time.time()) - mass_gen_time)
     
     fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_info,p=p_ecc)  # Eccentricity
 
-    print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
+    # print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
 
     fake_catalog[:,4] = rng.uniform(0,360,len_stellar_info)  # omega (argument of periastron)
     # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
-    print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
+    # print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
 
     return fake_catalog, rng_metadata
 
@@ -503,7 +508,7 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
 
     before_map_interp_time = time.time()
     completeness = voxel_grid.interpolate_completeness(synthetic_catalog)
-    print("map interp time: ", (after_map_interp_time:=time.time()) - before_map_interp_time)
+    # print("map interp time: ", (after_map_interp_time:=time.time()) - before_map_interp_time)
 
 
     # print("max(abs(diff)) for map vs RegGridInterp methods :", np.max(np.abs(completeness - completeness_alt)))

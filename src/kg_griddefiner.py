@@ -724,6 +724,10 @@ class RPMeoGrid(RPMGrid):
             to_index(points[:, 3], self.eccentricity_grid_array),
             to_index(points[:, 4], self.omega_grid_array),
         ])  # shape (5, N)
+        
+        # print("C contiguous: ", self.completeness_array.flags['C_CONTIGUOUS'])
+        # print(type(self.completeness_array.base))       # is it a memmap?
+        # print(self.completeness_array.flags['OWNDATA'])  # False often means it's a view onto a memmap
 
         return map_coordinates(
             self.completeness_array,

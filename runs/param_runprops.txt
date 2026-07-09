@@ -4,7 +4,7 @@
     "date": "today",
     "time": "now",
     "user": "Steven",
-    "RunGoal" : "NEW noise function. seeing if mixture model works",
+    "RunGoal" : "seeing how low we can go with the synthetic multiplier parameter",
     "reload_KMDC" : false,     # whether the base .csv should be reloaded and recached
     "exclude_bad_densities": true,
     "maximum_density": 10,     # posterior density draws above this value (g/cm^3) will be excluded
@@ -12,15 +12,16 @@
 
     # Run properties/parameters
     "nwalkers" : 500,           # number of walkers in emcee ensemble
-    "nburnin" : 10,            # length of burn in
-    "ndim" : 20,                 # number of floating parameters/dimension of sample space
-    "nsteps" : 80,           # number of steps for sampling
-    "synthetic_multiplier" : 100, # number of times larger than Nstars that synthetic catalog should be (and its count divided by)
+    "nburnin" : 5,            # length of burn in
+    "ndim" : 18,                 # number of floating parameters/dimension of sample space
+    "nsteps" : 10,           # number of steps for sampling
+    "synthetic_multiplier" : 10, # number of times larger than Nstars that synthetic catalog should be (and its count divided by)
     "essgoal" : 10,             # effective sample size desired
     "maxiter" : 1,              # maximum number of steps to take within the final sampling
     "nthinning" : 1,            # thinning fraction
     "thin_run" : false,       # whether a run should be thinned
-    "initial_guess_method": "priors",  # can be priors or previous_best (possible add manual guess mode)
+    "initial_guess_method": "previous_best",  # can be priors or previous_best (possible add manual guess mode)
+    "stretch_a" : 0.01,        # stretch step length
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",

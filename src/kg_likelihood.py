@@ -111,14 +111,14 @@ def parametric_log_likelihood(params, model_id):
 
 
     # len_stellar_df = len(stellar_df)
-    print("params: ", params)
+    # print("params: ", params)
 
     Gamma0 = 10**params[0]
     grid_sum = 0.0
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params)
 
     # print(params)
-    print("get probability distribution time is ", (prob_dist_time:=time.time()) - start_time)
+    # print("get probability distribution time is ", (prob_dist_time:=time.time()) - start_time)
 
 
     if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
@@ -136,13 +136,13 @@ def parametric_log_likelihood(params, model_id):
     synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
 
-    print("generate catalog time is ", (gen_cat_time:=time.time()) - prob_dist_time)
+    # print("generate catalog time is ", (gen_cat_time:=time.time()) - prob_dist_time)
 
 
     ######################### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,synthetic_multiplier)
 
-    print("catalog to grid time is ", (cat_grid_time:=time.time()) - gen_cat_time)
+    # print("catalog to grid time is ", (cat_grid_time:=time.time()) - gen_cat_time)
 
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
@@ -158,11 +158,11 @@ def parametric_log_likelihood(params, model_id):
         return -np.inf, rng_metadata, rank
     
 
-    yes_data_yes_model_voxels = (voxel_num_data > 0) & (model_count > 0)
-    yes_data_no_model_voxels = (voxel_num_data > 0) & (model_count == 0)
-    no_data_yes_model_voxels = (voxel_num_data == 0) & (model_count > 0)
-    no_data_no_model_voxels = (voxel_num_data == 0) & (model_count == 0)
-    print("yes data yes model: ", np.sum(yes_data_yes_model_voxels),"yes data no model: ", np.sum(yes_data_no_model_voxels),"no data yes model: ", np.sum(no_data_yes_model_voxels),"no data no model: ", np.sum(no_data_no_model_voxels))
+    # yes_data_yes_model_voxels = (voxel_num_data > 0) & (model_count > 0)
+    # yes_data_no_model_voxels = (voxel_num_data > 0) & (model_count == 0)
+    # no_data_yes_model_voxels = (voxel_num_data == 0) & (model_count > 0)
+    # no_data_no_model_voxels = (voxel_num_data == 0) & (model_count == 0)
+    # print("yes data yes model: ", np.sum(yes_data_yes_model_voxels),"yes data no model: ", np.sum(yes_data_no_model_voxels),"no data yes model: ", np.sum(no_data_yes_model_voxels),"no data no model: ", np.sum(no_data_no_model_voxels))
 
 
     # zero_mask = (model_count == 0) & (voxel_num_data == 0)
@@ -214,11 +214,11 @@ def parametric_log_likelihood(params, model_id):
     # # print("grid_sum: ",grid_sum)
     # logL = np.sum((1-params[19])* grid_sum_poisson) + np.sum(params[19] * grid_sum_noise)
 
-    print("mask and sum time is ", (mask_sum_time:=time.time()) - cat_grid_time)
+    # print("mask and sum time is ", (mask_sum_time:=time.time()) - cat_grid_time)
+# # 
+#     print("total eval time is ", (time.time() - start_time))
 
-    print("total eval time is ", (time.time() - start_time))
-
-    print("logL: ",logL,flush=True)
+#     print("logL: ",logL,flush=True)
 
 
 

@@ -134,7 +134,7 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
     #### CHECK ABOUT STEP SIZE AND ACCEPTANCE FRACTION...SEEMS LIKE A/FRAC IS VERY LOW, POSSIBLE STOCHAISTICITY ISSUE?
     # create the emcee sampler
     sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool,moves=[(emcee.moves.StretchMove(a=1.0),0.7),(emcee.moves.DEMove(),0.2),(emcee.moves.DESnookerMove(),0.1)], args=())
+                                    kg_likelihood.parametric_log_probability,backend=backend, pool=pool,moves=[(emcee.moves.StretchMove(a=runprops["stretch_a"]),1.0)], args=())
 
     timer(runprops["timer"],"emcee setup")
 
@@ -151,10 +151,14 @@ def run_emcee(model_id,runprops,pool,model_run_dir,dr_path="../data/q1_q17_dr25.
 
     timer(runprops["timer"],"emcee run")
 
-    print(
-    "Max param autocorrelation time: {0:.2f} steps".format(np.max(sampler.get_autocorr_time())),
-    f"\n found in param {np.argmax(np.max(sampler.get_autocorr_time()))}"
-    )
+    try:
+        print(
+        "Max param autocorrelation time: {0:.2f} steps".format(np.max(sampler.get_autocorr_time())),
+        f"\n found in param {np.argmax(np.max(sampler.get_autocorr_time()))}"
+        )
+    except Exception as e:
+        print("Error calculating autocorrelation time: ", e)
+        print("This may be due to insufficient samples or other issues with the chain.")
 
 
     # save the best model parameters found during this run
