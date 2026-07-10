@@ -522,8 +522,12 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     top_samples = top_samples[order]
     top_log_prob = top_log_prob[order]
     top_blobs = top_blobs[order]
+    print("top_blobs shape: ",top_blobs.shape)
+    print("top_blobs[0]: ",top_blobs[0])
+    master_seed, rank_seed, time_seed = top_blobs[0]
 
-    rng_metadata = {"master_seed": top_blobs[0,0], "rank_seed": top_blobs[0,1], "time_seed": top_blobs[0,2]}
+
+    rng_metadata = {"master_seed": master_seed, "rank_seed": rank_seed, "time_seed": time_seed}
 
 
     print(top_samples)

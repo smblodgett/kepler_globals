@@ -68,8 +68,8 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
     best_idx = np.argmax(log_prob)
     best_logp = log_prob[best_idx]
     best_params = samples[best_idx].tolist()  # convert to list for JSON
-    best_blobs = backend.get_blobs(flat=True)[best_idx]  # get the blobs for the best sample
-    rng_metadata = {"master_seed": best_blobs[0], "rank_seed": best_blobs[1], "time_seed": best_blobs[2]}
+    best_blob = backend.get_blobs(flat=True)[best_idx]  # get the blobs for the best sample
+    rng_metadata = {"master_seed": int(best_blob[0]), "rank_seed": int(best_blob[1]), "time_seed": int(best_blob[2])}
     print(f"Best log probability: {best_logp}")
     print(f"Best parameters: {best_params}")
     print(f"RNG metadata for best run: {rng_metadata}")

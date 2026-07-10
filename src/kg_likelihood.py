@@ -123,15 +123,15 @@ def parametric_log_likelihood(params, model_id):
 
     if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
         # print("nan in pmfs!")
-        return -np.inf, {}, rank
+        return -np.inf, {"master_seed": -1, "rank_seed": -1, "time_seed": -1}, rank
     
     if is_inf_in_pmfs:
         # print("inf in pmfs!")
-        return -np.inf, {}, rank
-    
+        return -np.inf, {"master_seed": -1, "rank_seed": -1, "time_seed": -1}, rank
+
     if is_neg_in_pmfs:
         # print("negative values in pmfs!")
-        return -np.inf, {}, rank
+        return -np.inf, {"master_seed": -1, "rank_seed": -1, "time_seed": -1}, rank
     
     synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
@@ -407,10 +407,11 @@ def parametric_log_probability(params):
     if not np.isfinite(prior):
         # print("prior is not finite with this params!!!")
         # print("params: ", params)
-        return -np.inf , (None, None, None)
+        return -np.inf , -1, -1, -1
 
     logL, rng_metadata, rank = parametric_log_likelihood(params,model_id)
 
+    # print("rng_metadata: ", rng_metadata,flush=True)
     # print("prior: ",prior,flush=True)
 
 
@@ -432,6 +433,4 @@ def parametric_log_probability(params):
         # print("prior: ", prior)
         # print("logL: ", logL)
 
-    blobs = (rng_metadata['master_seed'], rng_metadata['rank_seed'], rng_metadata['time_seed'])
-
-    return logProb, blobs
+    return logProb, rng_metadata['master_seed'], rng_metadata['rank_seed'], rng_metadata['time_seed']
