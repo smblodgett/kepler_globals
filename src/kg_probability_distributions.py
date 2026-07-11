@@ -128,29 +128,27 @@ class RadiusDistribution:
     def _mu2(self,M):
         return self.C*self.mass_break_1**(self.γ0-self.γ1)*self.mass_break_2**(self.γ1-self.γ2)*M**self.γ2
 
-    def mu_total(self,M):
-        return ((1-self._SN(M,self.mass_break_1))*self._mu0(M) 
-                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self._mu1(M)
-                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self._mu2(M)
-                )
+    def mu_total(self, M, S1=None, S2=None):
+        S1 = S1 if S1 is not None else self._SN(M, self.mass_break_1)
+        S2 = S2 if S2 is not None else self._SN(M, self.mass_break_2)
+        return ((1-S1)*self._mu0(M) + S1*(1-S2)*self._mu1(M) + S1*S2*self._mu2(M))
 
-    def sigma_total(self,M):
-        return ((1-self._SN(M,self.mass_break_1))*self.σ0 
-                + self._SN(M,self.mass_break_1)*(1-self._SN(M,self.mass_break_2))*self.σ1
-                + self._SN(M,self.mass_break_1)*self._SN(M,self.mass_break_2)*self.σ2
-                )
+    def sigma_total(self, M, S1=None, S2=None):
+        S1 = S1 if S1 is not None else self._SN(M, self.mass_break_1)
+        S2 = S2 if S2 is not None else self._SN(M, self.mass_break_2)
+        return ((1-S1)*self.σ0 + S1*(1-S2)*self.σ1 + S1*S2*self.σ2)
 
     def sample_radius_given_mass(self,mass_distribution,rng):
         # recently rewritten...this version is 2x faster or so than the old truncnorm call. but see RadiusDistribution.ipynb for verification
         t = time.time()
-        radii = np.empty_like(mass_distribution)
 
-        mass_distribution = mass_distribution # needs to be float64 or ndtr() and ndtri() have overflow/underflow issues
+        # mass_distribution = mass_distribution # needs to be float64 or ndtr() and ndtri() have overflow/underflow issues
         # print("cast time: ", (cast_time:=time.time()) - t)
 
-        
-        mu = self.mu_total(mass_distribution)
-        sigma = mu * self.sigma_total(mass_distribution)
+        S1 = self._SN(mass_distribution, self.mass_break_1)
+        S2 = self._SN(mass_distribution, self.mass_break_2)
+        mu = self.mu_total(mass_distribution, S1, S2)
+        sigma = mu * self.sigma_total(mass_distribution, S1, S2)
         # print("SN mu and sigma time: ", (SN_mu_simga_time:=time.time()) - cast_time)
 
         

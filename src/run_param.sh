@@ -2,7 +2,9 @@
 
 #SBATCH --time=12:00:00
 #SBATCH --ntasks=101
-#SBATCH --mem-per-cpu=32G
+#SBATCH --mem-per-cpu=10G
+#SBATCH --ntasks-per-node=8
+#SBATCH --cpus-per-task=1
 #SBATCH -J "kepler_globals_param"
 
 export PMIX_MCA_psec=^munge
@@ -16,7 +18,7 @@ srun --exclusive -u python - <<'PY'
 import time, socket, random
 t0 = time.time()
 # third-party libs
-time.sleep(random.uniform(0,15))
+time.sleep(random.uniform(0,10))
 import numpy, scipy, pandas, numba, matplotlib, seaborn, emcee, mpi4py, schwimmbad, json
 # local kg modules
 import kg_likelihood

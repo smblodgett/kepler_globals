@@ -103,6 +103,12 @@ def parametric_log_likelihood(params, model_id):
     # print("len(stellar_df): ", len(stellar_df))
 
     rank = MPI.COMM_WORLD.Get_rank()
+
+    with open('/proc/loadavg') as f:
+        load = f.read().split()[0:3]
+    print(f"[rank {rank}] host_load: {load}", flush=True)
+
+    
     # print(f"[log-prob on rank {rank}]", flush=True)
     # print(os.getpid())
 
@@ -118,7 +124,7 @@ def parametric_log_likelihood(params, model_id):
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params)
 
     # print(params)
-    # print("get probability distribution time is ", (prob_dist_time:=time.time()) - start_time)
+    print(f"rank {rank} get probability distribution time is ", (prob_dist_time:=time.time()) - start_time,flush=True)
 
 
     if is_nan_in_pmfs: # If the pmfs are generated to contain NaN values, the parameters used to generate them are probably bad. Don't mess, just reject.
@@ -136,13 +142,13 @@ def parametric_log_likelihood(params, model_id):
     synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank)
     ######## implement making sure that the random generated one 
 
-    # print("generate catalog time is ", (gen_cat_time:=time.time()) - prob_dist_time)
+    print(f"rank {rank} generate catalog time is ", (gen_cat_time:=time.time()) - prob_dist_time, flush=True)
 
 
     ######################### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
     local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,synthetic_multiplier)
 
-    # print("catalog to grid time is ", (cat_grid_time:=time.time()) - gen_cat_time)
+    print(f"rank {rank} catalog to grid time is ", (cat_grid_time:=time.time()) - gen_cat_time, flush=True)
 
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
@@ -165,19 +171,21 @@ def parametric_log_likelihood(params, model_id):
     # print("yes data yes model: ", np.sum(yes_data_yes_model_voxels),"yes data no model: ", np.sum(yes_data_no_model_voxels),"no data yes model: ", np.sum(no_data_yes_model_voxels),"no data no model: ", np.sum(no_data_no_model_voxels))
 
 
-    # zero_mask = (model_count == 0) & (voxel_num_data == 0)
+    zero_mask = (model_count == 0) & (voxel_num_data == 0)
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    mask = ~zero_mask  & density_prior_mask
 
-    # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
-    ALPHA = 1e-3
-    model_count_smoothed = model_count[density_prior_mask] + ALPHA
-    voxel_num_data_all = voxel_num_data[density_prior_mask]
+        # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
+    ALPHA = 1e-8
+    mask = ~zero_mask & density_prior_mask
+    model_count_floored = np.maximum(model_count[mask], ALPHA)
+    voxel_num_data_all = voxel_num_data[mask]
 
-    logL_poisson_i = (voxel_num_data_all * np.log(model_count_smoothed)
-                    - model_count_smoothed
-                    - gammaln(voxel_num_data_all + 1))
+    logL_i = (voxel_num_data_all * np.log(model_count_floored)
+            - model_count_floored
+            - gammaln(voxel_num_data_all + 1))
 
-    # Noise branch — also evaluated on ALL voxels
+
     # log_norm_const = np.log1p(-np.exp(-10 ** params[18]))
     # logL_noise_i = log_norm_const - 10 ** params[18] * voxel_num_data_all
 
@@ -188,7 +196,7 @@ def parametric_log_likelihood(params, model_id):
 
     # logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
 
-    logL = np.sum(logL_poisson_i)
+    logL = np.sum(logL_i) 
 
     # combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
     # combined_noise_mask = density_prior_mask 
@@ -214,9 +222,9 @@ def parametric_log_likelihood(params, model_id):
     # # print("grid_sum: ",grid_sum)
     # logL = np.sum((1-params[19])* grid_sum_poisson) + np.sum(params[19] * grid_sum_noise)
 
-    # print("mask and sum time is ", (mask_sum_time:=time.time()) - cat_grid_time)
+    print(f"rank {rank} mask and sum time is ", (mask_sum_time:=time.time()) - cat_grid_time, flush=True)
 # # 
-#     print("total eval time is ", (time.time() - start_time))
+    print(f"rank {rank} total eval time is ", (time.time() - start_time), flush = True)
 
 #     print("logL: ",logL,flush=True)
 

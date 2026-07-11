@@ -593,17 +593,19 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
-    no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
+    mask = ~zero_mask  & density_prior_mask
 
+        # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
+    ALPHA = 1e-8
+    mask = ~zero_mask & density_prior_mask
+    model_count_floored = np.maximum(model_count[mask], ALPHA)
+    voxel_num_data_all = voxel_num_data[mask]
 
-     # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
-    ALPHA = 1e-3
-    model_count_smoothed = model_count[density_prior_mask] + ALPHA
-    voxel_num_data_all = voxel_num_data[density_prior_mask]
+    logL_i = (voxel_num_data_all * np.log(model_count_floored)
+            - model_count_floored
+            - gammaln(voxel_num_data_all + 1))
 
-    logL_poisson_i = (voxel_num_data_all * np.log(model_count_smoothed)
-                    - model_count_smoothed
-                    - gammaln(voxel_num_data_all + 1))
 
     # Noise branch — also evaluated on ALL voxels
     # log_norm_const = np.log1p(-np.exp(-10 ** params[18]))
@@ -616,7 +618,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     # logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
 
-    logL = np.sum(logL_poisson_i)
+    logL = np.sum(logL_i)
 
     # combined_poisson_mask =  density_prior_mask & ~zero_mask & ~no_model_mask
     # combined_noise_mask = density_prior_mask & no_model_mask
@@ -664,10 +666,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     reconstructed_data = np.zeros(original_shape)
     reconstructed_grid_sum = np.zeros(original_shape)
 
-    reconstructed_model[density_prior_mask] = model_count_smoothed
-    reconstructed_data[density_prior_mask] = voxel_num_data_all
-    reconstructed_grid_sum[density_prior_mask] = logL_poisson_i
-
+    reconstructed_model[mask] = model_count_floored
+    reconstructed_data[mask] = voxel_num_data_all
+    reconstructed_grid_sum[mask] = logL_i
 
     
     # ecc = np.linspace(0,1,900)
@@ -694,39 +695,48 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     data_count_ecc = np.sum(reconstructed_data, axis=(0,1,2,4))
     model_count_ecc = np.sum(reconstructed_model, axis=(0,1,2,4))
+    grid_sum_ecc = -1*np.sum(reconstructed_grid_sum, axis=(0,1,2,4))
     physical_catalog_count_ecc, _ = np.histogram(synthetic_catalog[:,3],bins=eccentricity_param_grid_array)
     physical_catalog_count_ecc = physical_catalog_count_ecc / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_ecc,data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
+    param_1D_likelihood_plot(grid_sum_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
     data_count_mass = np.sum(reconstructed_data, axis=(0,1,3,4))
     model_count_mass = np.sum(reconstructed_model, axis=(0,1,3,4))
+    grid_sum_mass = -1*np.sum(reconstructed_grid_sum, axis=(0,1,3,4))
     physical_catalog_count_mass, _ = np.histogram(synthetic_catalog[:,1],bins=mass_param_grid_array)
     physical_catalog_count_mass = physical_catalog_count_mass / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_mass,data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
+    param_1D_likelihood_plot(grid_sum_mass,mass_param_grid_array,visualization_plot_folder,"mass")
 
     data_count_radius = np.sum(reconstructed_data, axis=(1,2,3,4))
     model_count_radius = np.sum(reconstructed_model, axis=(1,2,3,4))
+    grid_sum_radius = -1*np.sum(reconstructed_grid_sum, axis=(1,2,3,4))
     physical_catalog_count_radius, _ = np.histogram(synthetic_catalog[:,2],bins=radius_param_grid_array)
     physical_catalog_count_radius = physical_catalog_count_radius / synthetic_multiplier
 
-
     param_1D_residuals_plot(physical_catalog_count_radius,data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
+    param_1D_likelihood_plot(grid_sum_radius,radius_param_grid_array,visualization_plot_folder,"radius")
 
     data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
     model_count_period = np.sum(reconstructed_model, axis=(0,2,3,4))
+    grid_sum_period = -1*np.sum(reconstructed_grid_sum, axis=(0,2,3,4))
     physical_catalog_count_period, _ = np.histogram(synthetic_catalog[:,0],bins=period_param_grid_array)
     physical_catalog_count_period = physical_catalog_count_period / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_period,data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
+    param_1D_likelihood_plot(grid_sum_period,period_param_grid_array,visualization_plot_folder,"period")
 
     data_count_omega = np.sum(reconstructed_data, axis=(0,1,2,3))
     model_count_omega = np.sum(reconstructed_model, axis=(0,1,2,3))
+    grid_sum_omega = -1*np.sum(reconstructed_grid_sum, axis=(0,1,2,3))
     physical_catalog_count_omega, _ = np.histogram(synthetic_catalog[:,4],bins=omega_param_grid_array)
     physical_catalog_count_omega = physical_catalog_count_omega / synthetic_multiplier
 
     param_1D_residuals_plot(physical_catalog_count_omega,data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
+    param_1D_likelihood_plot(grid_sum_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
     param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
 
@@ -769,6 +779,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     for axis in combinations(range(5), 3):
         data_count_2D = np.sum(reconstructed_data, axis=axis)
         model_count_2D = np.sum(reconstructed_model, axis=axis)
+        grid_sum_2D = -1*np.sum(reconstructed_grid_sum, axis=axis)
         
         match axis:
             case (0,1,2):
@@ -824,6 +835,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
             case _:                
                 raise ValueError("Invalid axis combination for 2D residuals plot.")
         param_2D_residuals_plot(data_count_2D,model_count_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2)
+        param_2D_likelihood_plot(grid_sum_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2)
 
 class RegionOfInterest:
     def __init__(self, radius_range=[], period_range=[], mass_range=[], ecc_range=[], omega_range=[]):
@@ -1031,7 +1043,6 @@ def param_versus_likelihood_plots(log_prob, reader, param_labels, visualization_
         plt.close()
 
 
-
 def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_folder):
     plt.figure(figsize=(8,8),dpi=200)
     plt.scatter(model_count.flatten(),voxel_num_data.flatten(),alpha=0.005,s=0.25)
@@ -1041,6 +1052,29 @@ def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_fo
     plt.title("Voxel Count Comparison")
     plt.savefig(visualization_plot_folder+"/voxel_comparison.png")
     plt.close()
+
+
+def param_1D_likelihood_plot(grid_sum, param_grid_array, visualization_plot_folder, name):
+    edges = np.asarray(param_grid_array)
+    centers = 0.5*(edges[:-1] + edges[1:])
+    widths = 1
+
+    x = np.arange(len(centers))
+
+    plt.figure(dpi=300, facecolor='w')
+    plt.bar(x, grid_sum, width=widths, alpha=0.5, label='log-likelihood')
+    
+    edge_positions = np.arange(len(edges)) - 0.5
+
+    plt.xticks(edge_positions, [f"{e:.2f}" for e in edges], rotation=45)
+
+    plt.xlabel(name,fontsize=10)
+    plt.ylabel("Log-Likelihood")
+    plt.legend()
+    plt.title(f'{name} Log-Likelihood Distribution')
+    plt.savefig(visualization_plot_folder+f'/model_{name}_likelihood.pdf')
+    plt.close()
+    
 
 
 def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_array,visualization_plot_folder,name,y_axis_scale="log"):
@@ -1073,6 +1107,62 @@ def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_a
     plt.title(f'Close-in Exoplanet {name} Distribution')
     plt.savefig(visualization_plot_folder+f'/model_{name}.pdf')
     plt.close()
+
+
+
+def param_2D_likelihood_plot(grid_sum_2D,edge_array_x,edge_array_y,visualization_plot_folder,name_x,name_y):
+    plt.figure(figsize=(10, 8), dpi=300, facecolor='w')
+
+    likelihood = grid_sum_2D.T
+
+    limit = np.max(np.abs(likelihood))
+
+    # Use equal-sized visual bins instead of physical bin widths
+    nx = likelihood.shape[1]
+    ny = likelihood.shape[0]
+
+    x = np.arange(nx + 1)
+    y = np.arange(ny + 1)
+
+    X, Y = np.meshgrid(x, y)
+
+    im = plt.pcolormesh(
+        X,
+        Y,
+        likelihood,
+        cmap='RdBu_r',
+        vmin=-limit,
+        vmax=limit,
+        shading='flat'
+    )
+
+    # Label bins using actual parameter values
+    xticks = np.arange(nx) + 0.5
+    yticks = np.arange(ny) + 0.5
+
+    xticklabels = [f"{v:.2g}" for v in edge_array_x[:-1]]
+    yticklabels = [f"{v:.2g}" for v in edge_array_y[:-1]]
+
+    plt.xticks(xticks, xticklabels, rotation=45)
+    plt.yticks(yticks, yticklabels)
+
+    cbar = plt.colorbar(im)
+    cbar.set_label('Residual Count (Model - Data)')
+
+    plt.xlabel(name_x, fontsize=12)
+    plt.ylabel(name_y, fontsize=12)
+
+    plt.title(f'Close-in Exoplanet {name_x} vs {name_y} likelihood')
+
+    plt.tight_layout()
+
+    plt.savefig(
+        f"{visualization_plot_folder}/model_{name_x}_{name_y}_likelihood.png"
+    )
+
+    plt.close()
+
+
 
 def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y, visualization_plot_folder, name_x, name_y):
 

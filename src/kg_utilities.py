@@ -47,7 +47,7 @@ class ReadJson:
     """Read and store the contents of a Json file in a dict."""
     def __init__(self, filename):
         """Load the Json file."""
-        print('reading in the runprops.txt file')
+        # print('reading in the runprops.txt file')
         self.data = json.load(open(filename))
     def outProps(self):
         """Return the parsed Json dictionary."""

@@ -13,12 +13,12 @@ import os
 # rank initialization signatures
 rank = MPI.COMM_WORLD.Get_rank()
 size = MPI.COMM_WORLD.Get_size()
-print(f"[Rank {rank}/{size}] starting up")
-print(os.system("hostname"))
+print(f"[Rank {rank}/{size}] on host: {os.uname().nodename}", flush=True)
+
 
 # space out the walkers by a tenth of a second
 import time
-time.sleep(.005*rank) 
+time.sleep(.001*rank) 
 
 import pandas as pd
 import numpy as np
@@ -37,8 +37,7 @@ from kg_plots import MES_grid_plot
 from kg_grid_object_hook import grid_object_hook
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 
-print(f"[Rank {rank}/{size}] finished imports")
-print(os.system("hostname"))
+# print(f"[Rank {rank}/{size}] on host: {os.uname().nodename}", flush=True)
 
     
 def timer(is_timer,benchmark_message_string,mode='benchmark'):
@@ -329,7 +328,7 @@ if __name__ == "__main__":
     
     # Verify the correct path script is being run from. 
     cwd = os.getcwd()
-    print(cwd)        
+    # print(cwd)        
     if 'src' in cwd:
         runprops_filename = "../runs/param_runprops.txt"
     elif 'runs' in cwd:
