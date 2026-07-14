@@ -171,7 +171,6 @@ class RadiusDistribution:
 
         # print("radii calc time: ", (radii_time:=time.time()) - lrb_a_time) #,f"a range: [{a.min():.1f}, {a.max():.1f}]  denormal Phi_a count: {n_denormal}")
 
-        
         # print("min(radii),max(radii): ",min(radii),max(radii))
         # print("radii: ",radii)
         if not np.all(radii > 0.25):

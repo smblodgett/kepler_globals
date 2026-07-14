@@ -3,6 +3,8 @@ from kg_utilities import ReadJson
 from kg_priors import PriorArgs
 
 def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename=""):
+    best_params = None  # Initialize best_params to None
+    best_log_prob = None
     if method == "priors":
         p0 = np.zeros((nwalkers, ndim))  # Initialize an array for the initial guess
         prior_args = PriorArgs().load_priors()
@@ -18,7 +20,7 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
 
         p0 = np.zeros((nwalkers,ndim))
 
-        best_params = get_initial_guess_from_previous(previous_filename)
+        best_params, best_log_prob = get_initial_guess_from_previous(previous_filename)
         assert len(best_params) == ndim, "Mismatch between loaded best params and expected ndim!"
 
         scale = 1e-2 * np.maximum(np.abs(best_params), 1e-1) # if any best param is zero, it needs to use a small fixed scale
@@ -30,7 +32,7 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
     else:
         raise ValueError("Unknown method for initial guess. Use 'priors'.")
 
-    return p0    # This function should return an initial guess for the parametric model parameters.
+    return p0, best_params, best_log_prob    # This function should return an initial guess for the parametric model parameters.
  
 
 
@@ -42,5 +44,5 @@ def get_initial_guess_from_previous(filename):
     # previous_best_likelihood = previous_best["log_prob"]
     print("previous best: ",previous_best["params"])
 
-    return np.array(previous_best["params"])
+    return np.array(previous_best["params"]), previous_best["log_prob"]
 

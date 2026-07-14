@@ -120,7 +120,7 @@ def get_backend(model_id, runprops, model_run_dir):
     return backend
 
 
-def run_emcee(model_id,runprops,pool,best_guess_filename,backend):
+def run_emcee(model_id,runprops,pool,best_guess_filename,backend,model_run_dir):
     """Configures and runs the emcee MCMC sampler."""
 
     # timer(runprops["timer"],"other readin")
@@ -128,9 +128,12 @@ def run_emcee(model_id,runprops,pool,best_guess_filename,backend):
     # determine the initial guess filename based on the method. Possible to add a manual filename later.
     initial_guess_filename = best_guess_filename if runprops["initial_guess_method"] == "previous_best" else ""
     # get initial guess positions for the walkers
-    p0 = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
+    p0, best_params, best_log_prob = get_initial_guess(runprops["nwalkers"],runprops["ndim"],model_id,method=runprops["initial_guess_method"],previous_filename=initial_guess_filename)
     # assert p0.dtype == np.float32, "params should be a float32"
 
+    # save initial guess parameters to a JSON file in the model run directory
+    with open(model_run_dir + "/initial_guess.json", "w") as f:
+        json.dump({"best_params": best_params.tolist() if best_params is not None else None, "best_log_prob": best_log_prob, "initial_guess": p0.tolist()}, f, indent=2)
 
     #### CHECK ABOUT STEP SIZE AND ACCEPTANCE FRACTION...SEEMS LIKE A/FRAC IS VERY LOW, POSSIBLE STOCHAISTICITY ISSUE?
     # create the emcee sampler
@@ -294,7 +297,7 @@ def main(model_id, runprops):
         backend = get_backend(model_id, runprops, model_run_dir)
 
         try:  
-            run_emcee(model_id,runprops,pool,best_guess_filename,backend)
+            run_emcee(model_id,runprops,pool,best_guess_filename,backend,model_run_dir)
             
             # log a successful run
             with open(model_run_dir + '/' + runprops["log_filename"], "a") as file:

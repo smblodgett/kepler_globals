@@ -549,7 +549,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     print("top_samples[0]: ",top_samples[0])
     print("model_params: ",model_params)
 
-    synthetic_multiplier = 100
+    synthetic_multiplier = 200
 
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(top_samples[0])
     plt.scatter(mass_fine_grid,p_mass)
@@ -594,7 +594,6 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
     # no_model_mask = (model_count == 0) & (voxel_num_data > 0)
-    mask = ~zero_mask  & density_prior_mask
 
         # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
     ALPHA = 1e-8
@@ -696,46 +695,61 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     data_count_ecc = np.sum(reconstructed_data, axis=(0,1,2,4))
     model_count_ecc = np.sum(reconstructed_model, axis=(0,1,2,4))
     grid_sum_ecc = -1*np.sum(reconstructed_grid_sum, axis=(0,1,2,4))
+    zeros_model_count_ecc = np.sum(reconstructed_model <= ALPHA, axis=(0,1,2,4))
+    nonzeros_model_count_ecc = np.sum(reconstructed_model > ALPHA, axis=(0,1,2,4))
     physical_catalog_count_ecc, _ = np.histogram(synthetic_catalog[:,3],bins=eccentricity_param_grid_array)
     physical_catalog_count_ecc = physical_catalog_count_ecc / synthetic_multiplier
 
-    param_1D_residuals_plot(physical_catalog_count_ecc,data_count_ecc,model_count_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
+    param_1D_residuals_plot([physical_catalog_count_ecc,data_count_ecc,model_count_ecc],eccentricity_param_grid_array,visualization_plot_folder,"eccentricity",["physical","data","model"])
+    param_1D_residuals_plot([zeros_model_count_ecc,nonzeros_model_count_ecc],eccentricity_param_grid_array,visualization_plot_folder,"eccentricity",["num zeros","num non-zeros"],'_zeros',y_axis_scale="linear")
     param_1D_likelihood_plot(grid_sum_ecc,eccentricity_param_grid_array,visualization_plot_folder,"eccentricity")
 
     data_count_mass = np.sum(reconstructed_data, axis=(0,1,3,4))
     model_count_mass = np.sum(reconstructed_model, axis=(0,1,3,4))
     grid_sum_mass = -1*np.sum(reconstructed_grid_sum, axis=(0,1,3,4))
+    zeros_model_count_mass = np.sum(reconstructed_data <= ALPHA, axis=(0,1,3,4))
+    nonzeros_model_count_mass = np.sum(reconstructed_data > ALPHA, axis=(0,1,3,4))
     physical_catalog_count_mass, _ = np.histogram(synthetic_catalog[:,1],bins=mass_param_grid_array)
     physical_catalog_count_mass = physical_catalog_count_mass / synthetic_multiplier
 
-    param_1D_residuals_plot(physical_catalog_count_mass,data_count_mass,model_count_mass,mass_param_grid_array,visualization_plot_folder,"mass")
+    param_1D_residuals_plot([physical_catalog_count_mass,data_count_mass,model_count_mass],mass_param_grid_array,visualization_plot_folder,"mass",["physical","data","model"])
+    param_1D_residuals_plot([zeros_model_count_mass,nonzeros_model_count_mass],mass_param_grid_array,visualization_plot_folder,"mass",["num zeros","num non-zeros"],'_zeros',y_axis_scale="linear")
     param_1D_likelihood_plot(grid_sum_mass,mass_param_grid_array,visualization_plot_folder,"mass")
 
     data_count_radius = np.sum(reconstructed_data, axis=(1,2,3,4))
     model_count_radius = np.sum(reconstructed_model, axis=(1,2,3,4))
     grid_sum_radius = -1*np.sum(reconstructed_grid_sum, axis=(1,2,3,4))
+    zeros_model_count_radius = np.sum(reconstructed_data <= ALPHA, axis=(1,2,3,4))
+    nonzeros_model_count_radius = np.sum(reconstructed_data > ALPHA, axis=(1,2,3,4))
     physical_catalog_count_radius, _ = np.histogram(synthetic_catalog[:,2],bins=radius_param_grid_array)
     physical_catalog_count_radius = physical_catalog_count_radius / synthetic_multiplier
 
-    param_1D_residuals_plot(physical_catalog_count_radius,data_count_radius,model_count_radius,radius_param_grid_array,visualization_plot_folder,"radius")
+    param_1D_residuals_plot([physical_catalog_count_radius,data_count_radius,model_count_radius],radius_param_grid_array,visualization_plot_folder,"radius",["physical","data","model"])
+    param_1D_residuals_plot([zeros_model_count_radius,nonzeros_model_count_radius],radius_param_grid_array,visualization_plot_folder,"radius",["num zeros","num non-zeros"],'_zeros',y_axis_scale="linear")
     param_1D_likelihood_plot(grid_sum_radius,radius_param_grid_array,visualization_plot_folder,"radius")
 
     data_count_period = np.sum(reconstructed_data, axis=(0,2,3,4))
     model_count_period = np.sum(reconstructed_model, axis=(0,2,3,4))
     grid_sum_period = -1*np.sum(reconstructed_grid_sum, axis=(0,2,3,4))
+    zeros_model_count_period = np.sum(reconstructed_data <= ALPHA, axis=(0,2,3,4))
+    nonzeros_model_count_period = np.sum(reconstructed_data > ALPHA, axis=(0,2,3,4))
     physical_catalog_count_period, _ = np.histogram(synthetic_catalog[:,0],bins=period_param_grid_array)
     physical_catalog_count_period = physical_catalog_count_period / synthetic_multiplier
 
-    param_1D_residuals_plot(physical_catalog_count_period,data_count_period,model_count_period,period_param_grid_array,visualization_plot_folder,"period")
+    param_1D_residuals_plot([physical_catalog_count_period,data_count_period,model_count_period],period_param_grid_array,visualization_plot_folder,"period",["physical","data","model"])
+    param_1D_residuals_plot([zeros_model_count_period,nonzeros_model_count_period],period_param_grid_array,visualization_plot_folder,"period",["num zeros","num non-zeros"],'_zeros',y_axis_scale="linear")
     param_1D_likelihood_plot(grid_sum_period,period_param_grid_array,visualization_plot_folder,"period")
 
     data_count_omega = np.sum(reconstructed_data, axis=(0,1,2,3))
     model_count_omega = np.sum(reconstructed_model, axis=(0,1,2,3))
     grid_sum_omega = -1*np.sum(reconstructed_grid_sum, axis=(0,1,2,3))
+    zeros_model_count_omega = np.sum(reconstructed_data <= ALPHA, axis=(0,1,2,3))
+    nonzeros_model_count_omega = np.sum(reconstructed_data > ALPHA, axis=(0,1,2,3))
     physical_catalog_count_omega, _ = np.histogram(synthetic_catalog[:,4],bins=omega_param_grid_array)
     physical_catalog_count_omega = physical_catalog_count_omega / synthetic_multiplier
 
-    param_1D_residuals_plot(physical_catalog_count_omega,data_count_omega,model_count_omega,omega_param_grid_array,visualization_plot_folder,"omega")
+    param_1D_residuals_plot([physical_catalog_count_omega,data_count_omega,model_count_omega],omega_param_grid_array,visualization_plot_folder,"omega",["physical","data","model"])
+    param_1D_residuals_plot([zeros_model_count_omega,nonzeros_model_count_omega],omega_param_grid_array,visualization_plot_folder,"omega",["num zeros","num non-zeros"],'_zeros',y_axis_scale="linear")
     param_1D_likelihood_plot(grid_sum_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
     param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
@@ -1077,13 +1091,11 @@ def param_1D_likelihood_plot(grid_sum, param_grid_array, visualization_plot_fold
     
 
 
-def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_array,visualization_plot_folder,name,y_axis_scale="log"):
+def param_1D_residuals_plot(counts,edge_array,visualization_plot_folder,name,labels,save_tag='',y_axis_scale="log"):
     
-    print("data_count.shape: ",data_count.shape)
-    print("model_count.shape: ",model_count.shape)
-
+    # print("data_count.shape: ",data_count.shape)
+    # print("model_count.shape: ",model_count.shape)
     # assert len(model_count_ecc) == len(eccentricity_param_grid_array) - 1
-
     edges = np.asarray(edge_array)
     centers = 0.5*(edges[:-1] + edges[1:])
     widths = 1
@@ -1092,10 +1104,9 @@ def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_a
 
     ### SHOULD BE IN TERMS OF PLANETS, NOT POSTERIOR DRAWS
     plt.figure(dpi=300, facecolor='w')
-    plt.bar(x, data_count, width=widths, alpha=0.5, label='data')
-    plt.bar(x, model_count, width=widths, alpha=0.5, label='observed catalog') 
-    plt.bar(x, physical_catalog_count, width=widths, alpha=0.5, label='physical catalog') 
-
+    for count, label in zip(counts, labels):
+        plt.bar(x, count, width=widths, alpha=0.5, label=label)
+    
     
     edge_positions = np.arange(len(edges)) - 0.5
 
@@ -1104,8 +1115,8 @@ def param_1D_residuals_plot(physical_catalog_count,data_count,model_count,edge_a
     plt.xlabel(name,fontsize=10)
     plt.yscale(y_axis_scale)
     plt.legend()
-    plt.title(f'Close-in Exoplanet {name} Distribution')
-    plt.savefig(visualization_plot_folder+f'/model_{name}.pdf')
+    plt.title(f'{name} Distribution')
+    plt.savefig(visualization_plot_folder+f'/model_{name}{save_tag}.pdf')
     plt.close()
 
 
@@ -1130,8 +1141,8 @@ def param_2D_likelihood_plot(grid_sum_2D,edge_array_x,edge_array_y,visualization
         X,
         Y,
         likelihood,
-        cmap='RdBu_r',
-        vmin=-limit,
+        cmap='Purples',
+        vmin=0,
         vmax=limit,
         shading='flat'
     )
@@ -1147,7 +1158,7 @@ def param_2D_likelihood_plot(grid_sum_2D,edge_array_x,edge_array_y,visualization
     plt.yticks(yticks, yticklabels)
 
     cbar = plt.colorbar(im)
-    cbar.set_label('Residual Count (Model - Data)')
+    cbar.set_label('Log-Likelihood')
 
     plt.xlabel(name_x, fontsize=12)
     plt.ylabel(name_y, fontsize=12)

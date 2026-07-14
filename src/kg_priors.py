@@ -53,7 +53,7 @@ class PriorArgs:
         self.add_prior('lambda_e', 0,50,"U", [0,1])
         self.add_prior('sigma_e',0,1,"U", [0,1])
         # self.add_prior('Log10(m)', -8,8,"U", [0])  
-        # self.add_prior('Logit(p_noise)',-10,10,"U", [0])  
+        # self.add_prior('Log10(p_noise)',-10,-3,"U", [0])  
 
 
         return self

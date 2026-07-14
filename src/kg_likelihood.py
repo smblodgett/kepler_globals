@@ -152,7 +152,9 @@ def parametric_log_likelihood(params, model_id):
 
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1] 
+    print("total data count (before multiplying by Gamma0): ", np.sum(local_voxel_grid.likelihood_array[:,:,:,:,:,0]))
+    print("total model count (before multiplying by Gamma0): ", np.sum(local_voxel_grid.likelihood_array[:,:,:,:,:,1]))
+    model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]
 
 
 

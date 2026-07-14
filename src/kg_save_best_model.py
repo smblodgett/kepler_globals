@@ -8,20 +8,6 @@ from kg_utilities import ReadJson
 def save_best_model(best_guess_filename,model_run_dir,backend):
     """Saves the best model parameters found during the MCMC run."""
 
-
-    # get non-flat chain/log_prob: shape (nsteps, nwalkers, ndim) and (nsteps, nwalkers)
-    chain = backend.get_chain(flat=False)
-    log_prob = backend.get_log_prob(flat=False)
-
-    # find the (step, walker) location of the best log_prob
-    best_step, best_walker = np.unravel_index(np.argmax(log_prob), log_prob.shape)
-    best_logp = log_prob[best_step, best_walker]
-    best_params = chain[best_step, best_walker].tolist()
-
-    print(f"Best log probability: {best_logp}")
-    print(f"Found at step {best_step}, walker {best_walker}")
-    print(f"Best parameters: {best_params}")
-
     # get samples and log probabilities from backend
     samples = backend.get_chain(flat=True)
     log_prob = backend.get_log_prob(flat=True)
@@ -30,10 +16,11 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
     best_idx = np.argmax(log_prob)
     best_logp = log_prob[best_idx]
     best_params = samples[best_idx].tolist()  # convert to list for JSON
-
+    best_blob = backend.get_blobs(flat=True)[best_idx]  # get the blobs for the best sample
+    rng_metadata = {"master_seed": int(best_blob[0]), "rank_seed": int(best_blob[1]), "time_seed": int(best_blob[2])}
     print(f"Best log probability: {best_logp}")
     print(f"Best parameters: {best_params}")
-
+    print(f"RNG metadata for best run: {rng_metadata}")
 
     # load an existing best guess, if it exists
     if os.path.exists(best_guess_filename):
@@ -58,19 +45,16 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
         print("Existing best parameters are better. No update made.")
 
     # save the rng metadata for the best run from each rank
-    for rng_metadata_file in os.listdir(model_run_dir+"/rank_metadata"):
-        with open(model_run_dir+"/rank_metadata/"+rng_metadata_file,'r') as f:
-            rng_metadata = json.load(f)
-        logP = rng_metadata["logProb"]
+    # for rng_metadata_file in os.listdir(model_run_dir+"/rank_metadata"):
+    #     with open(model_run_dir+"/rank_metadata/"+rng_metadata_file,'r') as f:
+    #         rng_metadata = json.load(f)
+    #     logP = rng_metadata["logProb"]
 
-        print(f"Rank {rng_metadata['rank_seed']} logProb: {logP}, best_logp: {best_logp}")
-
-        # this specifically saves the very best run's metadata into the run output directory
-        if logP == best_logp:
-            with open(model_run_dir+"/rng_metadata.json",'w') as f:
-                json.dump(rng_metadata, f)
-            print("yay! found the metadata for the best run!")
-            break
+    #     # this specifically saves the very best run's metadata into the run output directory
+    #     if logP == best_logp:
+    with open(model_run_dir+"/rng_metadata.json",'w') as f:
+        json.dump(rng_metadata, f)
+    print("yay! found the metadata for the best run!")
 
 
 def main():
