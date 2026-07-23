@@ -14,7 +14,7 @@ from kg_probability_distributions import synthetic_catalog_to_grid, generate_cat
 
 stellar_info = None # this is a np array from the stellar_df that is defined and given cuts in kg_initialize_voxel_grid.py. Its length is the same as the synthetic catalog's
 voxel_grid = None
-model_run_dir = None
+# model_run_dir = None
 model_id = None
 density_prior_mask = None
 # local_best_logProb = -np.inf
@@ -38,7 +38,7 @@ def parametric_log_prior(params, model_id):
     priors = prior_args.get_priors(model_id)
 
     # start_time = time.time()
-    assert len(params) == len(priors), "Number of parameters must match the number of priors!"
+    assert len(params) == len(priors), f"Number of parameters must match the number of priors! Expected {len(priors)}, got {len(params)}"
     # print("params.shape: ", params.shape)
     lp = 0.0 
     for parameter_name, i in zip(priors, range(len(params))):
@@ -146,15 +146,18 @@ def parametric_log_likelihood(params, model_id):
 
 
     ######################### TO DO: MAKE SURE DATA IS IN PLANETS, NOT POSTERIOR DRAWS
-    local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,synthetic_multiplier)
+    local_voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,stellar_info,synthetic_multiplier)
 
     print(f"rank {rank} catalog to grid time is ", (cat_grid_time:=time.time()) - gen_cat_time, flush=True)
 
 
     voxel_num_data = local_voxel_grid.likelihood_array[:,:,:,:,:,0]
-    print("total data count (before multiplying by Gamma0): ", np.sum(local_voxel_grid.likelihood_array[:,:,:,:,:,0]))
+    print("total data count: ", np.sum(local_voxel_grid.likelihood_array[:,:,:,:,:,0]))
     print("total model count (before multiplying by Gamma0): ", np.sum(local_voxel_grid.likelihood_array[:,:,:,:,:,1]))
+    # print("median of data count: ", np.median(local_voxel_grid.likelihood_array[:,:,:,:,:,0]))
+    # print("median of model count (before multiplying by Gamma0): ", np.median(local_voxel_grid.likelihood_array[:,:,:,:,:,1]))
     model_count = Gamma0 * local_voxel_grid.likelihood_array[:,:,:,:,:,1]
+    # print("median of model count (after multiplying by Gamma0): ", np.median(local_voxel_grid.likelihood_array[:,:,:,:,:,1]))
 
 
 
@@ -178,7 +181,7 @@ def parametric_log_likelihood(params, model_id):
     mask = ~zero_mask  & density_prior_mask
 
         # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
-    ALPHA = 1e-8
+    ALPHA = 1e-10
     mask = ~zero_mask & density_prior_mask
     model_count_floored = np.maximum(model_count[mask], ALPHA)
     voxel_num_data_all = voxel_num_data[mask]
@@ -188,12 +191,9 @@ def parametric_log_likelihood(params, model_id):
             - gammaln(voxel_num_data_all + 1))
 
 
-    # log_norm_const = np.log1p(-np.exp(-10 ** params[18]))
-    # logL_noise_i = log_norm_const - 10 ** params[18] * voxel_num_data_all
-
     # # Per-voxel mixture, NOT a weighted sum of sums
 
-    # log_pi = log_expit(params[19])            # log(sigmoid(x)), numerically stable
+    # log_pi = log_expit(params[19])          
     # log_1m_pi = log_expit(-params[19])
 
     # logL_i = np.logaddexp(log_1m_pi + logL_poisson_i, log_pi + logL_noise_i)
@@ -408,7 +408,7 @@ def parametric_log_likelihood(params, model_id):
 
 def parametric_log_probability(params):
 
-    global model_run_dir
+    # global model_run_dir
     # global local_best_logProb
     global model_id
 

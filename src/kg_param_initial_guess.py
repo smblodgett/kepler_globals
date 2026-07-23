@@ -2,7 +2,7 @@ import numpy as np
 from kg_utilities import ReadJson
 from kg_priors import PriorArgs
 
-def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename=""):
+def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="",custom_initial_guess=None):
     best_params = None  # Initialize best_params to None
     best_log_prob = None
     if method == "priors":
@@ -27,15 +27,20 @@ def get_initial_guess(nwalkers,ndim,model_id,method="priors",previous_filename="
         np.random.seed(42)
         p0 = np.random.normal(best_params,scale=scale,size=(nwalkers,len(best_params)))
         print("using previous best initialization method")
+        
     elif method == "custom":
-        pass
+        assert custom_initial_guess is not None, "Enter the custom initial guess!"
+        assert custom_initial_guess.shape == (ndim,), "Custom initial guess must have shape (ndim)!"
+        p0 = np.zeros((nwalkers,ndim))
+        # Fill p0 with custom initial guesses
+        for i in range(ndim):
+            p0[:, i] = np.random.normal(custom_initial_guess[i], scale=1e-2 * np.maximum(np.abs(custom_initial_guess[i]), 1e-1), size=nwalkers)
+        print("using custom initial guess method")
     else:
         raise ValueError("Unknown method for initial guess. Use 'priors'.")
 
     return p0, best_params, best_log_prob    # This function should return an initial guess for the parametric model parameters.
  
-
-
 
 def get_initial_guess_from_previous(filename):
     previous_best = ReadJson(filename).outProps()

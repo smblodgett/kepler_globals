@@ -265,7 +265,7 @@ def main(model_id, runprops):
     # broadcast the voxel grid and stellar dataframe to all ranks
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_info = comm.bcast(stellar_info,root=0)
-    model_run_dir = comm.bcast(model_run_dir,root=0)
+    # model_run_dir = comm.bcast(model_run_dir,root=0)
     density_prior_mask = comm.bcast(density_prior_mask,root=0)
     synthetic_multiplier = comm.bcast(synthetic_multiplier,root=0)
     

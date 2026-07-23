@@ -77,9 +77,9 @@ class PriorArgs:
                             # '$P_{break,2}$',
                             '$α_e$',
                             '$λ_e$',
-                            '$σ_e$',
-                            r'$\mathrm{log}_{10}(m)$',
-                            r'$\mathrm{logit}(P_{noise})$'
+                            '$σ_e$'
+                            # r'$\mathrm{log}_{10}(m)$',
+                            # r'$\mathrm{logit}(P_{noise})$'
                             ]
     def get_plot_labels(self, model_id):
         self.load_plot_labels()

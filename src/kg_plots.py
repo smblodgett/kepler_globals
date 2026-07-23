@@ -572,9 +572,9 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     
     
-    voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,synthetic_multiplier)
+    voxel_grid = synthetic_catalog_to_grid(synthetic_catalog,voxel_grid,stellar_info,synthetic_multiplier)
 
-    rearranged_synthetic_catalog, completeness = synthetic_catalog_with_weights(synthetic_catalog,voxel_grid)
+    rearranged_synthetic_catalog, completeness, stellar_info = synthetic_catalog_with_weights(synthetic_catalog,voxel_grid,stellar_info)
 
     Gamma0 = 10**top_samples[0,0]
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
@@ -848,8 +848,8 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
                 label_2 = "period"
             case _:                
                 raise ValueError("Invalid axis combination for 2D residuals plot.")
-        param_2D_residuals_plot(data_count_2D,model_count_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2)
-        param_2D_likelihood_plot(grid_sum_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2)
+        param_2D_residuals_plot(data_count_2D,model_count_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2,mode='save')
+        param_2D_likelihood_plot(grid_sum_2D,grid_array_1,grid_array_2,visualization_plot_folder,label_1,label_2,mode='save')
 
 class RegionOfInterest:
     def __init__(self, radius_range=[], period_range=[], mass_range=[], ecc_range=[], omega_range=[]):
@@ -1068,7 +1068,7 @@ def param_voxel_comparison_plot(voxel_num_data,model_count,visualization_plot_fo
     plt.close()
 
 
-def param_1D_likelihood_plot(grid_sum, param_grid_array, visualization_plot_folder, name):
+def param_1D_likelihood_plot(grid_sum, param_grid_array, visualization_plot_folder, name, mode='save'):
     edges = np.asarray(param_grid_array)
     centers = 0.5*(edges[:-1] + edges[1:])
     widths = 1
@@ -1086,12 +1086,15 @@ def param_1D_likelihood_plot(grid_sum, param_grid_array, visualization_plot_fold
     plt.ylabel("Log-Likelihood")
     plt.legend()
     plt.title(f'{name} Log-Likelihood Distribution')
-    plt.savefig(visualization_plot_folder+f'/model_{name}_likelihood.pdf')
+    if mode == 'save':
+        plt.savefig(visualization_plot_folder+f'/model_{name}_likelihood.pdf')
+    elif mode == 'show':
+        plt.show()
     plt.close()
     
 
 
-def param_1D_residuals_plot(counts,edge_array,visualization_plot_folder,name,labels,save_tag='',y_axis_scale="log"):
+def param_1D_residuals_plot(counts,edge_array,visualization_plot_folder,name,labels,save_tag='',y_axis_scale="log",mode='save'):
     
     # print("data_count.shape: ",data_count.shape)
     # print("model_count.shape: ",model_count.shape)
@@ -1116,12 +1119,15 @@ def param_1D_residuals_plot(counts,edge_array,visualization_plot_folder,name,lab
     plt.yscale(y_axis_scale)
     plt.legend()
     plt.title(f'{name} Distribution')
-    plt.savefig(visualization_plot_folder+f'/model_{name}{save_tag}.pdf')
+    if mode == 'save':
+        plt.savefig(visualization_plot_folder+f'/model_{name}{save_tag}.pdf')
+    elif mode == 'show':
+        plt.show()
     plt.close()
 
 
 
-def param_2D_likelihood_plot(grid_sum_2D,edge_array_x,edge_array_y,visualization_plot_folder,name_x,name_y):
+def param_2D_likelihood_plot(grid_sum_2D,edge_array_x,edge_array_y,visualization_plot_folder,name_x,name_y,mode='save'):
     plt.figure(figsize=(10, 8), dpi=300, facecolor='w')
 
     likelihood = grid_sum_2D.T
@@ -1167,15 +1173,18 @@ def param_2D_likelihood_plot(grid_sum_2D,edge_array_x,edge_array_y,visualization
 
     plt.tight_layout()
 
-    plt.savefig(
-        f"{visualization_plot_folder}/model_{name_x}_{name_y}_likelihood.png"
-    )
+    if mode == 'save':
+        plt.savefig(
+            f"{visualization_plot_folder}/model_{name_x}_{name_y}_likelihood.png"
+        )
+    elif mode == 'show':
+        plt.show()
 
     plt.close()
 
 
 
-def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y, visualization_plot_folder, name_x, name_y):
+def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y, visualization_plot_folder, name_x, name_y,mode='save'):
 
     plt.figure(figsize=(10, 8), dpi=300, facecolor='w')
 
@@ -1222,14 +1231,17 @@ def param_2D_residuals_plot(data_count, model_count, edge_array_x, edge_array_y,
 
     plt.tight_layout()
 
-    plt.savefig(
-        f"{visualization_plot_folder}/model_{name_x}_{name_y}_residual.png"
-    )
+    if mode == 'save':
+        plt.savefig(
+            f"{visualization_plot_folder}/model_{name_x}_{name_y}_residual.png"
+        )
+    elif mode == 'show':
+        plt.show()
 
     plt.close()
 
 
-def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels):
+def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels,mode='save'):
 
 
     samples = reader.get_chain()
@@ -1271,11 +1283,14 @@ def param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folde
     
     plt.suptitle(f"Model {model_id}",fontsize=200)
     
-    corner_plot.savefig(visualization_plot_folder+f"/model_corner.png",dpi=150)
+    if mode == 'save':
+        corner_plot.savefig(visualization_plot_folder+f"/model_corner.png",dpi=150)
+    elif mode == 'show':
+        plt.show()
     plt.close()
 
 
-def param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels):
+def param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels,mode='save'):
     
 
     print("reader.iteration: ",  reader.iteration)
@@ -1321,7 +1336,10 @@ def param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder
 
     axes[-1].set_xlabel("Step")
     # plt.tight_layout()
-    fig.savefig(os.path.join(visualization_plot_folder, f"model_trace.png"), dpi=150)
+    if mode == 'save':
+        fig.savefig(os.path.join(visualization_plot_folder, f"model_trace.png"), dpi=150)
+    elif mode == 'show':
+        plt.show()
     plt.close(fig)
 
 

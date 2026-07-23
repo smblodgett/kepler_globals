@@ -277,6 +277,23 @@ def main(runprops):
                                 )
         
         print("len(stellar_df) after removing nans: ",len(stellar_df))
+
+        print("number of NaNs in rrms columns: ",stellar_df[['rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
+                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
+                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0']].isna().sum().sum())
+
+        stellar_df = stellar_df.dropna(subset=['rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
+                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
+                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0'])
+
+        print("len(stellar_df) after removing NaN in cdpp columns: ",len(stellar_df))
+
+        
+
+        print("number of infs in rrms columns: ",stellar_df[['rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
+                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
+                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0']].isin([np.inf, -np.inf]).sum().sum())
+
         
         print("stellar df cuts applied")
 
@@ -378,7 +395,7 @@ def main(runprops):
         voxel_grid.add_data(final_kdc_df)
 
         # Create a small stellar df with 100 random stars, to set up the completeness grid. (could be expanded to entire stellar catalog)
-        stellar_df_reduced=stellar_df.sample(n=1000,random_state=22)
+        stellar_df_reduced=stellar_df.sample(n=1000,random_state=44)
 
 
     voxel_grid = comm.bcast(voxel_grid,root=0)

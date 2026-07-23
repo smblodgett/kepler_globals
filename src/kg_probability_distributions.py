@@ -1,6 +1,8 @@
 import numpy as np
 from numba import njit
 import time
+import warnings
+
 from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
@@ -269,7 +271,12 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
         
         cpdds = [stellar_df[col].iloc[0] for col in stellar_df.columns if col.startswith('rrmscdpp')]
         ###### TODO: doublecheck that the cpdds are in the right order with the durations
+        assert not np.isnan(cpdds).any() , "CDPP values should not be NaN"
+        assert not np.isinf(cpdds).any() , "CDPP values should not be infinite"
+        
         durations = [1.5,2,2.5,3,3.5,4.5,5,6,7.5,9,10.5,12,12.5,15]
+        assert len(cpdds) == len(durations), "There should be 14 CDPP values corresponding to the durations."
+
         cdpp_f = PchipInterpolator(durations,cpdds,extrapolate=False)
 
         # print("durations:", durations)
@@ -283,7 +290,10 @@ def get_MES(stellar_df, mass, radius, period, ecc, omega, b):
         # Fit this to your duration and CDPP values
         params, _ = curve_fit(cdpp_model, durations, cpdds)
         A, B = params
-        return cdpp_f(transit_duration) if not np.isnan(cdpp_f(transit_duration)) else cdpp_model(transit_duration, A, B)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            cdpp_val = cdpp_f(transit_duration)
+        return cdpp_val if not np.isnan(cdpp_val) else cdpp_model(transit_duration, A, B)
     
     def get_depth(stellar_df,k_rp):
         return 1 - (stellar_df['c0'].iloc[0]/4 
@@ -491,11 +501,13 @@ def normalize_pdf_to_pmf(pdf, grid):
     return pmf
 
 
-def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplier):
+def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, stellar_info, synthetic_multiplier):
     # print("synthetic catalog head: ", synthetic_catalog[:5,:])
     # print("synthetic catalog count: ", np.sum(synthetic_catalog))
     # originally synthetic catalog is in order period, mass, radius, ecc, omega confirmed 12/19 that this is working right
-    synthetic_catalog = synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid)
+    synthetic_catalog, stellar_info = synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid,stellar_info)
+
+    synthetic_catalog = synthetic_catalog_remove_implausible(synthetic_catalog,stellar_info)
     
     ### need to implement a "realistic" filter
     ### wherein planets that go too close to their star (and possibly do anything else unphysical) are removed
@@ -513,8 +525,6 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
     ## the max abs diff for the two is 10e-15, seems like these methods are essentially the same
 
 
-
-
     # print("completeness shape: ", completeness.shape)
     # print("completeness head: ", completeness[:5])
     # print("completeness min/max/mean:", completeness.min(), completeness.max(), completeness.mean())
@@ -523,11 +533,11 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
     # print("completeness nan count:", np.sum(np.isnan(completeness)))
 
     bins = [
-        radius_grid_array,
-        period_grid_array,
-        mass_grid_array,
-        eccentricity_grid_array,
-        omega_grid_array
+        voxel_grid.radius_grid_array,
+        voxel_grid.period_grid_array,
+        voxel_grid.mass_grid_array,
+        voxel_grid.eccentricity_grid_array,
+        voxel_grid.omega_grid_array
     ]
 
     histtestsums, edges = np.histogramdd(synthetic_catalog, bins=bins, weights=completeness)
@@ -546,36 +556,37 @@ def synthetic_catalog_to_grid(synthetic_catalog, voxel_grid, synthetic_multiplie
 
     return voxel_grid
 
-def synthetic_catalog_with_weights(synthetic_catalog,voxel_grid):
-    synthetic_catalog = synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid)
+def synthetic_catalog_with_weights(synthetic_catalog,voxel_grid,stellar_info):
+    synthetic_catalog, stellar_info = synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid,stellar_info)
     
     completeness = voxel_grid.interpolate_completeness(synthetic_catalog)
     
-    return synthetic_catalog, completeness
+    return synthetic_catalog, completeness, stellar_info
 
 
-def synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid):
+def synthetic_catalog_rearrange_trim(synthetic_catalog,voxel_grid,stellar_info):
     synthetic_catalog = synthetic_catalog[:, [2, 0, 1, 3, 4]]
 
-    # print("rearranged catalog: ", synthetic_catalog)
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:, 0] < np.min(voxel_grid.radius_grid_array)) |
-        (synthetic_catalog[:, 0] > np.max(voxel_grid.radius_grid_array)))
-        ]
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,1] < np.min(voxel_grid.period_grid_array)) |
-        (synthetic_catalog[:,1] > np.max(voxel_grid.period_grid_array)))
-        ]
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,2] < np.min(voxel_grid.mass_grid_array)) |
-        (synthetic_catalog[:,2] > np.max(voxel_grid.mass_grid_array)))
-        ]  
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,3] < np.min(voxel_grid.eccentricity_grid_array)) |
-        (synthetic_catalog[:,3] > np.max(voxel_grid.eccentricity_grid_array)))
-        ]      
-    synthetic_catalog = synthetic_catalog[
-        ~((synthetic_catalog[:,4] < np.min(voxel_grid.omega_grid_array)) |
-        (synthetic_catalog[:,4] > np.max(voxel_grid.omega_grid_array)))
-        ]   
+    # print("rearranged catalog: ", synthetic_catalog)    
+    mask = (
+        (synthetic_catalog[:, 0] >= np.min(voxel_grid.radius_grid_array)) &
+        (synthetic_catalog[:, 0] <= np.max(voxel_grid.radius_grid_array)) &
+        (synthetic_catalog[:, 1] >= np.min(voxel_grid.period_grid_array)) &
+        (synthetic_catalog[:, 1] <= np.max(voxel_grid.period_grid_array)) &
+        (synthetic_catalog[:, 2] >= np.min(voxel_grid.mass_grid_array)) &
+        (synthetic_catalog[:, 2] <= np.max(voxel_grid.mass_grid_array)) &
+        (synthetic_catalog[:, 3] >= np.min(voxel_grid.eccentricity_grid_array)) &
+        (synthetic_catalog[:, 3] <= np.max(voxel_grid.eccentricity_grid_array)) &
+        (synthetic_catalog[:, 4] >= np.min(voxel_grid.omega_grid_array)) &
+        (synthetic_catalog[:, 4] <= np.max(voxel_grid.omega_grid_array))
+    )
+    return synthetic_catalog[mask], stellar_info[mask]
+
+
+def synthetic_catalog_remove_implausible(synthetic_catalog,stellar_info):
+    '''Operates on the rearranged synthetic catalog and removes any planets that come within 2 stellar radii of their star.'''
+    sm_axis = (synthetic_catalog[:,1] * 24 * 60 * 60)**(2/3) * (G / (4*np.pi**2))**(1/3) * (synthetic_catalog[:,2] * MEKG + stellar_info[:,1] * MSKG)**(1/3)
+    periapsis = (1 - synthetic_catalog[:,3]) * sm_axis
+    # print("Number of excluded implausible planets: ", np.sum(~(periapsis >= 2 * stellar_info[:,0])))
+    synthetic_catalog = synthetic_catalog[periapsis >= 2 * stellar_info[:,0]]
     return synthetic_catalog
