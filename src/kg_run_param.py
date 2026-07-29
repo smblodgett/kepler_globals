@@ -36,6 +36,7 @@ from kg_utilities import ReadJson, density_given_mass_radius
 from kg_plots import MES_grid_plot
 from kg_grid_object_hook import grid_object_hook
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
+from kg_probability_distributions import load_flat_observed_catalog
 
 # print(f"[Rank {rank}/{size}] on host: {os.uname().nodename}", flush=True)
 
@@ -180,6 +181,8 @@ def main(model_id, runprops):
     density_prior_mask = None
     synthetic_multiplier = None
     stellar_info = None
+    likelihood_method = None
+    observed_catalog = None
 
     # rank 0 reads in the voxel grid and stellar dataframe, then broadcasts to all ranks
     comm = MPI.COMM_WORLD
@@ -260,7 +263,19 @@ def main(model_id, runprops):
 
         synthetic_multiplier = runprops["synthetic_multiplier"]
 
-    
+        # Load the flat, unbinned real catalog used by the point-process
+        # likelihood (see kg_probability_distributions.load_flat_observed_catalog
+        # and kg_likelihood.parametric_log_likelihood_pointprocess). This is a
+        # one-time cost at startup, same as reading in stellar_info.
+        likelihood_method = runprops.get("likelihood_method", "pointprocess")
+        if likelihood_method == "pointprocess":
+            if runprops["verbose"]: print("[Rank 0] loading flat observed catalog for point-process likelihood")
+            observed_catalog = load_flat_observed_catalog(runprops.get("observed_catalog_filename", "../data/final_kdc.csv"))
+            if runprops["verbose"]: print(f"[Rank 0] loaded observed catalog: {observed_catalog['n_planets']} planets, {len(observed_catalog['P'])} posterior draws")
+        else:
+            observed_catalog = None
+
+
 
     # broadcast the voxel grid and stellar dataframe to all ranks
     voxel_grid = comm.bcast(voxel_grid,root=0)
@@ -268,15 +283,20 @@ def main(model_id, runprops):
     # model_run_dir = comm.bcast(model_run_dir,root=0)
     density_prior_mask = comm.bcast(density_prior_mask,root=0)
     synthetic_multiplier = comm.bcast(synthetic_multiplier,root=0)
-    
+    likelihood_method = comm.bcast(likelihood_method if comm.Get_rank() == 0 else None, root=0)
+    observed_catalog = comm.bcast(observed_catalog if comm.Get_rank() == 0 else None, root=0)
+
     if runprops["verbose"]: print("---BROADCAST HAS BEEN COMPLETED---")
-    
+
     kg_likelihood.voxel_grid = voxel_grid
     kg_likelihood.stellar_info = stellar_info
     kg_likelihood.model_run_dir = model_run_dir
     kg_likelihood.model_id = model_id
     kg_likelihood.density_prior_mask = density_prior_mask
     kg_likelihood.synthetic_multiplier = synthetic_multiplier
+    kg_likelihood.likelihood_method = likelihood_method
+    kg_likelihood.observed_catalog = observed_catalog
+    kg_likelihood.density_bounds = (runprops.get("minimum_density", 0.01), runprops.get("maximum_density", 10.0))
 
     # print("kg_likelihood.stellar_df : ",kg_likelihood.stellar_df )
     # print("len(kg_likelihood.stellar_df) : ",len(kg_likelihood.stellar_df ))

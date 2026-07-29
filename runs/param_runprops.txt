@@ -22,6 +22,7 @@
     "thin_run" : false,       # whether a run should be thinned
     "initial_guess_method": "previous_best",  # can be priors or previous_best (possible add manual guess mode)
     "stretch_a" : 0.01,        # stretch step length
+    "likelihood_method": "pointprocess",  # "pointprocess" (new, unbinned/semi-analytical) or "grid" (legacy 5-D histogram Poisson)
 
     # Input/output data files
     "init_filename":"../runs/init_guess.csv",
@@ -35,6 +36,7 @@
     "dr_25_data_filename" : "../data/q1_q17_dr25.csv",
     "rowe_stellar_data_filename" : "../data/keplerstellar.csv",
     "input_data_filename": "../data/thinned/KMDC.csv",        # PhoDyMM thinned posteriors (with calculated values)
+    "observed_catalog_filename": "../data/final_kdc.csv",     # flat unbinned catalog (R_pE,Period_days,M_pE,e,omega,unique_planet) used by the pointprocess likelihood
     "voxel_data_folder": "../data/thinned/voxel_data_param",  # location of cached voxel dataframes (for faster runs)
     "results_folder":"../results",                            # where the results go 
     "completeness_plot_folder":"../results/plots/completeness/", 

@@ -542,6 +542,15 @@ class RPMeoGrid(RPMGrid):
         id_number=0
         self.id_array=np.empty((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len))
         self.completeness_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
+        # p_tr alone (geometric transit probability), kept separate from the combined
+        # p_det*p_tr completeness above. Needed because the point-process likelihood's
+        # data term must only include p_tr, not p_det -- see Neil & Rogers (2020), the
+        # paragraph following their Eq. 25: including p_det in both the normalization
+        # integral *and* the per-planet likelihood terms double-conditions on detection
+        # (Loredo 2004; Mandel et al. 2019), since a planet already in the catalog is
+        # known to have been detected. p_tr legitimately belongs in both places, since
+        # the transiting subset is genuinely the only population we can ever observe.
+        self.transit_prob_array = np.empty((self.r_len+1,self.p_len+1,self.m_len+1,self.e_len+1,self.o_len+1))
 
         self.likelihood_array=np.zeros((self.r_len,self.p_len,self.m_len,self.e_len,self.o_len,2))
 
@@ -650,8 +659,11 @@ class RPMeoGrid(RPMGrid):
                 completeness = detection_prob * transit_prob
                 completeness_list.append(completeness)
 
-            return np.mean(completeness_list)
-            
+            # Return both the combined completeness (p_det*p_tr, for the Lambda_hat
+            # normalization integral) and p_tr alone (for the point-process data term
+            # -- see the comment on self.transit_prob_array above).
+            return np.mean(completeness_list), np.mean(transit_prob_list)
+
         tasks = list(np.ndindex(self.r_len+1,
                         self.p_len+1,
                         self.m_len+1,
@@ -667,19 +679,19 @@ class RPMeoGrid(RPMGrid):
         partial_results = []
 
         for (i,j,k,l,m) in my_chunk:
-            val = compute_vertex_value(i,j,k,l,m,stellar_df)
-            partial_results.append((i,j,k,l,m,val))
+            val_completeness, val_transit_prob = compute_vertex_value(i,j,k,l,m,stellar_df)
+            partial_results.append((i,j,k,l,m,val_completeness,val_transit_prob))
 
         all_results = comm.gather(partial_results, root=0)
 
         if comm.rank == 0:
-            
+
             # print(all_results)
 
             # it = np.nditer(self.id_array, flags=['multi_index'], op_flags=['writeonly'])
             # for id_number in range(self.r_len * self.p_len * self.m_len * self.e_len * self.o_len):
             #     i, j, k, l, m = it.multi_index  # Gives current (i, j, k, l) position
-            
+
             flat = [item for sublist in all_results for item in sublist]
 
             print("len(flat): ", len(flat))
@@ -688,8 +700,9 @@ class RPMeoGrid(RPMGrid):
 
             # print(flat)
 
-            for (i,j,k,l,m,val) in flat:
-                self.completeness_array[i,j,k,l,m] = val
+            for (i,j,k,l,m,val_completeness,val_transit_prob) in flat:
+                self.completeness_array[i,j,k,l,m] = val_completeness
+                self.transit_prob_array[i,j,k,l,m] = val_transit_prob
 
             print("number of self.completeness_array greater than 1: ", len(self.completeness_array[self.completeness_array > 1]))
             print("self.completeness_array.size: ",self.completeness_array.size)
@@ -734,8 +747,42 @@ class RPMeoGrid(RPMGrid):
             coords,
             order=1,
             mode='nearest'
-        )    
-    
+        )
+
+    def interpolate_transit_probability(self, points):
+        """
+        Same interpolation as interpolate_completeness, but on p_tr alone
+        (geometric transit probability), not the combined p_det*p_tr
+        completeness. Used by the point-process likelihood's per-planet data
+        term, which -- per Neil & Rogers (2020)'s correction of
+        Foreman-Mackey et al. (2014) -- must not include p_det a second time
+        for planets that are already confirmed detections.
+
+        points: np.ndarray of shape (N, 5)
+                columns: (radius, period, mass, eccentricity, omega)
+        """
+        def to_index(val, grid):
+            idx = np.searchsorted(grid, val, side='right') - 1
+            idx = np.clip(idx, 0, len(grid) - 2)
+            lo = grid[idx]
+            hi = grid[idx + 1]
+            frac = (val - lo) / (hi - lo)
+            return idx + frac
+
+        coords = np.array([
+            to_index(points[:, 0], self.radius_grid_array),
+            to_index(points[:, 1], self.period_grid_array),
+            to_index(points[:, 2], self.mass_grid_array),
+            to_index(points[:, 3], self.eccentricity_grid_array),
+            to_index(points[:, 4], self.omega_grid_array),
+        ])  # shape (5, N)
+
+        return map_coordinates(
+            self.transit_prob_array,
+            coords,
+            order=1,
+            mode='nearest'
+        )
 
     def setup_likelihood_grid(self):
         """Creates a grid that includes the necessary information for the likelihood evaluation to improve runtime."""

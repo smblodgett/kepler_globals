@@ -10,7 +10,14 @@ import matplotlib.pyplot as plt
 
 from kg_constants import N_PHODYMM_SYSTEMS
 
-from kg_probability_distributions import synthetic_catalog_to_grid, generate_catalog, get_probability_distributions
+from kg_probability_distributions import (
+    synthetic_catalog_to_grid,
+    synthetic_catalog_with_weights,
+    generate_catalog,
+    get_probability_distributions,
+    joint_log_intrinsic_density,
+)
+from kg_utilities import density_given_mass_radius
 
 stellar_info = None # this is a np array from the stellar_df that is defined and given cuts in kg_initialize_voxel_grid.py. Its length is the same as the synthetic catalog's
 voxel_grid = None
@@ -19,6 +26,9 @@ model_id = None
 density_prior_mask = None
 # local_best_logProb = -np.inf
 synthetic_multiplier = None
+observed_catalog = None  # flat, unbinned real-catalog dict from kg_probability_distributions.load_flat_observed_catalog
+likelihood_method = "pointprocess"  # "pointprocess" (new, unbinned) or "grid" (legacy 5-D histogram Poisson)
+density_bounds = (0.01, 10.0)  # (min, max) physical density in g/cm^3, matching runprops minimum_density/maximum_density
 
 prior_args = PriorArgs().load_priors()
 
@@ -94,8 +104,139 @@ def parametric_log_prior(params, model_id):
     return lp
 
 
+def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, max_density=None):
+    """
+    Unbinned / point-process ("extended maximum likelihood") formulation of
+    the likelihood. See the large comment block in kg_probability_distributions.py
+    ("Semi-analytical (unbinned/point-process) likelihood machinery") for the
+    full statistical justification.
+
+    Real data are never put into a histogram. Every real planet's posterior
+    draws get evaluated at their own exact (period, mass, radius, e, omega):
+    analytically for the intrinsic population density (joint_log_intrinsic_density)
+    and via the interpolated completeness/transit-probability grids for
+    selection effects. The only Monte Carlo piece left is the total expected
+    number of detections (Lambda_hat), which has no closed form because
+    completeness doesn't -- that's the "hybrid" of analytic + numerical this
+    project's notes asked for.
+
+    Following Neil & Rogers (2020)'s correction of Foreman-Mackey et al. (2014):
+    the two selection-effect factors are NOT interchangeable and must not both
+    appear at the data points. p_det (pipeline detection efficiency) only
+    belongs in the Lambda_hat integral -- for a planet already in the catalog,
+    multiplying by p_det again double-conditions on an event (its own
+    detection) that's already certain (Loredo 2004; Mandel et al. 2019). p_tr
+    (geometric transit probability) legitimately belongs in *both* places,
+    since the transiting subset is the only population we can ever detect at
+    all. So: Lambda_hat uses the full completeness (p_det*p_tr, via
+    interpolate_completeness), while the per-planet data term uses p_tr alone
+    (via interpolate_transit_probability).
+
+    logL = N_obs * log(Gamma0) + sum_j log(<f_pop(theta_j) * p_tr(theta_j)>_j)
+           - Gamma0 * Lambda_hat
+    """
+    start_time = time.time()
+
+    global voxel_grid, stellar_info, synthetic_multiplier, observed_catalog, density_bounds
+
+    rank = MPI.COMM_WORLD.Get_rank()
+
+    min_density = density_bounds[0] if min_density is None else min_density
+    max_density = density_bounds[1] if max_density is None else max_density
+
+    Gamma0 = 10 ** params[0]
+
+    (p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0, γ1, γ2, mass_break_1, mass_break_2,
+     σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid,
+     is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs) = get_probability_distributions(params)
+
+    print(f"rank {rank} get probability distribution time is ", (prob_dist_time := time.time()) - start_time, flush=True)
+
+    if is_nan_in_pmfs or is_inf_in_pmfs or is_neg_in_pmfs:
+        return -np.inf, {"master_seed": -1, "rank_seed": -1, "time_seed": -1}, rank
+
+    synthetic_catalog, rng_metadata = generate_catalog(
+        stellar_info, p_Period, Period_fine_grid, p_mass, mass_fine_grid,
+        γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid, rank
+    )
+
+    print(f"rank {rank} generate catalog time is ", (gen_cat_time := time.time()) - prob_dist_time, flush=True)
+
+    # ---- Lambda_hat: Monte Carlo estimate of the total expected number of detections ----
+    # synthetic_catalog_with_weights rearranges to (radius, period, mass, e, omega),
+    # clips to the grid's coordinate bounds, drops dynamically-implausible orbits
+    # (periapsis within 2 stellar radii), and returns completeness evaluated
+    # pointwise (interpolated, no histogram involved).
+    trimmed_catalog, completeness_weights, _ = synthetic_catalog_with_weights(synthetic_catalog, voxel_grid, stellar_info)
+
+    synth_density = density_given_mass_radius(trimmed_catalog[:, 2], trimmed_catalog[:, 0])
+    density_mask = (synth_density >= min_density) & (synth_density <= max_density)
+    # Keep Lambda_hat on the same physically-plausible density domain as the
+    # data (final_kdc.csv is already filtered to this range), so Gamma0 isn't
+    # biased by synthetic planets that could never appear in the data.
+
+    Lambda_hat = Gamma0 * np.sum(completeness_weights[density_mask]) / synthetic_multiplier
+
+    print(f"rank {rank} lambda_hat calc time is ", (lambda_time := time.time()) - gen_cat_time, flush=True)
+    print(f"rank {rank} Lambda_hat: {Lambda_hat}, n synthetic kept: {np.sum(density_mask)} / {len(synthetic_catalog)}", flush=True)
+
+    if not np.isfinite(Lambda_hat) or Lambda_hat < 0:
+        return -np.inf, rng_metadata, rank
+
+    # ---- data term: evaluate every real posterior draw at its own exact location ----
+    obs = observed_catalog
+    log_f_obs = joint_log_intrinsic_density(params, obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"])
+
+    obs_points = np.column_stack([obs["R"], obs["P"], obs["M"], obs["e"], obs["omega"]])  # (radius, period, mass, e, omega) order
+    # p_tr only -- NOT the combined completeness -- per Neil & Rogers (2020): these
+    # are already-confirmed detections, so re-multiplying by p_det here would
+    # double-condition on their detection (see the docstring above).
+    transit_prob_obs = voxel_grid.interpolate_transit_probability(obs_points)
+
+    ALPHA = 1e-300
+    log_transit_prob_obs = np.log(np.maximum(transit_prob_obs, ALPHA))
+
+    vals = log_f_obs + log_transit_prob_obs
+    vals = np.where(np.isfinite(vals), vals, -700.0)  # floor rather than -inf so reduceat stays well-behaved
+
+    seg_starts = obs["seg_starts"]
+    seg_counts = obs["seg_counts"]
+
+    # Grouped (per-planet) log-mean-exp over that planet's posterior draws,
+    # fully vectorized via reduceat since draws are pre-sorted by planet.
+    seg_max = np.maximum.reduceat(vals, seg_starts)
+    shifted = vals - np.repeat(seg_max, seg_counts)
+    seg_sumexp = np.add.reduceat(np.exp(shifted), seg_starts)
+    term_per_planet = seg_max + np.log(seg_sumexp) - np.log(seg_counts)
+
+    n_planets = obs["n_planets"]
+    logL_data = n_planets * np.log(Gamma0) + np.sum(term_per_planet)
+
+    logL = logL_data - Lambda_hat
+
+    print(f"rank {rank} data term calc time is ", (time.time() - lambda_time), flush=True)
+    print(f"rank {rank} total eval time is ", (time.time() - start_time), flush=True)
+    print(f"rank {rank} logL: {logL} (data term: {logL_data}, Lambda_hat: {Lambda_hat})", flush=True)
+
+    return (logL if np.isfinite(logL) else -np.inf, rng_metadata, rank)
+
+
 def parametric_log_likelihood(params, model_id):
-    
+    """Dispatches to the point-process (default) or legacy grid likelihood,
+    controlled by the module-level `likelihood_method` global (set from
+    kg_run_param.py via runprops["likelihood_method"])."""
+    global likelihood_method
+    if likelihood_method == "grid":
+        return parametric_log_likelihood_grid(params, model_id)
+    return parametric_log_likelihood_pointprocess(params, model_id)
+
+
+def parametric_log_likelihood_grid(params, model_id):
+    """Legacy 5-D binned-histogram Poisson likelihood (the original
+    implementation). Kept for A/B comparison against
+    parametric_log_likelihood_pointprocess -- switch via
+    runprops["likelihood_method"] = "grid"."""
+
     start_time = time.time()
 
     global voxel_grid, stellar_info, synthetic_multiplier

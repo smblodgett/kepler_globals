@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from numba import njit
 import time
 import warnings
@@ -6,13 +7,13 @@ import warnings
 from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
-from scipy.stats import lognorm # truncnorm #, gaussian_kde
+from scipy.stats import lognorm, norm # truncnorm #, gaussian_kde
 # from scipy.stats import gamma as gamma_dist
 from scipy.special import gamma, ndtr, ndtri
 
 
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
-from kg_utilities import radius_given_density_mass
+from kg_utilities import radius_given_density_mass, density_given_mass_radius
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 
 
@@ -222,6 +223,231 @@ class EccentricityDistribution:
         """
         mask = (self.eccentricity_fine_grid > low_e) & (self.eccentricity_fine_grid <= high_e)
         return np.trapezoid(self.eccentricity_pdf(self.eccentricity_fine_grid)[mask], self.eccentricity_fine_grid[mask])
+
+
+# ---------------------------------------------------------------------------
+# Semi-analytical (unbinned/point-process) likelihood machinery
+# ---------------------------------------------------------------------------
+#
+# The classes above are used to *sample* a synthetic catalog, which is needed
+# to Monte Carlo integrate the total expected number of detections (the
+# completeness function has no closed form, so that integral can't be done
+# analytically). The bias problem described for this project comes from a
+# different step: putting the *data* into a 5-D histogram before comparing
+# it to the model. With ~11 x 14 x 15 x 9 x 8 ~= 1.7e5 voxels and only a few
+# thousand independent planets, the overwhelming majority of voxels are
+# empty or contain a single planet. The Poisson likelihood of those voxels is
+# then dominated by shot noise (does this particular voxel happen to contain
+# 0 or 1 planets) rather than by whether the model's *shape* matches the
+# data — so a parameter step that makes the 1-D marginals look visibly
+# better can easily score worse than one that doesn't, just because it moved
+# a couple of points across bin edges in a sparse region.
+#
+# The functions below implement an unbinned / point-process (a.k.a. extended
+# maximum likelihood) formulation instead, of the form used in
+# Hogg, Myers & Bovy (2010) and Foreman-Mackey et al. (2014):
+#
+#   logL = N_obs * log(Gamma0)
+#          + sum_j log( <f_pop(theta_j) * completeness(theta_j)>_j )
+#          - Gamma0 * Lambda_hat
+#
+# where:
+#   - theta_j = (period, mass, radius, e, omega) for the j-th real detected
+#     planet. Each planet's true theta is only known through a posterior of
+#     draws (from the photodynamical/TTV fit), so <...>_j denotes an average
+#     over that planet's own posterior draws — the standard way of
+#     marginalizing per-object measurement uncertainty into a population
+#     (hierarchical) likelihood. Critically, this requires *no binning at
+#     all*: every posterior draw is evaluated at its own exact location.
+#   - f_pop is evaluated in closed form (the *_log_pdf functions below).
+#     Period, mass, and eccentricity were already analytic; radius-given-mass
+#     is analytic too — it's a one-sided-truncated Gaussian with mean/width
+#     from RadiusDistribution.mu_total/sigma_total (matching how
+#     sample_radius_given_mass actually draws radii). This is the "radius
+#     isn't directly findable" case: the *marginal* p(R) has no closed form
+#     (it would require integrating over the mass distribution through a
+#     mass-dependent truncation), but we don't need the marginal, since every
+#     data point already has its own observed mass to condition on.
+#   - completeness/transit-probability still have to come from the
+#     precomputed/interpolated grids in RPMeoGrid — there's no way around a
+#     numerical piece there — so this is a genuine analytic + numerical
+#     hybrid, evaluated pointwise rather than through any histogram.
+#   - Lambda_hat is the Monte Carlo estimate of
+#     N_stars * E_theta~f_pop[p_det(theta) * p_tr(theta)], from the same
+#     synthetic-catalog machinery used elsewhere in this module. That term
+#     was already just a sum/mean underneath the old 5-D histogram (the
+#     histogram didn't change its value, just made it slower and coupled it
+#     to a grid), so it's left as a direct Monte Carlo sum here.
+#   - Important subtlety (Neil & Rogers 2020, correcting Foreman-Mackey et al.
+#     2014): p_det (pipeline detection efficiency) and p_tr (geometric transit
+#     probability) are NOT interchangeable. p_det belongs only in the
+#     Lambda_hat integral; including it a second time in the per-planet sum
+#     would double-condition on the detection of a planet that's already
+#     confirmed to be in the catalog (Loredo 2004; Mandel et al. 2019). p_tr
+#     legitimately belongs in both places, since only the transiting subset
+#     of the population is ever observable at all. So kg_likelihood.py's
+#     Lambda_hat uses RPMeoGrid.interpolate_completeness (p_det*p_tr), while
+#     the per-planet data term uses RPMeoGrid.interpolate_transit_probability
+#     (p_tr alone) -- see parametric_log_likelihood_pointprocess.
+# ---------------------------------------------------------------------------
+
+
+def _powerlaw_segment_integral(beta, P_lo, P_hi):
+    """Closed-form integral of P**beta dP from P_lo to P_hi."""
+    if np.isclose(beta, -1.0, atol=1e-6):
+        return np.log(P_hi / P_lo)
+    return (P_hi ** (beta + 1.0) - P_lo ** (beta + 1.0)) / (beta + 1.0)
+
+
+def period_log_pdf(P, beta1, beta2, period_break_1, P_min=0.1, P_max=500.0):
+    """
+    Analytic (grid-free) log-density of the broken power-law period
+    distribution, matching the piecewise shape used by
+    PeriodDistribution/Period_pdf (power_laws=2) exactly, but normalized
+    with a closed-form integral instead of a fine-grid trapezoid. There is
+    no grid resolution to tune and no dependence on how many points that
+    grid happens to have.
+    """
+    P = np.asarray(P, dtype=np.float64)
+
+    I1 = _powerlaw_segment_integral(beta1, P_min, period_break_1)
+    I2 = period_break_1 ** (beta1 - beta2) * _powerlaw_segment_integral(beta2, period_break_1, P_max)
+    Z = I1 + I2
+
+    log_shape = np.where(
+        P <= period_break_1,
+        beta1 * np.log(P),
+        (beta1 - beta2) * np.log(period_break_1) + beta2 * np.log(P),
+    )
+    logpdf = log_shape - np.log(Z)
+    return np.where((P >= P_min) & (P <= P_max), logpdf, -np.inf)
+
+
+def mass_log_pdf(M, mu_M, sigma_M):
+    """Analytic log-normal mass density (already closed form, no grid needed)."""
+    return lognorm.logpdf(M, s=sigma_M, scale=np.exp(mu_M))
+
+
+def radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, density_upper_limit=10.0):
+    """
+    Analytic conditional log-density of radius given mass: a Gaussian with
+    mean/width from RadiusDistribution.mu_total/sigma_total, truncated below
+    at the radius implied by density_upper_limit (matching
+    RadiusDistribution.sample_radius_given_mass, so this likelihood is
+    self-consistent with how the synthetic catalog is actually generated).
+    """
+    M = np.asarray(M, dtype=np.float64)
+    R = np.asarray(R, dtype=np.float64)
+
+    radius_dist = RadiusDistribution(γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
+    S1 = radius_dist._SN(M, mass_break_1)
+    S2 = radius_dist._SN(M, mass_break_2)
+    mu = radius_dist.mu_total(M, S1, S2)
+    sigma = mu * radius_dist.sigma_total(M, S1, S2)
+
+    lower_bound = radius_given_density_mass(density_upper_limit, M)
+    a = (lower_bound - mu) / sigma
+    z = (R - mu) / sigma
+
+    logpdf = norm.logpdf(z) - np.log(sigma) - norm.logsf(a)
+    return np.where(R >= lower_bound, logpdf, -np.inf)
+
+
+def eccentricity_log_pdf(e, alpha, lam, sigma_e):
+    """
+    Analytic eccentricity density. rayleigh_exponential is already a
+    properly normalized PDF over e in [0,1] (the two mixture components are
+    each normalized to the [0,1] truncation), so this just wraps it in
+    log-space.
+    """
+    e = np.asarray(e, dtype=np.float64)
+    pdf = EccentricityDistribution(np.array([0.0, 1.0], dtype=np.float32), alpha, lam, sigma_e).rayleigh_exponential(e)
+    return np.log(np.maximum(pdf, 1e-300))
+
+
+def omega_log_pdf(omega, low=0.0, high=360.0):
+    """Omega is modeled as uniform, so its density is a constant; included so
+    the joint density below is a properly normalized 5-D density."""
+    omega = np.asarray(omega, dtype=np.float64)
+    logpdf = np.full(omega.shape, -np.log(high - low))
+    return np.where((omega >= low) & (omega <= high), logpdf, -np.inf)
+
+
+def joint_log_intrinsic_density(params, P, M, R, e, omega):
+    """
+    Fully analytic, grid-free evaluation of the intrinsic population density
+    f_pop(period, mass, radius, e, omega | params) at specific (real or
+    synthetic) points. This is the core piece of the point-process
+    likelihood: instead of putting data into a 5-D histogram and comparing
+    binned counts, every point (e.g. every posterior draw of every real
+    planet) gets its own exact density evaluation, so the shape of the
+    model directly determines the likelihood contribution of every point.
+
+    Parameter unpacking matches get_probability_distributions exactly.
+    """
+    γ0, γ1, γ2 = params[1], params[2], params[3]
+    σ0, σ1, σ2 = params[4], params[5], params[6]
+    mass_break_1, mass_break_2 = params[7], params[8]
+    C = params[9]
+    mu_M, sigma_M = params[10], params[11]
+    β1, β2 = params[12], params[13]
+    Period_break_1 = params[14]
+    α, λ, σ_e = params[15], params[16], params[17]
+
+    log_f = (
+        period_log_pdf(P, β1, β2, Period_break_1)
+        + mass_log_pdf(M, mu_M, sigma_M)
+        + radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
+        + eccentricity_log_pdf(e, α, λ, σ_e)
+        + omega_log_pdf(omega)
+    )
+    return log_f
+
+
+def load_flat_observed_catalog(csv_path):
+    """
+    Loads the flat (unbinned) KDC catalog written by kg_initialize_voxel_grid.py
+    (final_kdc_df / final_kdc.csv) for use by the point-process likelihood.
+    Every row is one posterior draw of one real planet; grouping by
+    'unique_planet' and averaging within a group is how per-planet
+    measurement uncertainty gets marginalized out (see
+    joint_log_intrinsic_density and
+    kg_likelihood.parametric_log_likelihood_pointprocess).
+
+    Rows are sorted by group so per-step evaluation can use
+    np.add.reduceat / np.maximum.reduceat for a fully vectorized grouped
+    log-sum-exp, with no Python-level looping over planets. This is a
+    one-time (load-time) cost -- like stellar_info, it should be loaded once
+    in kg_run_param.py and broadcast to all ranks, not reloaded per step.
+
+    Returns a dict of numpy arrays: P, M, R, e, omega (float64, sorted by
+    group), seg_starts (int64 start index of each planet's block within
+    those arrays), seg_counts (int64 number of draws for that planet), and
+    n_planets.
+    """
+    cols = ["Period_days", "M_pE", "R_pE", "e", "omega", "unique_planet"]
+    df = pd.read_csv(csv_path, usecols=cols, engine="pyarrow")
+    df = df.dropna(subset=cols)
+
+    # Sort by group so that each planet's draws form one contiguous block --
+    # this is what makes the reduceat-based grouped log-sum-exp possible.
+    df = df.sort_values("unique_planet", kind="mergesort").reset_index(drop=True)
+
+    group_ids = df["unique_planet"].to_numpy()
+    _, seg_starts, seg_counts = np.unique(group_ids, return_index=True, return_counts=True)
+    # group_ids is already sorted, so np.unique's first-occurrence indices
+    # land exactly on each block's start position within the sorted arrays.
+
+    return {
+        "P": df["Period_days"].to_numpy(dtype=np.float64),
+        "M": df["M_pE"].to_numpy(dtype=np.float64),
+        "R": df["R_pE"].to_numpy(dtype=np.float64),
+        "e": df["e"].to_numpy(dtype=np.float64),
+        "omega": df["omega"].to_numpy(dtype=np.float64),
+        "seg_starts": seg_starts.astype(np.int64),
+        "seg_counts": seg_counts.astype(np.int64),
+        "n_planets": len(seg_counts),
+    }
 
 
 def get_MES(stellar_df, mass, radius, period, ecc, omega, b):

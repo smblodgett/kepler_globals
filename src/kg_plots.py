@@ -59,8 +59,12 @@ from kg_param_boundary_arrays import (
 from kg_grid_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array 
 from kg_griddefiner import RPMGrid, RPMeoGrid
 from kg_constants import *
-from kg_utilities import mass_given_density_radius, radius_given_density_mass, ReadJson
-from kg_probability_distributions import get_probability_distributions, generate_catalog, synthetic_catalog_to_grid, synthetic_catalog_with_weights
+from kg_utilities import mass_given_density_radius, radius_given_density_mass, density_given_mass_radius, ReadJson
+from kg_probability_distributions import (
+    get_probability_distributions, generate_catalog, synthetic_catalog_to_grid, synthetic_catalog_with_weights,
+    period_log_pdf, mass_log_pdf, eccentricity_log_pdf, radius_given_mass_log_pdf, joint_log_intrinsic_density,
+    load_flat_observed_catalog,
+)
 from kg_grid_object_hook import grid_object_hook
 from kg_priors import PriorArgs
 
@@ -477,7 +481,8 @@ def find_h5_file(voxel_id,sampler_backend_folder):
 
 
 
-def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df,param_labels):
+def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,filename,voxel_grid,kmdc_filename,model_params,stellar_df,param_labels,
+                          likelihood_method='pointprocess', observed_catalog_filename="../data/final_kdc.csv"):
 
 
 ### WHY IS IT NOT FITTING NEIL N ROGERS 2020?
@@ -549,6 +554,29 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     print("top_samples[0]: ",top_samples[0])
     print("model_params: ",model_params)
 
+    # --- Always run, regardless of likelihood method: h5-backend-derived plots ---
+    param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
+    param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
+    param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
+
+    if likelihood_method == "pointprocess":
+        # New unbinned point-process marginal plots (see
+        # kg_likelihood.parametric_log_likelihood_pointprocess and the
+        # pointprocess_* functions defined above in this file). Everything
+        # below this branch is the legacy "grid" likelihood's 5-D
+        # binned-histogram plotting path (grid_sum/data_count/model_count,
+        # region-of-interest summations, etc.) and doesn't apply here --
+        # there's no voxel_grid.likelihood_array to compare against when the
+        # likelihood itself never bins anything.
+        pointprocess_synthetic_multiplier = 200
+        stellar_info = stellar_df[["Rad", "Mass"]].to_numpy(dtype=np.float32)
+        stellar_info = np.repeat(stellar_info, pointprocess_synthetic_multiplier, axis=0)
+        observed_catalog = load_flat_observed_catalog(observed_catalog_filename)
+        pointprocess_marginal_plots(top_samples[0], stellar_info, voxel_grid, observed_catalog, visualization_plot_folder)
+        print("Point-process marginal plots done.")
+        return
+
+    # --- everything below here is the legacy "grid" likelihood's plotting path ---
     synthetic_multiplier = 200
 
     p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(top_samples[0])
@@ -752,13 +780,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     param_1D_residuals_plot([zeros_model_count_omega,nonzeros_model_count_omega],omega_param_grid_array,visualization_plot_folder,"omega",["num zeros","num non-zeros"],'_zeros',y_axis_scale="linear")
     param_1D_likelihood_plot(grid_sum_omega,omega_param_grid_array,visualization_plot_folder,"omega")
 
-    param_trace_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
-
-    param_corner_plot(reader,nburnin,nthinning,model_id,visualization_plot_folder,param_labels)
-
-    param_voxel_comparison_plot(reconstructed_data,reconstructed_model,visualization_plot_folder) 
-
-    param_versus_likelihood_plots(log_prob,reader,param_labels,visualization_plot_folder)
+    param_voxel_comparison_plot(reconstructed_data,reconstructed_model,visualization_plot_folder)
 
     # eccentricity_function_plot(voxel_grid,top_samples,visualization_plot_folder)
 
@@ -1638,6 +1660,254 @@ def make_residuals(rpm_grid,results_folder,nburnin,mode="mass",verbose=False,fps
     
 
     
+# ---------------------------------------------------------------------------
+# Point-process-likelihood marginal plots
+# ---------------------------------------------------------------------------
+#
+# Everything above this section plots the *old* 5-D binned-histogram
+# likelihood (grid_sum, data_count/model_count arrays, etc.). Those functions
+# are left untouched. The functions below are new and separate -- they
+# visualize what kg_likelihood.parametric_log_likelihood_pointprocess actually
+# scores: real (unbinned) posterior draws vs. a completeness-weighted
+# synthetic catalog, plus the fully analytic intrinsic marginals for the
+# dimensions that have one (period, mass, eccentricity -- not radius, whose
+# marginal only exists conditioned on mass; see
+# kg_probability_distributions.radius_given_mass_log_pdf).
+#
+# Typical usage (e.g. from kg_run_param.py's plotting stage, or a notebook):
+#
+#   from kg_probability_distributions import load_flat_observed_catalog
+#   observed_catalog = load_flat_observed_catalog(runprops["observed_catalog_filename"])
+#   pointprocess_marginal_plots(best_params, stellar_info, voxel_grid,
+#                                observed_catalog, visualization_plot_folder)
+#
+# `voxel_grid` and `stellar_info` are the same objects already built/broadcast
+# in kg_run_param.py; `observed_catalog` is loaded the same way
+# kg_run_param.py loads it for the likelihood itself (see
+# load_flat_observed_catalog in kg_probability_distributions.py). Nothing
+# here modifies or depends on any of the plotting functions above.
+# ---------------------------------------------------------------------------
+
+_POINTPROCESS_DIM_INFO = {
+    # dim name: (column into (radius,period,mass,e,omega), observed_catalog key, display bin edges, x-axis scale)
+    "period":       (1, "P",     np.asarray(period_param_grid_array, dtype=float),       "log"),
+    "mass":         (2, "M",     np.asarray(mass_param_grid_array, dtype=float),         "log"),
+    "radius":       (0, "R",     np.asarray(radius_param_grid_array, dtype=float),       "log"),
+    "eccentricity": (3, "e",     np.asarray(eccentricity_param_grid_array, dtype=float), "linear"),
+    "omega":        (4, "omega", np.asarray(omega_param_grid_array, dtype=float),        "linear"),
+}
+
+
+def _observed_draw_weights(observed_catalog):
+    """
+    Per-draw weight so each real planet contributes total weight 1, spread
+    evenly across however many posterior draws it has. This matches how
+    parametric_log_likelihood_pointprocess averages over a planet's draws,
+    so planets with more posterior samples don't visually dominate a
+    marginal histogram just because they have more rows.
+    """
+    seg_counts = observed_catalog["seg_counts"]
+    return np.repeat(1.0 / seg_counts, seg_counts)
+
+
+def pointprocess_synthetic_catalog(params, stellar_info, voxel_grid, min_density=0.01, max_density=10.0, rank=0):
+    """
+    Builds the same completeness-weighted synthetic catalog used by
+    kg_likelihood.parametric_log_likelihood_pointprocess's Lambda_hat term, for
+    reuse here as the model's "predicted detected distribution". Pass a
+    higher-resolution `stellar_info` (bigger synthetic_multiplier) than you'd
+    use for the MCMC itself if you want smoother-looking plots -- there's no
+    10-second-per-step budget here.
+
+    Returns (trimmed_catalog, completeness_weights, density_mask), where
+    trimmed_catalog's columns are (radius, period, mass, e, omega) and
+    density_mask flags which rows fall in the physically-plausible density
+    range (matching kg_likelihood's density_bounds).
+    """
+    (p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0, γ1, γ2, mass_break_1, mass_break_2,
+     σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid,
+     is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs) = get_probability_distributions(params)
+
+    if is_nan_in_pmfs or is_inf_in_pmfs or is_neg_in_pmfs:
+        raise ValueError("get_probability_distributions produced degenerate PMFs for these params -- can't build a synthetic catalog to plot.")
+
+    synthetic_catalog, _ = generate_catalog(
+        stellar_info, p_Period, Period_fine_grid, p_mass, mass_fine_grid,
+        γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid, rank
+    )
+    trimmed_catalog, completeness_weights, _ = synthetic_catalog_with_weights(synthetic_catalog, voxel_grid, stellar_info)
+
+    synth_density = density_given_mass_radius(trimmed_catalog[:, 2], trimmed_catalog[:, 0])
+    density_mask = (synth_density >= min_density) & (synth_density <= max_density)
+
+    return trimmed_catalog, completeness_weights, density_mask
+
+
+def pointprocess_1D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
+                                   visualization_plot_folder, dims=None,
+                                   min_density=0.01, max_density=10.0, mode='save'):
+    """
+    For each dimension in `dims` (default: all five), plots three things
+    together so you can pull apart *why* a marginal does or doesn't match:
+
+      - bars: the real catalog's weighted marginal (each real planet
+        contributes total weight 1, split across its posterior draws).
+      - solid line: the model's completeness-weighted "predicted detected"
+        marginal, built from the same synthetic-catalog machinery
+        Lambda_hat uses in the likelihood -- this is the thing that should
+        actually match the data bars.
+      - dashed line (period/mass/eccentricity only): the model's *intrinsic*
+        analytic marginal, with no selection effects applied. Radius has no
+        closed-form marginal (only p(R|M), see radius_given_mass_log_pdf),
+        so only the completeness-weighted curve is shown for it.
+
+    This is the point-process-likelihood analogue of the old grid method's
+    param_1D_residuals_plot, but plotted from the same unbinned
+    representation the likelihood itself uses -- nothing here is put in a
+    5-D histogram for the comparison.
+    """
+    if dims is None:
+        dims = list(_POINTPROCESS_DIM_INFO.keys())
+
+    trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density
+    )
+    synth = trimmed_catalog[density_mask]
+    synth_weights = completeness_weights[density_mask]
+    obs_weights = _observed_draw_weights(observed_catalog)
+
+    γ0, γ1, γ2 = params[1], params[2], params[3]
+    mass_break_1, mass_break_2 = params[7], params[8]
+    C = params[9]
+    mu_M, sigma_M = params[10], params[11]
+    β1, β2 = params[12], params[13]
+    Period_break_1 = params[14]
+    α, λ, σ_e = params[15], params[16], params[17]
+
+    os.makedirs(visualization_plot_folder, exist_ok=True)
+
+    for dim in dims:
+        col, obs_key, bin_edges, xscale = _POINTPROCESS_DIM_INFO[dim]
+
+        data_density, edges = np.histogram(observed_catalog[obs_key], bins=bin_edges, weights=obs_weights, density=True)
+        synth_density, _ = np.histogram(synth[:, col], bins=bin_edges, weights=synth_weights, density=True)
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        widths = np.diff(edges)
+
+        plt.figure(dpi=300, facecolor='w')
+        plt.bar(centers, data_density, width=widths, alpha=0.4, color='C0', label='data (per-planet weighted)')
+        plt.plot(centers, synth_density, color='C1', linewidth=2, marker='o', markersize=3,
+                 label='model (completeness-weighted, predicted detections)')
+
+        if dim in ("period", "mass", "eccentricity"):
+            curve_x = np.linspace(bin_edges[0], bin_edges[-1], 2000)
+            if dim == "period":
+                curve_y = np.exp(period_log_pdf(curve_x, β1, β2, Period_break_1, P_min=bin_edges[0], P_max=bin_edges[-1]))
+            elif dim == "mass":
+                curve_y = np.exp(mass_log_pdf(curve_x, mu_M, sigma_M))
+            else:
+                curve_y = np.exp(eccentricity_log_pdf(curve_x, α, λ, σ_e))
+            plt.plot(curve_x, curve_y, color='C2', linestyle='--', label='model (intrinsic, no selection effects)')
+
+        if xscale == "log":
+            plt.xscale("log")
+        plt.xlabel(dim, fontsize=10)
+        plt.ylabel("density")
+        plt.legend(fontsize=7)
+        plt.title(f"Point-process marginal: {dim}")
+        if mode == 'save':
+            plt.savefig(f"{visualization_plot_folder}/pointprocess_1D_marginal_{dim}.pdf")
+        elif mode == 'show':
+            plt.show()
+        plt.close()
+
+
+_POINTPROCESS_2D_PAIRS_DEFAULT = [("mass", "radius"), ("period", "radius"), ("period", "mass")]
+
+
+def pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
+                                   visualization_plot_folder, pairs=None,
+                                   min_density=0.01, max_density=10.0, n_bins=40, mode='save'):
+    """
+    2D analogue of pointprocess_1D_marginal_plot: for each (x, y) pair in
+    `pairs` (default: mass-radius, period-radius, period-mass), draws a
+    filled 2-D weighted histogram of the real catalog (greyscale) with
+    contour lines from the model's completeness-weighted synthetic catalog
+    overlaid, so you can check whether the *joint* shape lines up (e.g. the
+    mass-radius relation's slope/scatter), not just the two 1-D marginals
+    separately.
+    """
+    if pairs is None:
+        pairs = _POINTPROCESS_2D_PAIRS_DEFAULT
+
+    trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density
+    )
+    synth = trimmed_catalog[density_mask]
+    synth_weights = completeness_weights[density_mask]
+    obs_weights = _observed_draw_weights(observed_catalog)
+
+    os.makedirs(visualization_plot_folder, exist_ok=True)
+
+    for dim_x, dim_y in pairs:
+        col_x, key_x, edges_x, scale_x = _POINTPROCESS_DIM_INFO[dim_x]
+        col_y, key_y, edges_y, scale_y = _POINTPROCESS_DIM_INFO[dim_y]
+
+        bins_x = (np.logspace(np.log10(edges_x[0]), np.log10(edges_x[-1]), n_bins) if scale_x == "log"
+                  else np.linspace(edges_x[0], edges_x[-1], n_bins))
+        bins_y = (np.logspace(np.log10(edges_y[0]), np.log10(edges_y[-1]), n_bins) if scale_y == "log"
+                  else np.linspace(edges_y[0], edges_y[-1], n_bins))
+
+        data_hist, xedges, yedges = np.histogram2d(observed_catalog[key_x], observed_catalog[key_y],
+                                                     bins=[bins_x, bins_y], weights=obs_weights)
+        synth_hist, _, _ = np.histogram2d(synth[:, col_x], synth[:, col_y], bins=[bins_x, bins_y], weights=synth_weights)
+
+        # Rescale the model histogram onto the data's total weight, so the
+        # contours compare *shape*, not overall normalization/Gamma0.
+        if synth_hist.sum() > 0:
+            synth_hist = synth_hist * (data_hist.sum() / synth_hist.sum())
+
+        x_centers = 0.5 * (xedges[:-1] + xedges[1:])
+        y_centers = 0.5 * (yedges[:-1] + yedges[1:])
+
+        plt.figure(figsize=(8, 7), dpi=250, facecolor='w')
+        plt.pcolormesh(xedges, yedges, data_hist.T, cmap='Greys', shading='auto')
+        cbar = plt.colorbar()
+        cbar.set_label("data (weighted planet count)")
+
+        if synth_hist.max() > 0:
+            levels = np.linspace(synth_hist.max() * 0.05, synth_hist.max(), 6)
+            plt.contour(x_centers, y_centers, synth_hist.T, levels=levels, cmap='autumn', linewidths=1.5)
+
+        if scale_x == "log":
+            plt.xscale("log")
+        if scale_y == "log":
+            plt.yscale("log")
+        plt.xlabel(dim_x, fontsize=10)
+        plt.ylabel(dim_y, fontsize=10)
+        plt.title(f"Point-process 2D marginal: {dim_x} vs {dim_y}\n(greyscale = data, contours = model prediction)", fontsize=10)
+        plt.tight_layout()
+        if mode == 'save':
+            plt.savefig(f"{visualization_plot_folder}/pointprocess_2D_marginal_{dim_x}_{dim_y}.png")
+        elif mode == 'show':
+            plt.show()
+        plt.close()
+
+
+def pointprocess_marginal_plots(params, stellar_info, voxel_grid, observed_catalog,
+                                 visualization_plot_folder, dims=None, pairs=None,
+                                 min_density=0.01, max_density=10.0, mode='save'):
+    """Convenience wrapper: runs both pointprocess_1D_marginal_plot and
+    pointprocess_2D_marginal_plot in one call (mirrors how heatmap_plot
+    wraps make_histograms for the old grid-based plots, above)."""
+    pointprocess_1D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
+                                   visualization_plot_folder, dims=dims,
+                                   min_density=min_density, max_density=max_density, mode=mode)
+    pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
+                                   visualization_plot_folder, pairs=pairs,
+                                   min_density=min_density, max_density=max_density, mode=mode)
+
+
 def main(voxel_id,plottype,model_run_folder_argv):
     
     cwd = os.getcwd()
@@ -1672,6 +1942,8 @@ def main(voxel_id,plottype,model_run_folder_argv):
     is_plot_ids = plotprops.get("is_plot_ids")
     heatmap_plot_type = plotprops.get("heatmap_plot_type")
     residual_plot_type = plotprops.get("residual_plot_type")
+    likelihood_method = plotprops.get("likelihood_method", "pointprocess")
+    observed_catalog_filename = plotprops.get("observed_catalog_filename", "../data/final_kdc.csv")
     model_id = plotprops.get("model_id")
     print("model_id: ", model_id)
     prior_args = PriorArgs().load_priors()
@@ -1738,7 +2010,8 @@ def main(voxel_id,plottype,model_run_folder_argv):
         param_trace_plot(results_folder,model_run_folder,model_id,nburnin,param_result_filename)
 
     if plottype == "param_analysis":
-        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df,param_labels)
+        param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinning,param_result_filename,voxel_grid_param,input_data_filename,params,stellar_df,param_labels,
+                              likelihood_method=likelihood_method, observed_catalog_filename=observed_catalog_filename)
 
     print("Done with plotting.")
     
