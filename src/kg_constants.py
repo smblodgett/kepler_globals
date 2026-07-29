@@ -1,3 +1,6 @@
+### NEED TO VERIFY WITH PHODYMM THAT ALL THE CONSTANTS ARE THE RIGHT VALUES -- CURRENTLY 28.02 is max density
+
+
 METOMS=3.0024584*10**-6 # earth mass to solar mass
 METOMJ=0.00314636   # earth mass to jupiter mass
 MEG=5.9721986*10**27 # earth mass in grams
@@ -5,7 +8,7 @@ MEKG=MEG/1000 # earth mass in kilograms
 MSKG=1.9891*10**30 # solar mass in kilograms
 MSTOMJ=1047.92612 # solar mass in jupiter masses
 
-RECM=6.378*10**8  # earth radius in cm
+RECM=6.378*10**8  # earth radius in cm    ### SHOULD BE: volumetric radius (6.371*10**8)
 RETORS=0.009171 # earth radius to solar radius
 RJTORE=11.20814 # jupiter radius to earth radius
 RJTORS=0.10045 # jupiter radius to solar radius

@@ -319,8 +319,13 @@ def main(runprops):
         processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,runprops["minimum_density"],runprops["maximum_density"])
         
         # Remove the planets with densities above or below a certain threshold, because they are unphysical
+        
+        
+        print("length of df before requiring stability: ",len(df))
         if runprops["exclude_bad_densities"]:
             df = df[(df["rho_p"]<runprops["maximum_density"]) & (df["rho_p"]>runprops["minimum_density"])]
+        print("length of df after excluding bad densities: ",len(df))
+
 
         print("length of df after before requiring stability: ",len(df))
         # Exclude any posterior draw that has a periastron less than 2 stellar radii

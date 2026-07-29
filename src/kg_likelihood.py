@@ -181,7 +181,7 @@ def parametric_log_likelihood(params, model_id):
     mask = ~zero_mask  & density_prior_mask
 
         # Poisson branch — evaluated on ALL voxels in density_prior_mask, smoothed to avoid log(0)
-    ALPHA = 1e-10
+    ALPHA = 1e-8
     mask = ~zero_mask & density_prior_mask
     model_count_floored = np.maximum(model_count[mask], ALPHA)
     voxel_num_data_all = voxel_num_data[mask]
