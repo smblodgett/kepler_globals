@@ -59,7 +59,7 @@ class GridJSONEncoder(json.JSONEncoder):
         return str(obj)
 
 
-def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true, rho_star_uncertainty,KIC_id,num_samples,rng):
+def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true, rho_star_uncertainty,KIC_id,num_samples,rng,make_graphs=True):
     """
     Samples eccentricity and omega for a planet based on its radius and period, using the photoeccentric effect.
     
@@ -96,7 +96,8 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
     eccentricity = eccentricity[indices]  # Sample eccentricity based on the weights
     omega = omega[indices]  # Sample omega based on the weights
 
-    ecc_omega_singles_posterior_plot(eccentricity,omega,KIC_id=KIC_id)
+    if make_graphs:
+        ecc_omega_singles_posterior_plot(eccentricity,omega,KIC_id=KIC_id)
 
     ### how to get the eccentricity to be less elevated? How do we deweight the high eccentricities?
     ### cut out all samples with q < 2 stellar radii and reweight?
@@ -128,7 +129,7 @@ def _sample_positive_normal(rng, loc, scale, size):
     return values
 
 
-def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222):
+def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,validation_graph=True,make_graphs=True):
 
     num_posteriors_per_planet = 1000
 
@@ -136,20 +137,21 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222):
     
     rng = np.random.default_rng(seed=seed)
 
-    ##### graphing GJ436 for validation - using Lanotte et al 2014
-    radius = rng.normal(3.96,0.05,size=num_posteriors_per_planet)
-    period = rng.normal(2.6438979,0.0000003,size=num_posteriors_per_planet)
-    b = rng.normal(0.8521,0.0021,size=num_posteriors_per_planet)
-    T_14 = rng.normal(0.04227*24,0.00016*24,size=num_posteriors_per_planet)
-    rho_star_true = (0.452 * MSKG * 1000) / ((4/3) * np.pi * (0.455 * RSCM)**3) * 1000
-    rho_star_uncertainty_lower = ((0.452 - 0.012) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 + 0.014) * RSCM)**3) * 1000
-    rho_star_uncertainty_upper = ((0.452 + 0.014) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 - 0.012) * RSCM)**3) * 1000
-    rho_star_uncertainty = np.maximum(np.abs(rho_star_uncertainty_lower - rho_star_true), np.abs(rho_star_uncertainty_upper - rho_star_true))
-    star_planet_radius_ratio = radius * RECM / (0.455 * RSCM)
-    print("GJ rho star true: ",rho_star_true)
-    print("GJ rho star uncertainty: ",rho_star_uncertainty)
-    sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_posteriors_per_planet,rng)
-    #####
+    if validation_graph:
+        ##### graphing GJ436 for validation - using Lanotte et al 2014
+        radius = rng.normal(3.96,0.05,size=num_posteriors_per_planet)
+        period = rng.normal(2.6438979,0.0000003,size=num_posteriors_per_planet)
+        b = rng.normal(0.8521,0.0021,size=num_posteriors_per_planet)
+        T_14 = rng.normal(0.04227*24,0.00016*24,size=num_posteriors_per_planet)
+        rho_star_true = (0.452 * MSKG * 1000) / ((4/3) * np.pi * (0.455 * RSCM)**3) * 1000
+        rho_star_uncertainty_lower = ((0.452 - 0.012) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 + 0.014) * RSCM)**3) * 1000
+        rho_star_uncertainty_upper = ((0.452 + 0.014) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 - 0.012) * RSCM)**3) * 1000
+        rho_star_uncertainty = np.maximum(np.abs(rho_star_uncertainty_lower - rho_star_true), np.abs(rho_star_uncertainty_upper - rho_star_true))
+        star_planet_radius_ratio = radius * RECM / (0.455 * RSCM)
+        print("GJ rho star true: ",rho_star_true)
+        print("GJ rho star uncertainty: ",rho_star_uncertainty)
+        sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_posteriors_per_planet,rng,make_graphs=make_graphs)
+        #####
 
     for index, row in singles_dr_df.iterrows():
         radius = _sample_positive_normal(rng, row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])), num_posteriors_per_planet)
@@ -199,7 +201,7 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222):
         print("number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
         print("number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
 
-        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_posteriors_per_planet,rng)
+        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_posteriors_per_planet,rng,make_graphs=make_graphs)
 
         final_singles_array[index*num_posteriors_per_planet:(index+1)*num_posteriors_per_planet] = np.array([radius, period, mass, eccentricity, omega,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
 
