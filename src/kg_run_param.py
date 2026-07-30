@@ -70,9 +70,16 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
     best_params = samples[best_idx].tolist()  # convert to list for JSON
     best_blob = backend.get_blobs(flat=True)[best_idx]  # get the blobs for the best sample
     rng_metadata = {"master_seed": int(best_blob[0]), "rank_seed": int(best_blob[1]), "time_seed": int(best_blob[2])}
+    # lambda_tilde is the shape-only (Gamma0=1) expected-count integral that
+    # produced this logL (see kg_likelihood.parametric_log_likelihood_pointprocess/
+    # _grid and profile_optimal_gamma0). Gamma0 is no longer a sampled
+    # parameter, so it's saved here alongside the best params for reference --
+    # Gamma0_opt = n_planets / lambda_tilde_best.
+    lambda_tilde_best = float(best_blob[3]) if len(best_blob) > 3 else None
     print(f"Best log probability: {best_logp}")
     print(f"Best parameters: {best_params}")
     print(f"RNG metadata for best run: {rng_metadata}")
+    print(f"Lambda_tilde for best run: {lambda_tilde_best}")
 
     # load an existing best guess, if it exists
     if os.path.exists(best_guess_filename):
@@ -86,12 +93,12 @@ def save_best_model(best_guess_filename,model_run_dir,backend):
 
     # save the very best parameters from this run in the run output directory
     with open(model_run_dir + '/best_fit.json', "w") as f:
-        json.dump({"log_prob": best_logp, "params": best_params}, f, indent=2)
+        json.dump({"log_prob": best_logp, "params": best_params, "lambda_tilde": lambda_tilde_best}, f, indent=2)
 
     # compare and update if better in the all-time best guess file
     if best_logp > saved_logp:
         with open(best_guess_filename, "w") as f:
-            json.dump({"log_prob": best_logp, "params": best_params}, f, indent=2)
+            json.dump({"log_prob": best_logp, "params": best_params, "lambda_tilde": lambda_tilde_best}, f, indent=2)
         print("New best parameters saved.")
     else:
         print("Existing best parameters are better. No update made.")
@@ -138,12 +145,13 @@ def run_emcee(model_id,runprops,pool,best_guess_filename,backend,model_run_dir):
 
     #### CHECK ABOUT STEP SIZE AND ACCEPTANCE FRACTION...SEEMS LIKE A/FRAC IS VERY LOW, POSSIBLE STOCHAISTICITY ISSUE?
     # create the emcee sampler
-    sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"], 
-                                    kg_likelihood.parametric_log_probability,backend=backend, 
-                                    pool=pool,moves=[(emcee.moves.StretchMove(a=runprops["stretch_a"]),1.0)], 
+    sampler = emcee.EnsembleSampler(runprops["nwalkers"], runprops["ndim"],
+                                    kg_likelihood.parametric_log_probability,backend=backend,
+                                    pool=pool,moves=[(emcee.moves.StretchMove(a=runprops["stretch_a"]),1.0)],
                                     blobs_dtype = [("master_seed", int),
                                                    ("rank_seed", int),
-                                                   ("time_seed", int),],
+                                                   ("time_seed", int),
+                                                   ("lambda_tilde", float),],
                                     args=())
 
     timer(runprops["timer"],"emcee setup")

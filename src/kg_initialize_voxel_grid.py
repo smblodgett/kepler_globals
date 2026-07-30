@@ -104,6 +104,30 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
     return eccentricity, omega
 
 
+def _sample_positive_normal(rng, loc, scale, size):
+    """
+    Draws from a Normal(loc, scale), resampling any non-positive values until
+    the whole array comes out strictly positive.
+
+    Used for radii (planet and stellar) in process_singles_df, which the rest
+    of the pipeline assumes are strictly positive: mass_given_density_radius
+    cubes the radius to get a mass, so a negative radius draw produces a
+    negative mass outright, and downstream density/ratio calculations assume
+    a positive stellar radius too. A plain rng.normal call has no floor at
+    zero, so for any KOI whose reported radius uncertainty is large relative
+    to its central value (common for small, faint singles) some fraction of
+    the 1000 posterior draws would otherwise land at negative radius --
+    silently corrupting that fraction of the planet's posterior with a
+    negative mass rather than correctly representing its uncertainty.
+    """
+    values = rng.normal(loc, scale, size=size)
+    bad = values <= 0
+    while np.any(bad):
+        values[bad] = rng.normal(loc, scale, size=np.sum(bad))
+        bad = values <= 0
+    return values
+
+
 def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222):
 
     num_posteriors_per_planet = 1000
@@ -128,7 +152,7 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222):
     #####
 
     for index, row in singles_dr_df.iterrows():
-        radius = rng.normal(row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])),size=num_posteriors_per_planet)
+        radius = _sample_positive_normal(rng, row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])), num_posteriors_per_planet)
         period = rng.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=num_posteriors_per_planet)
         print("period with max abs error:", row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])))
 
@@ -165,7 +189,7 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222):
         radius_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_Rad"].values[0]
         radius_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_Rad"].values[0]
         radius_star_uncertainty = np.maximum(np.abs(radius_star_upper_uncertainty), np.abs(radius_star_lower_uncertainty))
-        radius_star = rng.normal(radius_star_val, radius_star_uncertainty, size=num_posteriors_per_planet)
+        radius_star = _sample_positive_normal(rng, radius_star_val, radius_star_uncertainty, num_posteriors_per_planet)
 
 
         planet_star_radius_ratio = radius * RECM / (radius_star * RSCM) 

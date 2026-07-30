@@ -34,7 +34,16 @@ class PriorArgs:
             case _:
                 raise ValueError(f"Unknown prior type: {prior_type}")
     def load_priors(self):
-        self.add_prior('Log10(Gamma_0)', -4, 2.0,"U", [0,1])  # now log10(Gamma0)
+        # Gamma_0 (overall occurrence-rate normalization) is no longer a free
+        # MCMC parameter. It has a closed-form conditional optimum given the
+        # shape parameters (Gamma0_opt = n_planets / Lambda_tilde), and with
+        # this prior's original uniform-in-log10(Gamma0) form, the exact
+        # conditional posterior is Gamma0 | shape ~ Gamma(n_planets,
+        # Lambda_tilde) -- see kg_likelihood.parametric_log_likelihood_pointprocess
+        # and kg_plots.pointprocess_gamma0_posterior_plot, which reconstructs
+        # Gamma0's full posterior after the fact from the per-step
+        # lambda_tilde blob, so nothing about Gamma0 is actually lost by
+        # dropping it from here.
         self.add_prior('gamma_0', -1,1,"U", [0,1])
         self.add_prior('gamma_1', -1.5, 1.5,"U", [0,1])  # lnN(0.6,0.1)
         self.add_prior('gamma_2', -1, 2,"U", [0,1])  # lnN(0,0.1)
@@ -58,8 +67,7 @@ class PriorArgs:
 
         return self
     def load_plot_labels(self):
-        self.plot_labels = [r'$\mathrm{log}_{10}(Γ_0)$',
-                            '$γ_0$',
+        self.plot_labels = ['$γ_0$',
                             '$γ_1$', 
                             '$γ_2$',  
                             '$σ_0$',  

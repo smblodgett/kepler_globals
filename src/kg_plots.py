@@ -63,7 +63,7 @@ from kg_utilities import mass_given_density_radius, radius_given_density_mass, d
 from kg_probability_distributions import (
     get_probability_distributions, generate_catalog, synthetic_catalog_to_grid, synthetic_catalog_with_weights,
     period_log_pdf, mass_log_pdf, eccentricity_log_pdf, radius_given_mass_log_pdf, joint_log_intrinsic_density,
-    load_flat_observed_catalog,
+    load_flat_observed_catalog, profile_optimal_gamma0,
 )
 from kg_grid_object_hook import grid_object_hook
 from kg_priors import PriorArgs
@@ -574,6 +574,14 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
         observed_catalog = load_flat_observed_catalog(observed_catalog_filename)
         pointprocess_marginal_plots(top_samples[0], stellar_info, voxel_grid, observed_catalog, visualization_plot_folder)
         print("Point-process marginal plots done.")
+
+        # Gamma0 was profiled out analytically rather than sampled (see
+        # kg_likelihood.parametric_log_likelihood_pointprocess), so its
+        # posterior isn't in `samples` at all -- reconstruct it from the
+        # per-step lambda_tilde blob instead (exact conjugate draw, see
+        # pointprocess_gamma0_posterior_plot's docstring).
+        pointprocess_gamma0_posterior_plot(reader, nburnin, observed_catalog["n_planets"], visualization_plot_folder, nthinning=nthinning)
+        print("Gamma0 posterior reconstruction done.")
         return
 
     # --- everything below here is the legacy "grid" likelihood's plotting path ---
@@ -604,20 +612,27 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
 
     rearranged_synthetic_catalog, completeness, stellar_info = synthetic_catalog_with_weights(synthetic_catalog,voxel_grid,stellar_info)
 
-    Gamma0 = 10**top_samples[0,0]
+    # Gamma0 is not in top_samples anymore (profiled out analytically, not
+    # sampled -- see kg_likelihood.parametric_log_likelihood_grid and
+    # profile_optimal_gamma0), so it's reconstructed here the same way: the
+    # zero/nonzero mask doesn't depend on Gamma0 (as long as Gamma0>0), so it
+    # can be built from the raw (Gamma0=1) histogram first, then
+    # Gamma0_opt = sum(data[mask]) / sum(hist[mask]).
     voxel_num_data = voxel_grid.likelihood_array[:,:,:,:,:,0]
-    model_count = Gamma0 * voxel_grid.likelihood_array[:,:,:,:,:,1] 
+    voxel_hist = voxel_grid.likelihood_array[:,:,:,:,:,1]  # Gamma0=1 model histogram
 
-    
+    density_prior_mask = voxel_grid.get_density_prior_mask()
+    zero_mask_gamma = (voxel_hist == 0) & (voxel_num_data == 0)
+    gamma_mask = ~zero_mask_gamma & density_prior_mask
+
+    Gamma0 = profile_optimal_gamma0(np.sum(voxel_num_data[gamma_mask]), np.sum(voxel_hist[gamma_mask]))
+    model_count = Gamma0 * voxel_hist
 
     yes_data_yes_model_voxels = (voxel_num_data > 0) & (model_count > 0)
     yes_data_no_model_voxels = (voxel_num_data > 0) & (model_count == 0)
     no_data_yes_model_voxels = (voxel_num_data == 0) & (model_count > 0)
     no_data_no_model_voxels = (voxel_num_data == 0) & (model_count == 0)
     print("yes data yes model: ", np.sum(yes_data_yes_model_voxels),"yes data no model: ", np.sum(yes_data_no_model_voxels),"no data yes model: ", np.sum(no_data_yes_model_voxels),"no data no model: ", np.sum(no_data_no_model_voxels))
-
-
-    density_prior_mask = voxel_grid.get_density_prior_mask()
 
 
     zero_mask = (model_count == 0) & (voxel_num_data == 0)
@@ -1776,13 +1791,16 @@ def pointprocess_1D_marginal_plot(params, stellar_info, voxel_grid, observed_cat
     synth_weights = completeness_weights[density_mask]
     obs_weights = _observed_draw_weights(observed_catalog)
 
-    γ0, γ1, γ2 = params[1], params[2], params[3]
-    mass_break_1, mass_break_2 = params[7], params[8]
-    C = params[9]
-    mu_M, sigma_M = params[10], params[11]
-    β1, β2 = params[12], params[13]
-    Period_break_1 = params[14]
-    α, λ, σ_e = params[15], params[16], params[17]
+    # Gamma0 is not in `params` (profiled out analytically, not sampled --
+    # see kg_likelihood.parametric_log_likelihood_pointprocess), so indices
+    # here match get_probability_distributions/joint_log_intrinsic_density.
+    γ0, γ1, γ2 = params[0], params[1], params[2]
+    mass_break_1, mass_break_2 = params[6], params[7]
+    C = params[8]
+    mu_M, sigma_M = params[9], params[10]
+    β1, β2 = params[11], params[12]
+    Period_break_1 = params[13]
+    α, λ, σ_e = params[14], params[15], params[16]
 
     os.makedirs(visualization_plot_folder, exist_ok=True)
 
@@ -1906,6 +1924,212 @@ def pointprocess_marginal_plots(params, stellar_info, voxel_grid, observed_catal
     pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
                                    visualization_plot_folder, pairs=pairs,
                                    min_density=min_density, max_density=max_density, mode=mode)
+
+
+def pointprocess_gamma0_posterior_plot(reader, nburnin, n_planets, visualization_plot_folder,
+                                        nthinning=1, seed=None, mode='save'):
+    """
+    Reconstructs Gamma0's full posterior after the fact, at zero MCMC cost,
+    even though Gamma0 was never sampled (see kg_likelihood.
+    parametric_log_likelihood_pointprocess/_grid and profile_optimal_gamma0).
+
+    Every stored MCMC step already has its own Lambda_tilde (the shape-only,
+    Gamma0=1 expected-count integral) saved in the emcee blobs. With this
+    project's uniform-in-log10(Gamma0) prior -- equivalent to a 1/Gamma0
+    prior in Gamma0-space -- the conditional posterior of Gamma0 given any
+    one retained shape sample is *exactly* conjugate:
+
+        Gamma0 | shape ~ Gamma(shape=n_planets, rate=Lambda_tilde)
+
+    So drawing one Gamma0 per retained step (using that step's own
+    Lambda_tilde) gives proper posterior samples of Gamma0 -- not just a
+    point estimate -- fully consistent with (and, since it's an exact
+    conjugate draw rather than something the sampler had to explore and
+    mix over, arguably less noisy than) actually including Gamma0 as an
+    18th sampled dimension.
+
+    Parameters
+    ----------
+    reader : emcee.backends.HDFBackend
+      Same backend already opened in param_analysis_plots.
+    nburnin, nthinning : int
+      Same discard/thinning used for the other trace/corner plots.
+    n_planets : int
+      observed_catalog["n_planets"].
+    seed : int, optional
+      Seed for the Gamma0 draws (reproducibility only -- these draws don't
+      affect the shape posterior at all).
+
+    Returns
+    -------
+    ndarray
+      The reconstructed Gamma0 posterior samples (one per valid retained
+      step/walker).
+    """
+    blobs = reader.get_blobs(discard=nburnin, flat=True)
+    lambda_tilde = np.asarray(blobs["lambda_tilde"], dtype=np.float64)[::nthinning]
+
+    valid = np.isfinite(lambda_tilde) & (lambda_tilde > 0)
+    lambda_tilde = lambda_tilde[valid]
+
+    if len(lambda_tilde) == 0:
+        print("pointprocess_gamma0_posterior_plot: no valid lambda_tilde values found in the backend -- skipping.")
+        return np.array([])
+
+    rng = np.random.default_rng(seed)
+    gamma0_samples = rng.gamma(shape=n_planets, scale=1.0 / lambda_tilde, size=len(lambda_tilde))
+
+    plt.figure(dpi=200, facecolor='w')
+    plt.hist(gamma0_samples, bins=80, color='C0', alpha=0.8)
+    plt.axvline(np.median(gamma0_samples), color='r', linewidth=1, label=f"median={np.median(gamma0_samples):.3f}")
+    plt.xlabel(r"$\Gamma_0$ (reconstructed posterior)")
+    plt.ylabel("count")
+    plt.title(r"$\Gamma_0$ posterior, reconstructed via Gamma($n_{planets}$, $\tilde{\Lambda}$) conjugacy")
+    plt.legend(fontsize=8)
+    plt.tight_layout()
+    if mode == 'save':
+        os.makedirs(visualization_plot_folder, exist_ok=True)
+        plt.savefig(f"{visualization_plot_folder}/pointprocess_gamma0_posterior.png")
+    elif mode == 'show':
+        plt.show()
+    plt.close()
+
+    print(f"Gamma0 posterior reconstructed from {len(gamma0_samples)} steps: "
+          f"median={np.median(gamma0_samples):.4f}, "
+          f"16/84%=({np.percentile(gamma0_samples,16):.4f}, {np.percentile(gamma0_samples,84):.4f})")
+
+    return gamma0_samples
+
+
+def pointprocess_region_of_interest_rate(params, stellar_info, voxel_grid, observed_catalog, region,
+                                          min_density=0.01, max_density=10.0, synthetic_multiplier=200, label=None):
+    """
+    Finds and prints the model's integrated occurrence rate (planets per
+    star) within a RegionOfInterest box of (radius, period, mass, e, omega)
+    space -- the point-process-likelihood analogue of the legacy grid
+    method's region_of_interest_summation (see the RegionOfInterest class
+    and save_region_of_interest_summation above).
+
+    Instead of integrating a 5-D histogram, this reuses the exact same
+    completeness-weighted Monte Carlo synthetic catalog that
+    kg_likelihood.parametric_log_likelihood_pointprocess's Lambda_hat is
+    built from (via pointprocess_synthetic_catalog, defined above), just
+    masked down to the requested box and normalized per star instead of
+    summed over the whole of parameter space -- so this number is directly
+    a sub-region breakdown of that same Lambda_hat.
+
+    Gamma0 is not in `params` (it's profiled out analytically, not sampled --
+    see kg_likelihood.parametric_log_likelihood_pointprocess and
+    profile_optimal_gamma0), so it's reconstructed here from the *same*
+    shape parameters via Gamma0_opt = n_planets / Lambda_tilde, using the
+    full (whole-parameter-space) synthetic catalog for Lambda_tilde --
+    exactly the quantity kg_likelihood computes at this shape every MCMC
+    step -- before masking down to the requested box.
+
+    Parameters
+    ----------
+    params : array-like
+      Model (shape) parameter vector (e.g. the best-fit sample). 17 entries;
+      does not include Gamma0.
+    stellar_info : ndarray
+      (Rad, Mass) array as used by generate_catalog -- pass a larger,
+      higher-resolution one than you'd use for MCMC if you want a less
+      noisy Monte Carlo estimate; there's no per-step time budget here.
+    voxel_grid : RPMeoGrid
+      Grid providing the completeness/transit-probability interpolators.
+    observed_catalog : dict
+      As returned by load_flat_observed_catalog -- only used for its
+      n_planets, to reconstruct Gamma0_opt.
+    region : RegionOfInterest
+      The box to integrate over. Any of its *_range attributes left as an
+      empty list means "no restriction on that dimension" (matching
+      RegionOfInterest's own defaults).
+    min_density, max_density : float
+      Physical density bounds (g/cm^3), matching kg_likelihood.density_bounds.
+    synthetic_multiplier : int
+      Must match how many times `stellar_info` has been repeated (see
+      pointprocess_synthetic_catalog / param_analysis_plots), so Lambda_tilde
+      here is on the same "expected total over real N_stars" scale as
+      kg_likelihood's -- otherwise Gamma0_opt would be off by that factor.
+    label : str, optional
+      What to call this region in the printed line; defaults to the
+      region's own attributes.
+
+    Returns
+    -------
+    float
+      The integrated occurrence rate, in planets per star.
+    """
+    trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density
+    )
+
+    def _bounds(rng, grid_array):
+        if rng:
+            return rng[0], rng[1]
+        grid_array = np.asarray(grid_array, dtype=float)
+        return grid_array.min(), grid_array.max()
+
+    radius_low, radius_high = _bounds(region.radius_range, radius_param_grid_array)
+    period_low, period_high = _bounds(region.period_range, period_param_grid_array)
+    mass_low, mass_high = _bounds(region.mass_range, mass_param_grid_array)
+    ecc_low, ecc_high = _bounds(region.ecc_range, eccentricity_param_grid_array)
+    omega_low, omega_high = _bounds(region.omega_range, omega_param_grid_array)
+
+    box_mask = (
+        (trimmed_catalog[:, 0] > radius_low) & (trimmed_catalog[:, 0] < radius_high) &
+        (trimmed_catalog[:, 1] > period_low) & (trimmed_catalog[:, 1] < period_high) &
+        (trimmed_catalog[:, 2] > mass_low) & (trimmed_catalog[:, 2] < mass_high) &
+        (trimmed_catalog[:, 3] > ecc_low) & (trimmed_catalog[:, 3] < ecc_high) &
+        (trimmed_catalog[:, 4] > omega_low) & (trimmed_catalog[:, 4] < omega_high)
+    )
+
+    # Lambda_tilde over the FULL (whole-parameter-space) density-masked
+    # catalog -- exactly what kg_likelihood.parametric_log_likelihood_pointprocess
+    # computes for this shape -- so Gamma0_opt matches what the MCMC would
+    # have used at this same params.
+    Lambda_tilde = np.sum(completeness_weights[density_mask]) / synthetic_multiplier
+    Gamma0 = profile_optimal_gamma0(observed_catalog["n_planets"], Lambda_tilde)
+
+    mask = box_mask & density_mask
+
+    # Normalize by the FULL synthetic draw count (len(stellar_info)), not the
+    # post-trim/post-mask count -- points dropped by synthetic_catalog_with_weights
+    # (out of grid bounds, dynamically implausible) or by the density mask
+    # correctly contribute zero to the numerator while still counting toward
+    # the denominator, exactly matching how Lambda_hat itself is normalized
+    # in kg_likelihood.parametric_log_likelihood_pointprocess (there,
+    # dividing by synthetic_multiplier instead is equivalent to dividing by
+    # len(stellar_info) and then multiplying back up by N_stars).
+    rate = Gamma0 * np.sum(completeness_weights[mask]) / len(stellar_info)
+
+    region_label = label if label is not None else str(region.__dict__)
+    print(f"Region: {region_label} -- integrated occurrence rate: {rate:.5f} planets/star (Gamma0_opt={Gamma0:.4f})")
+
+    return rate
+
+
+def print_pointprocess_regions_of_interest(params, stellar_info, voxel_grid, observed_catalog, region_object_list,
+                                            min_density=0.01, max_density=10.0, synthetic_multiplier=200, save_path=None):
+    """
+    Convenience wrapper: prints the integrated occurrence rate for every
+    RegionOfInterest in region_object_list (point-process analogue of
+    save_region_of_interest_summation). Pass save_path to also append each
+    line to a text file, matching that legacy function's output format.
+
+    Returns a list of (region, rate) tuples.
+    """
+    results = []
+    for region in region_object_list:
+        rate = pointprocess_region_of_interest_rate(
+            params, stellar_info, voxel_grid, observed_catalog, region,
+            min_density=min_density, max_density=max_density, synthetic_multiplier=synthetic_multiplier,
+        )
+        results.append((region, rate))
+        if save_path is not None:
+            with open(save_path, 'a') as f:
+                f.write(f"Region: {region.__dict__}, Planets in this region / Star: {rate:.5f}\n")
+    return results
 
 
 def main(voxel_id,plottype,model_run_folder_argv):

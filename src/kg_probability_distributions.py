@@ -251,6 +251,26 @@ class EccentricityDistribution:
 #          + sum_j log( <f_pop(theta_j) * completeness(theta_j)>_j )
 #          - Gamma0 * Lambda_hat
 #
+# Gamma0 (the overall occurrence-rate normalization) is NOT sampled by the
+# MCMC. For any fixed shape parameters, this is exactly a Poisson-process
+# rate-normalization problem, so the logL-maximizing Gamma0 has a closed
+# form: Gamma0_opt = N_obs / Lambda_tilde, where Lambda_tilde = Lambda_hat
+# evaluated at Gamma0=1 (i.e. the shape-only expected-count integral).
+# Substituting Gamma0_opt back in gives the profile log-likelihood actually
+# used in kg_likelihood.py:
+#   logL_profile = N_obs*log(N_obs) - N_obs*log(Lambda_tilde) - N_obs
+#                  + sum_j log( <f_pop(theta_j) * completeness(theta_j)>_j )
+# This is valid (not just a convenient approximation) because Gamma0 only
+# enters logL through the two terms above, and profiling out a parameter
+# with a unique closed-form conditional MLE is exact, not approximate.
+# Gamma0's own posterior is not lost by doing this: with this project's
+# uniform-in-log10(Gamma0) prior (equivalent to a 1/Gamma0 prior in
+# Gamma0-space), the conditional posterior Gamma0 | shape is EXACTLY
+# Gamma(shape=N_obs, rate=Lambda_tilde) -- see
+# kg_plots.pointprocess_gamma0_posterior_plot, which draws from this
+# conjugate distribution using the per-step Lambda_tilde already stored in
+# the emcee blobs, recovering Gamma0's full posterior with no MCMC cost.
+#
 # where:
 #   - theta_j = (period, mass, radius, e, omega) for the j-th real detected
 #     planet. Each planet's true theta is only known through a posterior of
@@ -290,6 +310,22 @@ class EccentricityDistribution:
 #     the per-planet data term uses RPMeoGrid.interpolate_transit_probability
 #     (p_tr alone) -- see parametric_log_likelihood_pointprocess.
 # ---------------------------------------------------------------------------
+
+
+def profile_optimal_gamma0(n_events, lambda_tilde):
+    """
+    Closed-form logL-maximizing Gamma0 given the shape parameters, where
+    lambda_tilde is the shape-only (Gamma0=1) expected-count integral
+    (Lambda_hat/Lambda_hat_grid with Gamma0 divided back out). See the
+    "Semi-analytical (unbinned/point-process) likelihood machinery" comment
+    block above for the derivation. Shared by kg_likelihood.py's pointprocess
+    and grid likelihoods, and by kg_plots.py's region-of-interest rate/
+    posterior-reconstruction helpers, so there's exactly one place this
+    formula lives.
+    """
+    if not np.isfinite(lambda_tilde) or lambda_tilde <= 0:
+        return np.nan
+    return n_events / lambda_tilde
 
 
 def _powerlaw_segment_integral(beta, P_lo, P_hi):
@@ -384,15 +420,18 @@ def joint_log_intrinsic_density(params, P, M, R, e, omega):
     model directly determines the likelihood contribution of every point.
 
     Parameter unpacking matches get_probability_distributions exactly.
+    Note: Gamma0 (overall rate normalization) is not one of these params --
+    it's profiled out analytically in kg_likelihood.py rather than sampled,
+    so `params` here only ever contains the shape parameters (17 of them).
     """
-    γ0, γ1, γ2 = params[1], params[2], params[3]
-    σ0, σ1, σ2 = params[4], params[5], params[6]
-    mass_break_1, mass_break_2 = params[7], params[8]
-    C = params[9]
-    mu_M, sigma_M = params[10], params[11]
-    β1, β2 = params[12], params[13]
-    Period_break_1 = params[14]
-    α, λ, σ_e = params[15], params[16], params[17]
+    γ0, γ1, γ2 = params[0], params[1], params[2]
+    σ0, σ1, σ2 = params[3], params[4], params[5]
+    mass_break_1, mass_break_2 = params[6], params[7]
+    C = params[8]
+    mu_M, sigma_M = params[9], params[10]
+    β1, β2 = params[11], params[12]
+    Period_break_1 = params[13]
+    α, λ, σ_e = params[14], params[15], params[16]
 
     log_f = (
         period_log_pdf(P, β1, β2, Period_break_1)
@@ -658,26 +697,28 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
 
 
 def get_probability_distributions(params):
-    # unpack params
-    γ0 = params[1]
-    γ1 = params[2]
-    γ2 = params[3]
-    σ0 = params[4]
-    σ1 = params[5]
-    σ2 = params[6]
-    mass_break_1 = params[7]
-    mass_break_2 = params[8]
-    C = params[9]
-    mu_M = params[10]
-    sigma_M = params[11]
-    β1 = params[12]
-    β2 = params[13]
+    # unpack params (Gamma0 is not among these -- it's profiled out
+    # analytically in kg_likelihood.py rather than sampled; see
+    # profile_optimal_gamma0 and the point-process comment block above)
+    γ0 = params[0]
+    γ1 = params[1]
+    γ2 = params[2]
+    σ0 = params[3]
+    σ1 = params[4]
+    σ2 = params[5]
+    mass_break_1 = params[6]
+    mass_break_2 = params[7]
+    C = params[8]
+    mu_M = params[9]
+    sigma_M = params[10]
+    β1 = params[11]
+    β2 = params[12]
     # β3 = params[14]
-    Period_break_1 = params[14]
+    Period_break_1 = params[13]
     # Period_break_2 = params[16]
-    α = params[15]
-    λ = params[16]
-    σ_e = params[17]
+    α = params[14]
+    λ = params[15]
+    σ_e = params[16]
 
     # period
     Period_fine_grid = np.linspace(0.1,500,10000,dtype=np.float32)
