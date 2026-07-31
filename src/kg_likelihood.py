@@ -202,7 +202,10 @@ def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, m
     # p_tr only -- NOT the combined completeness -- per Neil & Rogers (2020): these
     # are already-confirmed detections, so re-multiplying by p_det here would
     # double-condition on their detection (see the docstring above).
-    transit_prob_obs = voxel_grid.interpolate_transit_probability(obs_points)
+
+    # in more understandable words, these HAVE ALREADY BEEN DETECTED
+    # so p_det is already 1 for them, and we can't multiply by p_det again...that would double-count it!
+    transit_prob_obs = voxel_grid.interpolate_transit_probability(obs_points) #
 
     ALPHA = 1e-300
     log_transit_prob_obs = np.log(np.maximum(transit_prob_obs, ALPHA))

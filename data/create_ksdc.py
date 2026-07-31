@@ -48,8 +48,10 @@ singles_dr_df = singles_dr_df[~(singles_dr_df["koi_period_err1"].isna() | single
 # Reset the index so we can iterate through singles df
 singles_dr_df = singles_dr_df.reset_index(drop=True)
 # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
-processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,0.01,10,validation_graph=False,make_graphs=False)
-        
+processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
+
+print("finished processing!")
+
 processed_singles_dr_df = processed_singles_dr_df.merge(
                                                         stellar_df,
                                                         left_on='kepid',
@@ -57,7 +59,11 @@ processed_singles_dr_df = processed_singles_dr_df.merge(
                                                         how='left'
                                                 )
 
+print("finished merging!")
+
 
 table = pa.Table.from_pandas(processed_singles_dr_df)
 ar_csv.write_csv(table, f"ksdc_7_30.csv")
+
+
 print(f"Saved ksdc")
