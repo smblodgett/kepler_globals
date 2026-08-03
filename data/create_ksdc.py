@@ -22,6 +22,14 @@ stellar_df = pd.read_csv(stellar_data_filename,engine='pyarrow',delimiter='\t') 
 rowe_stellar_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # this is the stellar data from Rowe et al 2015.
 # rowe_stellar_df = rowe_stellar_df[rowe_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
 
+print("len(stellar_df) before cuts: ",len(stellar_df))
+
+# Make the cuts to stellar catalog based off of temperature, logg
+stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
+stellar_df = stellar_df[(stellar_df["logg"]>4)]
+
+print("len(stellar_df) after hsu cuts: ",len(stellar_df))
+
 stellar_df = stellar_df.merge(
                             rowe_stellar_df,
                             left_on='KIC',
