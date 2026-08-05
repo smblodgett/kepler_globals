@@ -131,7 +131,7 @@ def _sample_positive_normal(rng, loc, scale, size):
 
 def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,validation_graph=True,make_graphs=True):
 
-    num_sampling_draws = 500000
+    num_sampling_draws = 1000000
     num_posteriors_per_planet = 1000
 
     final_singles_array = np.zeros((len(singles_dr_df)*num_posteriors_per_planet,6)) # radius, period, mass, eccentricity, omega
