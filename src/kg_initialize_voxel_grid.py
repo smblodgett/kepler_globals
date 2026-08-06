@@ -129,21 +129,33 @@ def _sample_positive_normal(rng, loc, scale, size):
     return values
 
 
-def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,validation_graph=True,make_graphs=True):
+def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,validation_graph=True,make_graphs=True,comm=None):
+    """
+    comm: an MPI communicator (defaults to MPI.COMM_WORLD). Every rank in comm must
+    call this function together -- the per-planet loop below (each planet needs its
+    own million-draw eccentricity/omega posterior, which is the expensive part of
+    voxel grid initialization) is scattered round-robin across all ranks and the
+    results are gathered back onto rank 0. Only rank 0's return value is a DataFrame;
+    every other rank gets None back.
+    """
+
+    if comm is None:
+        comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
 
     num_sampling_draws = 1000000
     num_posteriors_per_planet = 1000
 
-    final_singles_array = np.zeros((len(singles_dr_df)*num_posteriors_per_planet,6)) # radius, period, mass, eccentricity, omega
-    
-    rng = np.random.default_rng(seed=seed)
+    n_planets = len(singles_dr_df)
 
-    if validation_graph:
+    if validation_graph and rank == 0:
         ##### graphing GJ436 for validation - using Lanotte et al 2014
-        radius = rng.normal(3.96,0.05,size=num_sampling_draws)
-        period = rng.normal(2.6438979,0.0000003,size=num_sampling_draws)
-        b = rng.normal(0.8521,0.0021,size=num_sampling_draws)
-        T_14 = rng.normal(0.04227*24,0.00016*24,size=num_sampling_draws)
+        validation_rng = np.random.default_rng(seed=seed)
+        radius = validation_rng.normal(3.96,0.05,size=num_sampling_draws)
+        period = validation_rng.normal(2.6438979,0.0000003,size=num_sampling_draws)
+        b = validation_rng.normal(0.8521,0.0021,size=num_sampling_draws)
+        T_14 = validation_rng.normal(0.04227*24,0.00016*24,size=num_sampling_draws)
         rho_star_true = (0.452 * MSKG * 1000) / ((4/3) * np.pi * (0.455 * RSCM)**3) * 1000
         rho_star_uncertainty_lower = ((0.452 - 0.012) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 + 0.014) * RSCM)**3) * 1000
         rho_star_uncertainty_upper = ((0.452 + 0.014) * MSKG * 1000) / ((4/3) * np.pi * ((0.455 - 0.012) * RSCM)**3) * 1000
@@ -151,36 +163,58 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         star_planet_radius_ratio = radius * RECM / (0.455 * RSCM)
         print("GJ rho star true: ",rho_star_true)
         print("GJ rho star uncertainty: ",rho_star_uncertainty)
-        sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_sampling_draws,rng,make_graphs=make_graphs)
+        sample_eccentricity_omega(star_planet_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,"GJ436",num_sampling_draws,validation_rng,make_graphs=make_graphs)
         #####
 
-    for index, row in singles_dr_df.iterrows():
-        radius = _sample_positive_normal(rng, row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])), num_sampling_draws)
-        period = rng.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=num_sampling_draws)
-        print("period with max abs error:", row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])))
+    # Distribute the per-planet loop across all ranks. Each planet gets its own
+    # independent, reproducible RNG stream (spawned from a single SeedSequence keyed
+    # on the planet's row index), so the draws are statistically independent no
+    # matter how many ranks are used or which rank ends up processing which planet.
+    # Planets are handed out round-robin -- the same scatter/gather pattern used in
+    # RPMeoGrid.setup_completeness_grid.
+    child_seeds = np.random.SeedSequence(seed).spawn(n_planets)
 
-        b = rng.normal(row["koi_impact"], np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"])),size=num_sampling_draws)
-        T_14 = rng.normal(row["koi_duration"], np.maximum(np.abs(row["koi_duration_err1"]), np.abs(row["koi_duration_err2"])),size=num_sampling_draws)
+    tasks = list(range(n_planets))
+    chunks = [tasks[r::size] for r in range(size)]
+    my_chunk = comm.scatter(chunks, root=0)
 
-        print("radius: ",radius)
-        print("number of NaN in radius: ",np.sum(np.isnan(radius)))
-        print("period: ",period)
-        print("number of NaN in period: ",np.sum(np.isnan(period)))
-        print("b: ",b)
-        print("number of NaN in b: ",np.sum(np.isnan(b)))
-        print("T_14: ",T_14)
-        print("number of NaN in T_14: ",np.sum(np.isnan(T_14)))
+    partial_rows = []
+
+    for index in my_chunk:
+        row = singles_dr_df.iloc[index]
+        row_rng = np.random.default_rng(child_seeds[index])
+
+        radius = _sample_positive_normal(row_rng, row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])), num_sampling_draws)
+        period = row_rng.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=num_sampling_draws)
+        print(f"[rank {rank}] period with max abs error:", row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])))
+
+        b = row_rng.normal(row["koi_impact"], np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"])),size=num_sampling_draws)
+        T_14 = row_rng.normal(row["koi_duration"], np.maximum(np.abs(row["koi_duration_err1"]), np.abs(row["koi_duration_err2"])),size=num_sampling_draws)
+
+        print(f"[rank {rank}] radius: ",radius)
+        print(f"[rank {rank}] number of NaN in radius: ",np.sum(np.isnan(radius)))
+        print(f"[rank {rank}] period: ",period)
+        print(f"[rank {rank}] number of NaN in period: ",np.sum(np.isnan(period)))
+        print(f"[rank {rank}] b: ",b)
+        print(f"[rank {rank}] number of NaN in b: ",np.sum(np.isnan(b)))
+        print(f"[rank {rank}] T_14: ",T_14)
+        print(f"[rank {rank}] number of NaN in T_14: ",np.sum(np.isnan(T_14)))
 
 
-        density = rng.uniform(lower_rho, upper_rho, size=num_sampling_draws) 
+        density = row_rng.uniform(lower_rho, upper_rho, size=num_sampling_draws)
         mass = mass_given_density_radius(density, radius)
 
-        print("mass: ",mass)
-        print("number of NaN in mass: ",np.sum(np.isnan(mass)))
+        print(f"[rank {rank}] mass: ",mass)
+        print(f"[rank {rank}] number of NaN in mass: ",np.sum(np.isnan(mass)))
 
-        # make sure the units here are right, the log uncertainties are weird. 
+        # make sure the units here are right, the log uncertainties are weird.
 
-        rho_star_true_log = stellar_df[stellar_df["KIC"]==row["kepid"]]["rho"].values[0]
+        ##### QUESTION for this process, for singles, should we be using the stellar density from the stellar_df, or should we be using the stellar density from the singles_dr_df? 
+        # The singles_dr_df has a stellar density that is derived from the transit fit, while the stellar_df has a stellar density that is derived from the stellar parameters. 
+        # I think we should be using the stellar_df, but I want to make sure.
+        ##### 
+        
+        rho_star_true_log = stellar_df[stellar_df["KIC"]==row["kepid"]]["rho"].values[0] 
         rho_star_true = 10**(rho_star_true_log) * RHOS
         rho_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_rho"].values[0]
         rho_star_upper_uncertainty =  10**(rho_star_upper_uncertainty) * RHOS
@@ -192,19 +226,19 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         radius_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_Rad"].values[0]
         radius_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_Rad"].values[0]
         radius_star_uncertainty = np.maximum(np.abs(radius_star_upper_uncertainty), np.abs(radius_star_lower_uncertainty))
-        radius_star = _sample_positive_normal(rng, radius_star_val, radius_star_uncertainty, num_sampling_draws)
+        radius_star = _sample_positive_normal(row_rng, radius_star_val, radius_star_uncertainty, num_sampling_draws)
 
 
-        planet_star_radius_ratio = radius * RECM / (radius_star * RSCM) 
+        planet_star_radius_ratio = radius * RECM / (radius_star * RSCM)
 
-        print("rho_star_true: ",rho_star_true)
-        print("rho_star_uncertainty: ",rho_star_uncertainty)
-        print("number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
-        print("number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
+        print(f"[rank {rank}] rho_star_true: ",rho_star_true)
+        print(f"[rank {rank}] rho_star_uncertainty: ",rho_star_uncertainty)
+        print(f"[rank {rank}] number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
+        print(f"[rank {rank}] number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
 
-        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,rng,make_graphs=make_graphs)
+        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
 
-        sampled_indices = rng.choice(range(num_sampling_draws), size=num_posteriors_per_planet, replace=True)
+        sampled_indices = row_rng.choice(range(num_sampling_draws), size=num_posteriors_per_planet, replace=True)
 
         radius = radius[sampled_indices]
         period = period[sampled_indices]
@@ -212,9 +246,24 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         eccentricity = eccentricity[sampled_indices]
         omega = omega[sampled_indices]
 
-        final_singles_array[index*num_posteriors_per_planet:(index+1)*num_posteriors_per_planet] = np.array([radius, period, mass, eccentricity, omega,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
+        row_result = np.array([radius, period, mass, eccentricity, omega,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
+        partial_rows.append((index, row_result))
 
-    df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","kepid"])
+    all_results = comm.gather(partial_rows, root=0)
+
+    if rank == 0:
+        flat = [item for sublist in all_results for item in sublist]
+        # comm.gather preserves each rank's own order, but ranks only got every
+        # size-th planet round-robin, so sort back into the original row order
+        # before stitching the per-planet chunks into one array.
+        flat.sort(key=lambda item: item[0])
+        if n_planets == 0:
+            final_singles_array = np.zeros((0,6))
+        else:
+            final_singles_array = np.concatenate([row_result for _, row_result in flat], axis=0)
+        df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","kepid"])
+    else:
+        df = None
 
     return df
 
@@ -228,6 +277,7 @@ def main(runprops):
     stellar_df = None
     stellar_df_reduced = None
     final_kdc_df = None
+    singles_dr_df = None
     comm = MPI.COMM_WORLD
 
 
@@ -350,12 +400,23 @@ def main(runprops):
         singles_dr_df = singles_dr_df[~(singles_dr_df["koi_period_err1"].isna() | singles_dr_df["koi_period_err2"].isna())]
         # Reset the index so we can iterate through singles df
         singles_dr_df = singles_dr_df.reset_index(drop=True)
-        # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
-        processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,runprops["minimum_density"],runprops["maximum_density"])
-        
+
+    # Broadcast what process_singles_df needs so every rank can take part in
+    # distributing its per-planet eccentricity/omega sampling loop below -- that loop
+    # is the expensive part of setup (a million draws per KOI), so it shouldn't run on
+    # rank 0 alone.
+    singles_dr_df = comm.bcast(singles_dr_df, root=0)
+    stellar_df = comm.bcast(stellar_df, root=0)
+
+    # Give the singles df the same cols as the multis df, sample ecc and omega for the
+    # singles. All ranks call this together; process_singles_df scatters the planets
+    # across ranks internally and gathers the result back onto rank 0.
+    processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,runprops["minimum_density"],runprops["maximum_density"],comm=comm)
+
+    if comm.Get_rank() == 0:
         # Remove the planets with densities above or below a certain threshold, because they are unphysical
-        
-        
+
+
         print("length of df before requiring stability: ",len(df))
         if runprops["exclude_bad_densities"]:
             df = df[(df["rho_p"]<runprops["maximum_density"]) & (df["rho_p"]>runprops["minimum_density"])]
@@ -439,7 +500,6 @@ def main(runprops):
 
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
-    stellar_df = comm.bcast(stellar_df,root=0)
     stellar_df_reduced = comm.bcast(stellar_df_reduced,root=0)
 
     print("broadcasted voxel grid and stellar df")

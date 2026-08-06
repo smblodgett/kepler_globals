@@ -24,7 +24,7 @@ RETORS=0.009171 # earth radius to solar radius
 RJTORE=10.973 # jupiter radius to earth radius
 RJTORS=0.1004901538 # jupiter radius to solar radius
 RSAU=0.0046491  # solar radius in AU
-RJAU=4.676*10**-4 # jupiter radius in AU
+RJAU=0.0004673262 # jupiter radius in AU
 RSCM=6.96*10**10 # solar radius in cm  
 
 RHOS = 1408 # solar average density in kg/m^3

@@ -45,7 +45,7 @@ class PriorArgs:
         # lambda_tilde blob, so nothing about Gamma0 is actually lost by
         # dropping it from here.
         self.add_prior('gamma_0', -1,1,"U", [0,1])
-        self.add_prior('gamma_1', -1.5, 1.5,"U", [0,1])  # lnN(0.6,0.1)
+        self.add_prior('gamma_1', -2, 2,"U", [0,1])  # lnN(0.6,0.1)
         self.add_prior('gamma_2', -1, 2,"U", [0,1])  # lnN(0,0.1)
         self.add_prior('sigma_0', 0, 2,"U", [0,1])  # lnN(-1.8, 0.25)
         self.add_prior('sigma_1', 0, 2,"U", [0,1])  # lnN(-1.3, 0.25)
@@ -56,8 +56,8 @@ class PriorArgs:
         self.add_prior('mu_M', 0, 10,"U", [0,1])  # N(1,2) 
         self.add_prior('sigma_M', -10, 10,"U", [0,1])  # lnN(1,0.25)
         self.add_prior('Beta1', 0.0, 5.0,"U", [0,1])  # N(0.5,0.5)
-        self.add_prior('Beta2', -5.0, 5.0,"U", [0,1])  # N(-0.5,0.5)
-        self.add_prior('Pbreak1', 0.0, 20,"U", [0,1])   # lnN(2,1)
+        self.add_prior('Beta2', -3.0, 0.0,"U", [0,1])  # N(-0.5,0.5)
+        self.add_prior('Pbreak1', 3.0, 15,"U", [0,1])   # lnN(2,1)
         self.add_prior('alpha_e', 0,2,"U", [0,1])
         self.add_prior('lambda_e', 0,50,"U", [0,1])
         self.add_prior('sigma_e',0,1,"U", [0,1])

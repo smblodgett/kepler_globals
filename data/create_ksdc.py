@@ -70,8 +70,14 @@ processed_singles_dr_df = processed_singles_dr_df.merge(
 print("finished merging!")
 
 
-table = pa.Table.from_pandas(processed_singles_dr_df)
-ar_csv.write_csv(table, f"ksdc_7_30.csv")
 
+
+
+
+
+
+
+table = pa.Table.from_pandas(processed_singles_dr_df)
+ar_csv.write_csv(table, f"thinned/KSDC.csv")
 
 print(f"Saved ksdc")
