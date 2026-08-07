@@ -274,22 +274,40 @@ def calculate_params(df):
 
 
 def occurrence_rate_params(df):
-    """Attaches the occurrence rate parameters to a system df from Hsu et al 2018."""
-    ocdf = _cached_read_csv("occurrence_rates_hsu.csv")
-    df["occurrence_rate_hsu"] = 0.0
-    df["E_or_hsu"] = 0.0
-    df["e_or_hsu"] = 0.0
+    """Attaches the occurrence rate parameters to a system df from Hsu et al 2018.
 
-    # Attach the occurrence rate parameter to each row of the df.
-    for i in df.index:
-        mask = ((ocdf["radius_lower"] <= df.at[i,"R_pE"]) &
-                (ocdf["radius_upper"] > df.at[i,"R_pE"]) &
-                (ocdf["period_lower"] <= df.at[i,"Period_days"]) &
-                (ocdf["period_upper"] > df.at[i,"Period_days"]))
+    occurrence_rates_hsu.csv is a rectangular, non-overlapping, exhaustive grid of
+    radius bins x period bins (15 x 12 = 180 rows, covering 0 to 1e9 on both axes),
+    so every row's (R_pE, Period_days) falls in exactly one cell. That means the bin
+    lookup can be done with a single vectorized np.searchsorted per axis instead of a
+    Python loop that re-scans all 180 ocdf rows for every row of df -- this is what
+    made the original loop O(len(df) * len(ocdf)) instead of O(len(df) + len(ocdf)).
+    """
+    ocdf = _cached_read_csv("occurrence_rates_hsu.csv",engine='pyarrow')
 
-        df.at[i,"occurrence_rate_hsu"] = ocdf.loc[mask]["occurrence"].iloc[0]
-        df.at[i,"E_or_hsu"] = ocdf.loc[mask]["+sigma"].iloc[0]
-        df.at[i,"e_or_hsu"] = ocdf.loc[mask]["-sigma"].iloc[0]
+    r_edges = np.sort(pd.unique(np.concatenate([ocdf['radius_lower'].values, ocdf['radius_upper'].values])))
+    p_edges = np.sort(pd.unique(np.concatenate([ocdf['period_lower'].values, ocdf['period_upper'].values])))
+    n_r, n_p = len(r_edges) - 1, len(p_edges) - 1
+
+    # Build the (radius_bin, period_bin) -> value grids from ocdf.
+    occ_grid = np.full((n_r, n_p), np.nan)
+    Eor_grid = np.full((n_r, n_p), np.nan)
+    eor_grid = np.full((n_r, n_p), np.nan)
+    r_bin_of_row = np.searchsorted(r_edges, ocdf['radius_lower'].values, side='right') - 1
+    p_bin_of_row = np.searchsorted(p_edges, ocdf['period_lower'].values, side='right') - 1
+    occ_grid[r_bin_of_row, p_bin_of_row] = ocdf['occurrence'].values
+    Eor_grid[r_bin_of_row, p_bin_of_row] = ocdf['+sigma'].values
+    eor_grid[r_bin_of_row, p_bin_of_row] = ocdf['-sigma'].values
+
+    # Look up every row of df in one shot. clip() guards against R_pE/Period_days
+    # falling outside the grid's outer edges (shouldn't happen since the grid spans
+    # 0 to 1e9, but avoids an out-of-bounds index if it ever does).
+    r_bin = np.clip(np.searchsorted(r_edges, df['R_pE'].values, side='right') - 1, 0, n_r - 1)
+    p_bin = np.clip(np.searchsorted(p_edges, df['Period_days'].values, side='right') - 1, 0, n_p - 1)
+
+    df["occurrence_rate_hsu"] = occ_grid[r_bin, p_bin]
+    df["E_or_hsu"] = Eor_grid[r_bin, p_bin]
+    df["e_or_hsu"] = eor_grid[r_bin, p_bin]
 
     return df
 
@@ -611,6 +629,8 @@ def find_hidden_planet(koi, df):
     no_hidden_path = os.path.join(RAW_PATH, "koi" + koi, f"koi{koi}_noHidden.pldin")
     if not os.path.exists(no_hidden_path):
         return df  # no noHidden fit was made -> this system has no hidden planet
+
+    print(f"koi {koi}: this system has a hidden planet; checking which one it is...")
 
     no_hidden_periods = read_pldin_periods(no_hidden_path)
     period_tol = 0.6  # days -- tune per-KOI if it misclassifies

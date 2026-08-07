@@ -77,6 +77,18 @@ if rank == 0:
                                                             how='left'
                                                     )
 
+    # process_singles_df() only returns ["R_pE","Period_days","M_pE","e","omega","kepid"] --
+    # it consumes koi_impact/koi_duration (and their error columns) internally but never
+    # carries them through. Bring them back from the DR25 catalog (one row per kepid here,
+    # since singles_dr_df was already filtered to multiplicity == 1) so b_trans/T_total_hr
+    # below can resample from the raw catalog values.
+    df = df.merge(
+                    singles_dr_df[['kepid', 'koi_impact', 'koi_impact_err1', 'koi_impact_err2',
+                                    'koi_duration', 'koi_duration_err1', 'koi_duration_err2']],
+                    on='kepid',
+                    how='left'
+                )
+
     print("finished merging!")
 
     df['M_s'] = df['Mass']
@@ -118,7 +130,20 @@ if rank == 0:
     df['d_R_s'] = (df['d_AU']/RSAU) / df['R_s'] # star-planet separation at transit in stellar radii
 
     ## impact, probability, and duration parameters
-    df['i'] = np.arccos(df['b_trans'] * df['R_s'] / df['a_R_s']) * 180 / np.pi
+    # b_trans is an independent normal draw (line above) and a_R_s is derived separately
+    # from Period/M_s/M_pE/R_s, so cos(i) = b_trans*R_s/a_R_s isn't guaranteed to land in
+    # [-1, 1] -- an unlucky sample can push it just outside, which makes arccos silently
+    # return NaN (with a RuntimeWarning) instead of raising. Clip into the valid domain,
+    # but log how many rows needed it and by how much: a few hits at ~1e-10 are just
+    # floating-point noise, while many rows or a large excess means b_trans and a_R_s are
+    # systematically inconsistent for those planets and is worth investigating separately.
+    cos_i = df['b_trans'] * df['R_s'] / df['a_R_s']
+    n_invalid = int((cos_i.abs() > 1).sum())
+    if n_invalid:
+        max_excess = float((cos_i.abs() - 1).clip(lower=0).max())
+        print(f"[warn] {n_invalid}/{len(df)} rows have |b_trans*R_s/a_R_s| > 1 "
+              f"(max excess {max_excess:.3g}); clipping to the arccos domain [-1, 1]")
+    df['i'] = np.arccos(cos_i.clip(-1, 1)) * 180 / np.pi
 
     df['b_occ'] = (df['a_R_s'] * np.cos(df['i']*np.pi/180)) * ((1-df['e']**2)/(1-df['e']*np.sin(df['omega']*np.pi/180))) # occultation impact parameter
     df['p_trans'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1+df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # transit probability
@@ -130,9 +155,10 @@ if rank == 0:
     df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt(np.maximum(0,(1-df['R_p/R_s'])**2 - df['b_trans']**2))/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
     df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
 
-    from kg_subsampler import occurrence_rate_params
+    from kg_subsampler import occurrence_rate_params, is_in_hsu
 
     df = occurrence_rate_params(df)
+    df = is_in_hsu(df)  # sets 'hsu_flag': whether KIC is in the Hsu et al. stellar catalog
 
     df["P/Pin"] = -1
     df["P/Pout"] = -1
@@ -212,6 +238,18 @@ if rank == 0:
 
 
 
+    id_number_identifier = df["M_pE"].rank(method='min', ascending=True) 
+    koi_parts = df["KOI"].astype(str).str.split(".", n=1, expand=True).reindex(columns=[0, 1])
+    real_kmdc_index = (
+        koi_parts[0].str.zfill(4)                          # XXXX padded
+        + koi_parts[1]                                     # YY
+        + id_number_identifier.astype(str).str.zfill(4)    # Z padded
+    )
+    df['kmdc_index'] = real_kmdc_index
+
+
+    from kg_kmdc_col_headers import col_headers
+    df = df[col_headers]
 
     table = pa.Table.from_pandas(df)
     ar_csv.write_csv(table, f"thinned/KSDC.csv")
