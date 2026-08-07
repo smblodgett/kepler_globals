@@ -3,12 +3,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pyarrow as pa
 import pyarrow.csv as ar_csv
+from mpi4py import MPI
 
 from pathlib import Path
 import sys
 
 sys.path.append(str(Path.cwd().parent / "src"))
 from kg_initialize_voxel_grid import process_singles_df
+from kg_constants import *
+
+# All ranks read/filter the catalogs and call process_singles_df() together --
+# it is a collective MPI operation (scatter/gather) that every rank must enter.
+# Only rank 0 gets back a real DataFrame (every other rank gets None), so only
+# rank 0 should go on to merge/derive columns/save -- see the rank==0 guard below.
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
 
 
 stellar_data_filename = "../data/berger_2020_keplerstellar.tsv"
@@ -58,26 +67,153 @@ singles_dr_df = singles_dr_df.reset_index(drop=True)
 # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
 processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
 
-print("finished processing!")
+if rank == 0:
+    print("finished processing!")
 
-processed_singles_dr_df = processed_singles_dr_df.merge(
-                                                        stellar_df,
-                                                        left_on='kepid',
-                                                        right_on='KIC',
-                                                        how='left'
-                                                )
+    df = processed_singles_dr_df.merge(
+                                                            stellar_df,
+                                                            left_on='kepid',
+                                                            right_on='KIC',
+                                                            how='left'
+                                                    )
 
-print("finished merging!")
+    print("finished merging!")
+
+    df['M_s'] = df['Mass']
+    df['R_s'] = df['Rad']
+    df['c_1'] = np.nan
+    df['c_2'] = np.nan
+    df['R_p/R_s'] = df['R_pE'] * RETORS / df['R_s']
+    df['R_pJ'] = df['R_pE'] * RJTORE
+    df['rho_p'] = df['M_pE'] * MEG / (4/3 * np.pi * (df['R_pE'] * RECM)**3)
+    df['rho_s'] = 10**(df['rho']) * RHOS
+    df['M_p/M_s'] = df['M_pE'] * MEKG / (df['M_s'] * MSKG)
+    df['M_pJ'] = df['M_pE'] * METOMJ
+    df['sqrt(e)_cos(omega)'] = np.sqrt(df['e']) * np.cos(df['omega'] * np.pi / 180)
+    df['sqrt(e)_sin(omega)'] = np.sqrt(df['e']) * np.sin(df['omega'] * np.pi / 180)
+
+    df['b_trans'] = np.random.normal(df['koi_impact'], np.max(np.abs([df['koi_impact_err1'], df['koi_impact_err2']]), axis=0), size=len(df))
+
+    df['Omega'] = 0
+    df['is_hidden_planet'] = 0
+    df['is_monotransiting'] = 0
+    df['planet'] = 0
+    df['multiplicity'] = 1
+
+    ## orbital angles
+    df['true_anomaly'] = (90 - df['omega']) % 360
+    df['eccentric_anomaly'] = ((180 / np.pi) * np.arctan2((np.sqrt(1-df['e']**2)*np.sin(df['true_anomaly']*np.pi/180)),(df['e']+np.cos(df['true_anomaly']*np.pi/180)))) % 360
+    df['mean_anomaly'] = ((180 / np.pi) * ((np.pi / 180 ) * df['eccentric_anomaly']) - (df['e']*np.sin(df['eccentric_anomaly']*np.pi/180))) % 360 # M, the mean anomaly (19 degrees for KOI 500.01)
+    df['mean_longitude'] = (df['Omega'] + df['omega'] + df['mean_anomaly']) % 360 # mean longitude of planet at epoch ::: longitude of ascending node (always 0 for our system) + argument of periapse (little omega) + mean anomaly (always close to 90 degrees)
+
+
+    ## orbital distances
+    df['a_AU'] = ((df['Period_days']*DTOS)**2 * G * ((df['M_s']*MSKG) + (df['M_pE']*MEKG))/(4*np.pi**2))**(1/3) * MTOAU # semimajor axis in AU
+    df['a_R_s'] = (df['a_AU']/RSAU) / df['R_s'] # semimajor axis in stellar radii
+    df['peri_AU'] = df['a_AU'] * (1 - df['e']) # periastron in AU
+    df['peri_R_s'] = (df['peri_AU']/RSAU) / df['R_s'] # periastron in stellar radii
+    df['apo_AU'] = df['a_AU'] * (1 + df['e']) # apoastron in AU
+    df['apo_R_s'] = (df['apo_AU']/RSAU) / df['R_s'] # apoastron in stellar radii
+    df['d_AU'] = df['a_AU']*(1 - df['e']**2) / (1 + (df['e']*np.cos(df['true_anomaly']*np.pi/180))) # star-planet separation at transit in AU
+    df['d_R_s'] = (df['d_AU']/RSAU) / df['R_s'] # star-planet separation at transit in stellar radii
+
+    ## impact, probability, and duration parameters
+    df['i'] = np.arccos(df['b_trans'] * df['R_s'] / df['a_R_s']) * 180 / np.pi
+
+    df['b_occ'] = (df['a_R_s'] * np.cos(df['i']*np.pi/180)) * ((1-df['e']**2)/(1-df['e']*np.sin(df['omega']*np.pi/180))) # occultation impact parameter
+    df['p_trans'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1+df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # transit probability
+    df['p_occ'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1-df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # occultation probability
+
+    # df['T_total_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt((1+ df['R_p/R_s'])**2 - df['b_trans']**2)/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # total duration of transit (t4 - t1)
+    df['T_total_hr'] = np.random.normal(df['koi_duration'] * 24, np.max(np.abs([df['koi_duration_err1'], df['koi_duration_err2']]), axis=0), size=len(df)) # total duration of transit (t4 - t1) from DR25
+
+    df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt(np.maximum(0,(1-df['R_p/R_s'])**2 - df['b_trans']**2))/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
+    df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
+
+    from kg_subsampler import occurrence_rate_params
+
+    df = occurrence_rate_params(df)
+
+    df["P/Pin"] = -1
+    df["P/Pout"] = -1
+    df["Tdur/Tdurin"] = -1
+    df["Tdur/Tdurout"] = -1
+    df["R/Rin"] = -1
+    df["R/Rout"] = -1
+    df["M/Min"] = -1
+    df["M/Mout"] = -1
+    df["rho/rhoin"] = -1
+    df["rho/rhoout"] = -1
+    df["i-iin"] = -1
+    df["iout-i"] = -1
+    df["xiin"] = -1
+    df["xiout"] = -1
+    df["distin_hillrad"] = -1
+    df["distout_hillrad"] = -1
+    df["distin_hillrad_e"] = -1
+    df["distout_hillrad_e"] = -1
+    df["e/ein"] = -1
+    df["eout/e"] = -1
+    df["omega-omegain"] = -1
+    df["omegaout-omega"] = -1
+    df["dilute"] = -1
+    df["chisq"] = -1
+    df["Chain#"] = np.nan
+    df["chisq_rank"] = np.nan
+    df["step_number"] = np.nan
+    df["phodymm_index"] = np.nan
+
+
+
+    df["omega_rad"] = df["omega"] * np.pi / 180
+    df['falsetrueanomaly'] = ((np.pi/2) - df['omega_rad']) % (2*np.pi)
+
+    # find the true anomaly
+    df['f'] = ((np.pi/2)
+                - df['omega_rad']
+                - (df['e'] * np.cos(df['omega_rad']) * np.cos(df['i']*np.pi/180)**2 / (1+df['e']*np.sin(df['omega_rad'])))) % (2*np.pi)
+
+    # find eccentric anomaly
+    df['eccentric_anomaly_hamann'] = (np.arctan2(np.sqrt(1-df['e']**2)*np.sin(df['f']),df['e']+np.cos(df['f']))) % (2*np.pi)
+    df['false_eccentric_anomaly'] = (np.arctan2(np.sqrt(1-df['e']**2)*np.sin(df['falsetrueanomaly']),df['e']+np.cos(df['falsetrueanomaly']))) % (2*np.pi)
+
+    # find mean anomaly
+    df['mean_anomaly_hamann'] = (df['eccentric_anomaly_hamann'] - (df['e']*np.sin(df['eccentric_anomaly_hamann']))) % (2*np.pi)
+    df['false_mean_anomaly'] = (df['false_eccentric_anomaly'] - (df['e']*np.sin(df['false_eccentric_anomaly']))) % (2*np.pi)
+
+    df['mean_angular_motion'] = 2*np.pi/ df['Period_days']
+    df["mean_anomaly_hamann_800"] = np.nan
+    df["mean_anomaly_hamann_850"] = np.nan
+    df["corrected_mean_anomaly_800"] = np.nan
+    df["eccentric_anomaly_hamann_800"] = np.nan
+    df["eccentric_anomaly_hamann_850"] = np.nan
+    df["true_anomaly_hamann_800"] = np.nan
+    df["true_anomaly_hamann_850"] = np.nan
+    df["corrected_eccentric_anomaly_800"] = np.nan
+    df["corrected_true_anomaly_800"] = np.nan
+
+    df["interior_mass_pJ"] = 0
+    df["mu"] = df['mu'] = (
+            GAU * (
+                df['M_s']
+            + df['M_pJ']    / MSTOMJ
+            + df['interior_mass_pJ'] / MSTOMJ
+            )
+        )
+    df['q'] = df['a_AU'] * (1 - df['e'])
+    df["Tp"] = np.nan
+    df["x"] = np.nan
+    df["y"] = np.nan
+    df["z"] = np.nan
+    df["vx"] = np.nan
+    df["vy"] = np.nan
+    df["vz"] = np.nan
+    df["T_0"] = np.nan
 
 
 
 
+    table = pa.Table.from_pandas(df)
+    ar_csv.write_csv(table, f"thinned/KSDC.csv")
 
-
-
-
-
-table = pa.Table.from_pandas(processed_singles_dr_df)
-ar_csv.write_csv(table, f"thinned/KSDC.csv")
-
-print(f"Saved ksdc")
+    print(f"Saved ksdc")
