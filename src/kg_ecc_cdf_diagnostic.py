@@ -60,7 +60,16 @@ def weighted_ks_statistic(e_values, weights, theta):
     return np.max(np.abs(ecdf - model_cdf_at_data))
 
 
-def plot_ecc_cdf_comparison(csv_path, save_path="ecc_cdf_comparison.pdf", zoom_max=0.1):
+def plot_ecc_cdf_comparison(csv_path, save_path="ecc_cdf_comparison.pdf", zoom_max=0.1,
+                             theta_shared=None, shared_label="shared-fit model"):
+    """
+    theta_shared: pass the ACTUAL (alpha, lam, sigma_e) from your real
+    best_fit.json (see kg_best_fit_loader.load_best_fit_ecc_theta) to compare
+    against your real fitted model instead of a re-optimized standalone
+    eccentricity-only proxy. If left as None, falls back to fitting a fresh
+    shared-only proxy via fit_ecc_shape (the old behavior) -- but note that
+    proxy is NOT the same thing as what your MCMC actually converged to.
+    """
     df = _load_ecc_with_population(csv_path)
     df["planet_weight"] = 1.0 / df.groupby("unique_planet")["e"].transform("size")
 
@@ -69,14 +78,16 @@ def plot_ecc_cdf_comparison(csv_path, save_path="ecc_cdf_comparison.pdf", zoom_m
 
     theta_multi, _ = fit_ecc_shape(df_multi)
     theta_single, _ = fit_ecc_shape(df_single)
-    theta_shared, _ = fit_ecc_shape(df)
+    if theta_shared is None:
+        theta_shared, _ = fit_ecc_shape(df)
+        shared_label = "shared PROXY re-fit (not best_fit.json!)"
 
     fig, (ax_full, ax_zoom) = plt.subplots(1, 2, figsize=(11, 5), dpi=300)
 
     e_grid_shared, cdf_shared = _model_cdf_grid(theta_shared)
     for ax in (ax_full, ax_zoom):
         ax.plot(e_grid_shared, cdf_shared, color="k", linestyle=":", linewidth=1.5,
-                label="shared-fit model")
+                label=shared_label)
 
     for label, sub, theta, color in [
         ("multis", df_multi, theta_multi, "tab:green"),
@@ -114,4 +125,16 @@ def plot_ecc_cdf_comparison(csv_path, save_path="ecc_cdf_comparison.pdf", zoom_m
 
 if __name__ == "__main__":
     csv_path = sys.argv[1] if len(sys.argv) > 1 else "../data/final_kdc.csv"
-    plot_ecc_cdf_comparison(csv_path)
+    model_run_folder = sys.argv[2] if len(sys.argv) > 2 else None
+
+    try:
+        from kg_best_fit_loader import load_best_fit_ecc_theta
+        theta_shared = load_best_fit_ecc_theta(model_run_folder)
+        shared_label = "ACTUAL best_fit.json model"
+    except Exception as exc:
+        print(f"Could not load best_fit.json ({exc}); falling back to a re-fit proxy "
+              "for the shared model instead.")
+        theta_shared = None
+        shared_label = "shared-fit model"
+
+    plot_ecc_cdf_comparison(csv_path, theta_shared=theta_shared, shared_label=shared_label)

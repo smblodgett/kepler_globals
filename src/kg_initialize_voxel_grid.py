@@ -213,7 +213,7 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         # The singles_dr_df has a stellar density that is derived from the transit fit, while the stellar_df has a stellar density that is derived from the stellar parameters. 
         # I think we should be using the stellar_df, but I want to make sure.
         ##### 
-        
+
         rho_star_true_log = stellar_df[stellar_df["KIC"]==row["kepid"]]["rho"].values[0] 
         rho_star_true = 10**(rho_star_true_log) * RHOS
         rho_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_rho"].values[0]
@@ -266,7 +266,6 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         df = None
 
     return df
-
 
 def main(runprops):
     
