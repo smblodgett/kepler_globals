@@ -188,16 +188,22 @@ def _binned_model_density(theta, edges):
 
 
 def plot_ecc_fit_marginals_and_residuals_binned(csv_path, model_run_folder=None,
-                                                 save_path="ecc_fit_marginals_residuals_binned.pdf"):
+                                                 save_path="ecc_fit_marginals_residuals_binned.pdf",
+                                                 n_bins=30, e_max=0.99):
     """
     Same three rows (multis, singles, combined) x two columns (marginal,
-    residual) as plot_ecc_fit_marginals_and_residuals, but using the
-    project's actual eccentricity_grid_array bins instead of a KDE --
-    plotted with each bar's TRUE width (not equal-spaced index positions),
-    so bin-width differences are visible rather than hidden, unlike the
-    earlier binned marginal plot that misled the multis-peak reading.
+    residual) as plot_ecc_fit_marginals_and_residuals, but using bins
+    instead of a KDE -- this time EQUAL-WIDTH bins (n_bins uniform bins
+    spanning [0, e_max]), not the project's non-uniform
+    eccentricity_grid_array. That project grid is deliberately coarse in
+    regions with little data (e.g. one 0.19-wide bin covering [0.8, 0.99]),
+    which is fine for the completeness grid it was designed for, but is
+    exactly the kind of bin that would visually hide a real, small-e-space
+    feature by averaging it out over a wide range. Equal bins mean every
+    region of eccentricity space, however little of it has data, gets the
+    same resolution.
     """
-    edges = np.array(eccentricity_grid_array)
+    edges = np.linspace(0.0, e_max, n_bins + 1)
     widths = np.diff(edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
 
@@ -236,10 +242,9 @@ def plot_ecc_fit_marginals_and_residuals_binned(csv_path, model_run_folder=None,
         ax_marg.bar(centers, model_density, width=widths, fill=False, edgecolor="k",
                     linewidth=1.5, label="best-fit model (bin-avg)")
         ax_marg.set_ylim(0, marg_ymax)
+        ax_marg.set_xlim(0, e_max)
         ax_marg.set_title(f"{label}: marginal", fontsize=11)
         ax_marg.set_ylabel("density")
-        ax_marg.set_xticks(edges)
-        ax_marg.set_xticklabels([_format_edge(e) for e in edges], rotation=45, fontsize=7)
         ax_marg.legend(fontsize=8)
 
         ax_res = axes[row, 1]
@@ -247,10 +252,9 @@ def plot_ecc_fit_marginals_and_residuals_binned(csv_path, model_run_folder=None,
         ax_res.bar(centers, residuals[label], width=widths, color=color, alpha=0.6,
                    edgecolor=color)
         ax_res.set_ylim(-res_ymax, res_ymax)
+        ax_res.set_xlim(0, e_max)
         ax_res.set_title(f"{label}: residual (data $-$ model)", fontsize=11)
         ax_res.set_ylabel("density residual")
-        ax_res.set_xticks(edges)
-        ax_res.set_xticklabels([_format_edge(e) for e in edges], rotation=45, fontsize=7)
 
     for ax in axes[-1, :]:
         ax.set_xlabel("eccentricity")

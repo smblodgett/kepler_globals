@@ -54,13 +54,20 @@ def parametric_log_prior(params, model_id):
     lp = 0.0 
     for parameter_name, i in zip(priors, range(len(params))):
         mu, sigma, prior_type = parameter_name[1], parameter_name[2], parameter_name[3]
-        
+        # parameter_name here is the whole [name, mu, sigma, type, model_ids]
+        # prior entry, not just the name -- match on parameter_name[0] (the
+        # actual name string) below. (Previously this matched on the whole
+        # list against string literals, which can never be true, so every
+        # case below -- including the Mbreak1<Mbreak2 ordering check -- was
+        # silently unreachable dead code.)
+        param_label = parameter_name[0]
+
         # print("parameter_name: ", parameter_name)
         # print("params[i]: ", params[i])
         # print("length of params[i]: ", len(params[i]))
         # input()
-        
-        match parameter_name:
+
+        match param_label:
             case "C":
                 if params[i] < 0:
                     return -np.inf
@@ -78,7 +85,15 @@ def parametric_log_prior(params, model_id):
             case "Mbreak2":
                 if params[i] < 0:
                     return -np.inf
-            
+            case "mu_e_1":
+                # Gamma-mixture identifiability: component 1 must stay the
+                # tight/low-e one and component 2 the broad/higher-e one, or
+                # the two are only identifiable up to a label swap. Relies on
+                # mu_e_1/mu_e_2 being adjacent and in this order in
+                # kg_priors.py's prior list.
+                if params[i] > params[i+1]:  # if mu_e_1 is greater than mu_e_2
+                    return -np.inf
+
 
         match prior_type:
             case "lnN":
@@ -156,19 +171,14 @@ def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, m
     min_density = density_bounds[0] if min_density is None else min_density
     max_density = density_bounds[1] if max_density is None else max_density
 
-    (p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0, γ1, γ2, mass_break_1, mass_break_2,
-     σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid,
-     is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs) = get_probability_distributions(params)
+    get_probability_distributions_return = get_probability_distributions(params, model_id)
 
     print(f"rank {rank} get probability distribution time is ", (prob_dist_time := time.time()) - start_time, flush=True)
 
-    if is_nan_in_pmfs or is_inf_in_pmfs or is_neg_in_pmfs:
+    if get_probability_distributions_return["bad_draw_flags"]["is_nan_in_pmfs"] or get_probability_distributions_return["bad_draw_flags"]["is_inf_in_pmfs"] or get_probability_distributions_return["bad_draw_flags"]["is_neg_in_pmfs"]:
         return -np.inf, {"master_seed": -1, "rank_seed": -1, "time_seed": -1}, rank, np.nan
 
-    synthetic_catalog, rng_metadata = generate_catalog(
-        stellar_info, p_Period, Period_fine_grid, p_mass, mass_fine_grid,
-        γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid, rank
-    )
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_info, get_probability_distributions_return, rank)
 
     print(f"rank {rank} generate catalog time is ", (gen_cat_time := time.time()) - prob_dist_time, flush=True)
 
@@ -196,7 +206,7 @@ def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, m
 
     # ---- data term: evaluate every real posterior draw at its own exact location ----
     obs = observed_catalog
-    log_f_obs = joint_log_intrinsic_density(params, obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"])
+    log_f_obs = joint_log_intrinsic_density(params, obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"], model_id=model_id)
 
     obs_points = np.column_stack([obs["R"], obs["P"], obs["M"], obs["e"], obs["omega"]])  # (radius, period, mass, e, omega) order
     # p_tr only -- NOT the combined completeness -- per Neil & Rogers (2020): these
@@ -287,7 +297,7 @@ def parametric_log_likelihood_grid(params, model_id):
     # print("params: ", params)
 
     grid_sum = 0.0
-    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params)
+    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(params, model_id)
 
     # print(params)
     print(f"rank {rank} get probability distribution time is ", (prob_dist_time:=time.time()) - start_time,flush=True)

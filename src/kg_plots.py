@@ -592,7 +592,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
         stellar_info = np.repeat(stellar_info, pointprocess_synthetic_multiplier, axis=0)
         observed_catalog = load_flat_observed_catalog(observed_catalog_filename)
         pointprocess_marginal_plots(top_samples[0], stellar_info, voxel_grid, observed_catalog, visualization_plot_folder,
-                                     synthetic_multiplier=pointprocess_synthetic_multiplier)
+                                     synthetic_multiplier=pointprocess_synthetic_multiplier, model_id=model_id)
         print("Point-process marginal plots done.")
 
         # Gamma0 was profiled out analytically rather than sampled (see
@@ -613,6 +613,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
             synthetic_multiplier=pointprocess_synthetic_multiplier,
             observed_save_path=backend_folder+"/observed_region_of_interest_summation.txt",
             physical_save_path=backend_folder+"/physical_region_of_interest_summation.txt",
+            model_id=model_id,
         )
         print("Point-process region-of-interest summation done.")
         return
@@ -620,20 +621,20 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     # --- everything below here is the legacy "grid" likelihood's plotting path ---
     synthetic_multiplier = 200
 
-    p_Period, Period_fine_grid, p_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs = get_probability_distributions(top_samples[0])
-    plt.scatter(mass_fine_grid,p_mass)
+    get_probability_distributions_return = get_probability_distributions(top_samples[0], model_id)
+    plt.scatter(get_probability_distributions_return["mass_fine_grid"], get_probability_distributions_return["pmf_mass"])
     plt.xlabel("p_mass")
     plt.savefig("p_mass.png")
 
     stellar_info = stellar_df[["Rad","Mass"]].to_numpy(dtype=np.float32)
     stellar_info = np.repeat(stellar_info,synthetic_multiplier,axis=0)
-    
-    synthetic_catalog, rng_metadata = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,master_seed=master_seed,time_seed=time_seed)
+
+    synthetic_catalog, rng_metadata = generate_catalog(stellar_info, get_probability_distributions_return, rank_seed, master_seed=master_seed, time_seed=time_seed)
     print("initial shape of synthetic catalog: ", synthetic_catalog.shape)
     print("initial num radii between 1.2 and 2.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,2] < 2) & (synthetic_catalog[:,2] > 1.2)))
     print("ninitial num period between 2.5 and 3.0 in synthetic catalog: ", np.sum((synthetic_catalog[:,0] < 3) & (synthetic_catalog[:,0] > 2.5)))
 
-    synthetic_catalog_test, rng_metadata_test = generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank_seed,master_seed=5555,time_seed=101)
+    synthetic_catalog_test, rng_metadata_test = generate_catalog(stellar_info, get_probability_distributions_return, rank_seed, master_seed=5555, time_seed=101)
     print("initial shape of synthetic catalog test: ", synthetic_catalog_test.shape)
     print("initial num radii between 1.2 and 2.0 in synthetic catalog test: ", np.sum((synthetic_catalog_test[:,2] < 2) & (synthetic_catalog_test[:,2] > 1.2)))
     print("ninitial num period between 2.5 and 3.0 in synthetic catalog test: ", np.sum((synthetic_catalog_test[:,0] < 3) & (synthetic_catalog_test[:,0] > 2.5)))
@@ -1780,7 +1781,7 @@ def _observed_draw_weights(observed_catalog):
     return np.repeat(1.0 / seg_counts, seg_counts)
 
 
-def pointprocess_synthetic_catalog(params, stellar_info, voxel_grid, min_density=0.01, max_density=10.0, rank=0):
+def pointprocess_synthetic_catalog(params, stellar_info, voxel_grid, min_density=0.01, max_density=10.0, rank=0, model_id=0):
     """
     Builds the same completeness-weighted synthetic catalog used by
     kg_likelihood.parametric_log_likelihood_pointprocess's Lambda_hat term, for
@@ -1789,22 +1790,24 @@ def pointprocess_synthetic_catalog(params, stellar_info, voxel_grid, min_density
     use for the MCMC itself if you want smoother-looking plots -- there's no
     10-second-per-step budget here.
 
+    model_id must match whichever model `params` was actually fit under (0:
+    Rayleigh+Exponential eccentricity, 1: 2-component Gamma mixture) -- see
+    get_probability_distributions/joint_log_intrinsic_density, which both
+    branch on it the same way. Getting this wrong silently reinterprets
+    params[14:] as the wrong eccentricity model instead of erroring.
+
     Returns (trimmed_catalog, completeness_weights, density_mask), where
     trimmed_catalog's columns are (radius, period, mass, e, omega) and
     density_mask flags which rows fall in the physically-plausible density
     range (matching kg_likelihood's density_bounds).
     """
-    (p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0, γ1, γ2, mass_break_1, mass_break_2,
-     σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid,
-     is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs) = get_probability_distributions(params)
+    get_probability_distributions_return = get_probability_distributions(params, model_id)
+    bad_draw_flags = get_probability_distributions_return["bad_draw_flags"]
 
-    if is_nan_in_pmfs or is_inf_in_pmfs or is_neg_in_pmfs:
+    if bad_draw_flags["is_nan_in_pmfs"] or bad_draw_flags["is_inf_in_pmfs"] or bad_draw_flags["is_neg_in_pmfs"]:
         raise ValueError("get_probability_distributions produced degenerate PMFs for these params -- can't build a synthetic catalog to plot.")
 
-    synthetic_catalog, _ = generate_catalog(
-        stellar_info, p_Period, Period_fine_grid, p_mass, mass_fine_grid,
-        γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, p_ecc, eccentricity_fine_grid, rank
-    )
+    synthetic_catalog, _ = generate_catalog(stellar_info, get_probability_distributions_return, rank)
     trimmed_catalog, completeness_weights, _ = synthetic_catalog_with_weights(synthetic_catalog, voxel_grid, stellar_info)
 
     synth_density = density_given_mass_radius(trimmed_catalog[:, 2], trimmed_catalog[:, 0])
@@ -1823,7 +1826,7 @@ def _format_edge(value):
 def pointprocess_1D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
                                    visualization_plot_folder, dims=None,
                                    min_density=0.01, max_density=10.0, synthetic_multiplier=200,
-                                   y_axis_scale="log", mode='save'):
+                                   y_axis_scale="log", mode='save', model_id=0):
     """
     For each dimension in `dims` (default: all five), draws three bar
     histograms on the given gridding (the same per-dimension bin edges used
@@ -1883,7 +1886,7 @@ def pointprocess_1D_marginal_plot(params, stellar_info, voxel_grid, observed_cat
         dims = list(_POINTPROCESS_DIM_INFO.keys())
 
     trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
-        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density, model_id=model_id
     )
     synth = trimmed_catalog[density_mask]
     synth_completeness_weights = completeness_weights[density_mask]
@@ -1946,7 +1949,7 @@ _POINTPROCESS_2D_PAIRS_DEFAULT = list(combinations(_POINTPROCESS_DIM_INFO.keys()
 
 def pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
                                    visualization_plot_folder, pairs=None,
-                                   min_density=0.01, max_density=10.0, mode='save'):
+                                   min_density=0.01, max_density=10.0, mode='save', model_id=0):
     """
     2D analogue of pointprocess_1D_marginal_plot, styled like the legacy
     grid-likelihood's param_2D_residuals_plot: an equal-index pcolormesh (so
@@ -1967,7 +1970,7 @@ def pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_cat
         pairs = _POINTPROCESS_2D_PAIRS_DEFAULT
 
     trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
-        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density, model_id=model_id
     )
     synth = trimmed_catalog[density_mask]
     synth_weights = completeness_weights[density_mask]
@@ -2024,7 +2027,7 @@ def pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_cat
 
 def pointprocess_marginal_plots(params, stellar_info, voxel_grid, observed_catalog,
                                  visualization_plot_folder, dims=None, pairs=None,
-                                 min_density=0.01, max_density=10.0, synthetic_multiplier=200, mode='save'):
+                                 min_density=0.01, max_density=10.0, synthetic_multiplier=200, mode='save', model_id=0):
     """Convenience wrapper: runs both pointprocess_1D_marginal_plot and
     pointprocess_2D_marginal_plot in one call (mirrors how heatmap_plot
     wraps make_histograms for the old grid-based plots, above). Make sure
@@ -2033,10 +2036,11 @@ def pointprocess_marginal_plots(params, stellar_info, voxel_grid, observed_catal
     docstring for why that matters for its (non-density-normalized) counts."""
     pointprocess_1D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
                                    visualization_plot_folder, dims=dims, min_density=min_density,
-                                   max_density=max_density, synthetic_multiplier=synthetic_multiplier, mode=mode)
+                                   max_density=max_density, synthetic_multiplier=synthetic_multiplier, mode=mode,
+                                   model_id=model_id)
     pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
                                    visualization_plot_folder, pairs=pairs,
-                                   min_density=min_density, max_density=max_density, mode=mode)
+                                   min_density=min_density, max_density=max_density, mode=mode, model_id=model_id)
 
 
 def pointprocess_gamma0_posterior_plot(reader, nburnin, n_planets, visualization_plot_folder,
@@ -2115,7 +2119,8 @@ def pointprocess_gamma0_posterior_plot(reader, nburnin, n_planets, visualization
 
 
 def pointprocess_region_of_interest_rate(params, stellar_info, voxel_grid, observed_catalog, region,
-                                          min_density=0.01, max_density=10.0, synthetic_multiplier=200, label=None):
+                                          min_density=0.01, max_density=10.0, synthetic_multiplier=200, label=None,
+                                          model_id=0):
     """
     Finds and prints the model's integrated occurrence rate (planets per
     star) within a RegionOfInterest box of (radius, period, mass, e, omega)
@@ -2174,7 +2179,7 @@ def pointprocess_region_of_interest_rate(params, stellar_info, voxel_grid, obser
       The integrated occurrence rate, in planets per star.
     """
     trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
-        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density, model_id=model_id
     )
 
     def _bounds(rng, grid_array):
@@ -2223,7 +2228,8 @@ def pointprocess_region_of_interest_rate(params, stellar_info, voxel_grid, obser
 
 
 def print_pointprocess_regions_of_interest(params, stellar_info, voxel_grid, observed_catalog, region_object_list,
-                                            min_density=0.01, max_density=10.0, synthetic_multiplier=200, save_path=None):
+                                            min_density=0.01, max_density=10.0, synthetic_multiplier=200, save_path=None,
+                                            model_id=0):
     """
     Convenience wrapper: prints the integrated occurrence rate for every
     RegionOfInterest in region_object_list (point-process analogue of
@@ -2237,6 +2243,7 @@ def print_pointprocess_regions_of_interest(params, stellar_info, voxel_grid, obs
         rate = pointprocess_region_of_interest_rate(
             params, stellar_info, voxel_grid, observed_catalog, region,
             min_density=min_density, max_density=max_density, synthetic_multiplier=synthetic_multiplier,
+            model_id=model_id,
         )
         results.append((region, rate))
         if save_path is not None:
@@ -2247,7 +2254,7 @@ def print_pointprocess_regions_of_interest(params, stellar_info, voxel_grid, obs
 
 def save_pointprocess_regions_of_interest(params, stellar_info, voxel_grid, observed_catalog, region_object_list,
                                            min_density=0.01, max_density=10.0, synthetic_multiplier=200,
-                                           observed_save_path=None, physical_save_path=None):
+                                           observed_save_path=None, physical_save_path=None, model_id=0):
     """
     Point-process analogue of the legacy grid likelihood's
     save_region_of_interest_summation, which param_analysis_plots calls
@@ -2273,7 +2280,7 @@ def save_pointprocess_regions_of_interest(params, stellar_info, voxel_grid, obse
     Returns a list of (region, observed_rate, physical_rate) tuples.
     """
     trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
-        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density, model_id=model_id
     )
     physical_weights = np.ones_like(completeness_weights)
 

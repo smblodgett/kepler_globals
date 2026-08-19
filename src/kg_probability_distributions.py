@@ -9,7 +9,7 @@ from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
 from scipy.stats import lognorm, norm # truncnorm #, gaussian_kde
 # from scipy.stats import gamma as gamma_dist
-from scipy.special import gamma, ndtr, ndtri
+from scipy.special import gamma, gammaln, gammainc, logsumexp, ndtr, ndtri
 
 
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
@@ -401,6 +401,83 @@ def eccentricity_log_pdf(e, alpha, lam, sigma_e):
     return np.log(np.maximum(pdf, 1e-300))
 
 
+def eccentricity_log_pdf_gamma_mixture(e, mu1, alpha1, mu2, alpha2, f, e_max=0.99):
+    """
+    Analytic log-density for a 2-component Gamma mixture on eccentricity,
+    parametrized by each component's MEAN eccentricity (mu = alpha/beta)
+    and shape (alpha), rather than raw (alpha, rate) directly -- beta is
+    recovered internally as alpha/mu. f is the mixing weight on component 1
+    (f=1 -> pure component 1, f=0 -> pure component 2), same "weight on the
+    first term" convention as alpha in eccentricity_log_pdf above.
+
+    Why (mu, alpha) instead of (alpha, beta): mu is directly "what
+    eccentricity does this component center on" -- easy to bound with a
+    physically meaningful prior. alpha alone then controls how peaked vs.
+    diffuse the component is around that mean (coefficient of variation =
+    1/sqrt(alpha)), independent of where the mean sits. Under raw
+    (alpha, beta), those two roles are tangled: alpha can grow arbitrarily
+    large with beta scaled to match (holding the mean fixed) and the
+    component silently collapses into an arbitrarily narrow spike, with no
+    prior on beta alone actually preventing it. That's the exact same
+    soft-max/log-mean-exp collapse already diagnosed for this project's
+    Rayleigh+Exponential sigma_e -- (mu, alpha) lets kg_priors.py put a
+    direct, bounded prior on alpha to stop it from recurring here.
+
+    kg_priors.py also enforces mu1 < mu2 (component 1 = "tight/low-e",
+    component 2 = "broad/higher-e") via an ordering constraint in
+    kg_likelihood.parametric_log_prior. Without that, the two components
+    are only identifiable up to a label swap (the standard mixture-model
+    non-identifiability problem) -- the MCMC would be equally happy calling
+    the tight component "1" or "2" from step to step, which shows up as
+    spuriously multimodal marginal posteriors on (mu1, alpha1) vs.
+    (mu2, alpha2) even though the fitted density itself is unimodal-stable.
+
+    A raw Gamma distribution lives on (0, inf), not [0, 1], so each
+    component is truncated to [0, e_max] and renormalized by its own CDF
+    at e_max (gammainc(alpha, beta*e_max) is already the REGULARIZED lower
+    incomplete gamma function, i.e. exactly the Gamma CDF, so dividing by
+    it directly rescales area-under-the-curve back to 1 over [0, e_max]).
+    This plays the same role the (1 - exp(...)) denominators play for
+    rayleigh_exponential's truncation to [0, 1] -- skip it and the two
+    components aren't proper densities over the actual domain, which
+    silently penalizes/rewards parameter choices based on how much tail
+    mass they lose past e_max rather than on genuine shape fit.
+
+    Computed entirely in log-space (gammaln for the normalizing constant,
+    logsumexp for combining the two weighted components) rather than via
+    direct pdf evaluation -- e**(alpha-1) and beta**alpha can overflow or
+    underflow for realistic shape/rate values, especially for shape < 1
+    (which gives an integrable singularity at e=0, not a numerical error,
+    but only if handled in log-space).
+    """
+    e = np.asarray(e, dtype=np.float64)
+
+    if mu1 <= 0 or mu2 <= 0 or alpha1 <= 0 or alpha2 <= 0 or f < 0 or f > 1:
+        # Should never happen if kg_priors.py's bounds are respected, but the
+        # MCMC can still propose an out-of-bounds step before the prior
+        # rejects it -- fail safe with -inf rather than nan/crash from
+        # dividing by a non-positive mu or taking gammaln of a non-positive
+        # alpha (matching the domain-guard style of the other *_log_pdf
+        # functions above, e.g. radius_given_mass_log_pdf's lower_bound mask).
+        return np.full(e.shape, -np.inf)
+
+    beta1 = alpha1 / mu1
+    beta2 = alpha2 / mu2
+
+    e_safe = np.maximum(e, 1e-12)  # avoid log(0); real data should never be exactly 0 anyway
+
+    log_pdf1_full = alpha1 * np.log(beta1) + (alpha1 - 1) * np.log(e_safe) - beta1 * e_safe - gammaln(alpha1)
+    log_pdf2_full = alpha2 * np.log(beta2) + (alpha2 - 1) * np.log(e_safe) - beta2 * e_safe - gammaln(alpha2)
+
+    log_pdf1 = log_pdf1_full - np.log(gammainc(alpha1, beta1 * e_max))
+    log_pdf2 = log_pdf2_full - np.log(gammainc(alpha2, beta2 * e_max))
+
+    with np.errstate(divide="ignore"):  # log(f) or log(1-f) at the f=0/1 boundary is a legitimate -inf, not an error
+        log_terms = np.stack([np.log(f) + log_pdf1, np.log(1.0 - f) + log_pdf2])
+    logpdf = logsumexp(log_terms, axis=0)
+    return np.where((e >= 0) & (e <= e_max), logpdf, -np.inf)
+
+
 def omega_log_pdf(omega, low=0.0, high=360.0):
     """Omega is modeled as uniform, so its density is a constant; included so
     the joint density below is a properly normalized 5-D density."""
@@ -409,7 +486,7 @@ def omega_log_pdf(omega, low=0.0, high=360.0):
     return np.where((omega >= low) & (omega <= high), logpdf, -np.inf)
 
 
-def joint_log_intrinsic_density(params, P, M, R, e, omega):
+def joint_log_intrinsic_density(params, P, M, R, e, omega,model_id=0):
     """
     Fully analytic, grid-free evaluation of the intrinsic population density
     f_pop(period, mass, radius, e, omega | params) at specific (real or
@@ -431,15 +508,29 @@ def joint_log_intrinsic_density(params, P, M, R, e, omega):
     mu_M, sigma_M = params[9], params[10]
     β1, β2 = params[11], params[12]
     Period_break_1 = params[13]
-    α, λ, σ_e = params[14], params[15], params[16]
+    if model_id == 0:
+        α, λ, σ_e = params[14], params[15], params[16]
+        log_f = (
+            period_log_pdf(P, β1, β2, Period_break_1)
+            + mass_log_pdf(M, mu_M, sigma_M)
+            + radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
+            + eccentricity_log_pdf(e, α, λ, σ_e)
+            + omega_log_pdf(omega)
+            )
+    elif model_id == 1:
+        # Order here (mu_e_1, mu_e_2, alpha_e_1, alpha_e_2, f) matches the
+        # adjacent mu_e_1/mu_e_2 ordering in kg_priors.py -- that adjacency is
+        # what lets parametric_log_prior enforce mu_e_1 < mu_e_2 (params[i] vs
+        # params[i+1]) the same way it already does for Mbreak1/Mbreak2.
+        mu1e, mu2e, α1e, α2e, f = params[14], params[15], params[16], params[17], params[18]
+        log_f = (
+            period_log_pdf(P, β1, β2, Period_break_1)
+            + mass_log_pdf(M, mu_M, sigma_M)
+            + radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
+            + eccentricity_log_pdf_gamma_mixture(e, mu1e, α1e, mu2e, α2e, f)
+            + omega_log_pdf(omega)
+        )
 
-    log_f = (
-        period_log_pdf(P, β1, β2, Period_break_1)
-        + mass_log_pdf(M, mu_M, sigma_M)
-        + radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
-        + eccentricity_log_pdf(e, α, λ, σ_e)
-        + omega_log_pdf(omega)
-    )
     return log_f
 
 
@@ -629,7 +720,10 @@ def random_seed_generation(master_seed,*args):
     return int(seed_seq.generate_state(1)[0] & 0xFFFFFFFF)
 
 
-def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_grid, γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, p_ecc, eccentricity_fine_grid,rank,master_seed=None,time_seed=10):
+def generate_catalog(stellar_info,get_probability_distributions_return,rank,master_seed=None,time_seed=10):
+
+    return_dict = get_probability_distributions_return
+    variables = return_dict["variables"]
     
     # np.random.seed(22)
 
@@ -661,16 +755,16 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
     # print("generation init time: ", (init_time:=time.time()) - begin_time)
 
 
-    fake_catalog[:,0] = rng.choice(Period_fine_grid,size=len_stellar_info,p=p_Period)  # Period
+    fake_catalog[:,0] = rng.choice(return_dict["Period_fine_grid"],size=len_stellar_info,p=return_dict["pmf_Period"])  # Period
 
     # print("period gen time: ", (period_gen_time:=time.time()) - init_time)
 
 
-    fake_catalog[:,1] = rng.choice(mass_fine_grid,size=len_stellar_info,p=p_mass)  # Mass
+    fake_catalog[:,1] = rng.choice(return_dict["mass_fine_grid"],size=len_stellar_info,p=return_dict["pmf_mass"])  # Mass
     mask = fake_catalog[:,1] < 0.1
     while np.any(mask):
         print("Some masses are less than 0.1 M_E, regenerating...")
-        fake_catalog[:,1][mask] = rng.choice(mass_fine_grid,size=len(fake_catalog[:,1][mask]),p=p_mass)
+        fake_catalog[:,1][mask] = rng.choice(return_dict["mass_fine_grid"],size=len(fake_catalog[:,1][mask]),p=return_dict["pmf_mass"])
 
     # print("number of mass 4 - 24: ", np.sum((fake_catalog[:,1] > 4) & (fake_catalog[:,1] < 24)))
     
@@ -680,11 +774,13 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
     # print("number of M greater than 5000: ", np.sum(fake_catalog[:,1]>5000))    
     
     # print("make radius distribution...")
-    fake_catalog[:,2] = RadiusDistribution(γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
+    fake_catalog[:,2] = RadiusDistribution(variables["γ0"],variables["γ1"],variables["γ2"],variables["mass_break_1"],
+                                           variables["mass_break_2"],variables["σ0"],variables["σ1"],variables["σ2"],
+                                          variables["C"]).sample_radius_given_mass(fake_catalog[:,1],rng)  # Radius
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_info,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     # print("radius gen time: ", (radius_gen_time:=time.time()) - mass_gen_time)
     
-    fake_catalog[:,3] = rng.choice(eccentricity_fine_grid,size=len_stellar_info,p=p_ecc)  # Eccentricity
+    fake_catalog[:,3] = rng.choice(return_dict["eccentricity_fine_grid"],size=len_stellar_info,p=return_dict["pmf_ecc"])  # Eccentricity
 
     # print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
 
@@ -696,10 +792,13 @@ def generate_catalog(stellar_info,p_Period, Period_fine_grid, p_mass, mass_fine_
     return fake_catalog, rng_metadata
 
 
-def get_probability_distributions(params):
-    # unpack params (Gamma0 is not among these -- it's profiled out
-    # analytically in kg_likelihood.py rather than sampled; see
-    # profile_optimal_gamma0 and the point-process comment block above)
+def params_to_variables_dict(params, model_id=0):
+    """
+    Unpack the 17-vector of sampled parameters into a dict of named
+    variables, for use by get_probability_distributions and
+    joint_log_intrinsic_density. This is a convenience wrapper to avoid
+    repeating the same unpacking code in multiple places.
+    """
     γ0 = params[0]
     γ1 = params[1]
     γ2 = params[2]
@@ -713,40 +812,101 @@ def get_probability_distributions(params):
     sigma_M = params[10]
     β1 = params[11]
     β2 = params[12]
-    # β3 = params[14]
     Period_break_1 = params[13]
-    # Period_break_2 = params[16]
-    α = params[14]
-    λ = params[15]
-    σ_e = params[16]
+
+    if model_id == 0:
+        α, λ, σ_e = params[14], params[15], params[16]
+        return {
+            "γ0": γ0,
+            "γ1": γ1,
+            "γ2": γ2,
+            "σ0": σ0,
+            "σ1": σ1,
+            "σ2": σ2,
+            "mass_break_1": mass_break_1,
+            "mass_break_2": mass_break_2,
+            "C": C,
+            "mu_M": mu_M,
+            "sigma_M": sigma_M,
+            "β1": β1,
+            "β2": β2,
+            "Period_break_1": Period_break_1,
+            "α": α,
+            "λ": λ,
+            "σ_e": σ_e
+        }
+    elif model_id == 1:
+        mu_e_1, mu_e_2, α_e_1, α_e_2, f = params[14], params[15], params[16], params[17], params[18]
+        return {
+            "γ0": γ0,
+            "γ1": γ1,
+            "γ2": γ2,
+            "σ0": σ0,
+            "σ1": σ1,
+            "σ2": σ2,
+            "mass_break_1": mass_break_1,
+            "mass_break_2": mass_break_2,
+            "C": C,
+            "mu_M": mu_M,
+            "sigma_M": sigma_M,
+            "β1": β1,
+            "β2": β2,
+            "Period_break_1": Period_break_1,
+            "mu_e_1": mu_e_1,
+            "mu_e_2": mu_e_2,
+            "α_e_1": α_e_1,
+            "α_e_2": α_e_2,
+            "f": f
+        }
+
+
+def get_probability_distributions(params, model_id=0):
+    """
+    model_id selects which eccentricity model params[14:] holds -- 0 is the
+    original 3-parameter Rayleigh+Exponential (params[14:17] = alpha, lambda,
+    sigma_e), 1 is the 2-component Gamma mixture (params[14:19] =
+    mu_e_1, mu_e_2, alpha_e_1, alpha_e_2, f). Everything before index 14 is
+    shared across model_id and unpacked identically. This mirrors
+    joint_log_intrinsic_density's model_id branch exactly -- same parameter
+    count/order/meaning per model_id -- since get_probability_distributions
+    and joint_log_intrinsic_density need to agree about what `params` means
+    to build a self-consistent synthetic catalog vs. data-term likelihood
+    for the same fitted model. Defaults to model_id=0 for callers that
+    predate this argument (e.g. any script still passing a bare 17-vector).
+    """
+    # unpack params (Gamma0 is not among these -- it's profiled out
+    # analytically in kg_likelihood.py rather than sampled; see
+    # profile_optimal_gamma0 and the point-process comment block above)
+    variables = params_to_variables_dict(params, model_id)
+
 
     # period
     Period_fine_grid = np.linspace(0.1,500,10000,dtype=np.float32)
-    pdf_Period = PeriodDistribution(Period_fine_grid,[β1,β2],[Period_break_1],power_laws=2).Period_pdf(Period_fine_grid)
+    pdf_Period = PeriodDistribution(Period_fine_grid,[variables["β1"],variables["β2"]],[variables["Period_break_1"]],power_laws=2).Period_pdf(Period_fine_grid)
     pmf_Period = normalize_pdf_to_pmf(pdf_Period,Period_fine_grid)
     # p_Period = normalize_pdf_to_pmf(pdf_Period, Period_fine_grid)
 
     # mass
     mass_fine_grid = np.logspace(-1,4,10000,dtype=np.float32) # used to be np.linspace(.1,10000,100000) that might be right?
-    pdf_mass = MassDistribution(mass_fine_grid,mu_M,sigma_M).mass_pdf()
+    pdf_mass = MassDistribution(mass_fine_grid,variables["mu_M"],variables["sigma_M"]).mass_pdf()
     pmf_mass = normalize_pdf_to_pmf(pdf_mass,mass_fine_grid)
 
     # print("pmass: ", p_mass)
     # print("area under mass distribution: ", np.trapezoid(pdf_mass, mass_fine_grid))
-    
-    # radius 
+
+    # radius
 
     # ecc
-    eccentricity_grid = np.linspace(0,1,10000,dtype=np.float32)
-    pdf_ecc = EccentricityDistribution(eccentricity_grid,α,λ,σ_e).eccentricity_pdf(eccentricity_grid)
-    pmf_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_grid)
+    eccentricity_fine_grid = np.linspace(0,1,10000,dtype=np.float32)
+    if model_id == 1:
+        pdf_ecc = np.exp(eccentricity_log_pdf_gamma_mixture(eccentricity_fine_grid, variables["mu_e_1"], variables["α_e_1"], variables["mu_e_2"], variables["α_e_2"], variables["f"]))
+    else:
+        pdf_ecc = EccentricityDistribution(eccentricity_fine_grid,variables["α"],variables["λ"],variables["σ_e"]).eccentricity_pdf(eccentricity_fine_grid)
+    pmf_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_fine_grid)
     # print("p_ecc: ", p_ecc)
-    # print("alpha: ", α)
-    # print("lambda: ", λ)
-    # print("sigma_e: ", σ_e)
-    # print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))    
+    # print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))
 
-    
+
     is_nan_in_pmfs = (np.isnan(pmf_ecc).any() or np.isnan(pmf_Period).any() or np.isnan(pmf_mass).any())
     #     # print("Warning: PMFs contain NaN. This parameter draw is bad, let's skip it!")
 
@@ -756,9 +916,21 @@ def get_probability_distributions(params):
     is_neg_in_pmfs = (np.any(pmf_ecc < 0) or np.any(pmf_Period < 0) or np.any(pmf_mass < 0))
         # print("Warning: PMFs contain negative values. This parameter draw is bad, let's skip it!")
 
+    get_probability_distributions_return_dict = {"variables": variables,
+                                                "pmf_Period": pmf_Period,
+                                                "Period_fine_grid": Period_fine_grid,
+                                                "pmf_mass": pmf_mass,
+                                                "mass_fine_grid": mass_fine_grid,
+                                                "pmf_ecc": pmf_ecc,
+                                                "eccentricity_fine_grid": eccentricity_fine_grid,
+                                                "bad_draw_flags": {
+                                                    "is_nan_in_pmfs": is_nan_in_pmfs,
+                                                    "is_inf_in_pmfs": is_inf_in_pmfs,
+                                                    "is_neg_in_pmfs": is_neg_in_pmfs
+                                                    }
+                                                } 
 
-
-    return pmf_Period, Period_fine_grid, pmf_mass, mass_fine_grid,γ0,γ1,γ2,mass_break_1,mass_break_2,σ0,σ1,σ2,C, pmf_ecc, eccentricity_grid, is_nan_in_pmfs, is_inf_in_pmfs, is_neg_in_pmfs
+    return get_probability_distributions_return_dict
 
 
 def normalize_pdf_to_pmf(pdf, grid):
