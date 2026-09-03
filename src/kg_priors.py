@@ -80,23 +80,62 @@ class PriorArgs:
         # both that check and the params[14:19] unpacking in
         # joint_log_intrinsic_density's model_id == 1 branch.
         #
-        # Bounds are deliberately NOT flat/uninformative: alpha's upper bound
-        # (15) is the load-bearing piece here -- coefficient of variation for
-        # a Gamma is 1/sqrt(alpha), so an unbounded alpha lets a component
-        # collapse into an arbitrarily narrow spike (mean held fixed, beta
-        # scaled to match) with nothing pushing back on it, the same
-        # soft-max/log-mean-exp collapse already diagnosed for the old
-        # Rayleigh+Exponential sigma_e. mu ranges are informed by this
-        # project's own multis (very tight, near e~0) vs. singles (broad,
-        # extending past e~0.8) split, and cross-checked for
-        # order-of-magnitude sanity against Stevenson et al. 2025's fitted
-        # single-Gamma values (alpha ~ 1.2-1.5, implied mean e ~ 0.19-0.26,
-        # for a RV sample -- not copied directly, since that split used known
-        # multiplicity labels rather than an unconditioned mixture).
-        self.add_prior('mu_e_1', 0.001, 0.15, "U", [1])   # tight/low-e component mean
+        # Bounds are deliberately NOT flat/uninformative. Originally only
+        # alpha was capped (at 15), on the reasoning that a Gamma's
+        # coefficient of variation is 1/sqrt(alpha), so bounding alpha stops
+        # the component from getting arbitrarily narrow RELATIVE to its own
+        # mean. That reasoning has a hole: absolute width is
+        # std = mu/sqrt(alpha), so a small mean alone still forces a tiny
+        # absolute width regardless of alpha's ceiling -- with mu_e_1 allowed
+        # down to 0.001 and alpha_e_1 up to 15, std could collapse to
+        # ~0.00026, an unphysically narrow spike right at e=0. The MCMC found
+        # and exploited exactly this: any real planet with so much as one
+        # posterior draw near e~0 (common) gets a huge, unearned boost from
+        # the per-planet log-mean-exp term, the same soft-max collapse
+        # already diagnosed for the old Rayleigh+Exponential's sigma_e, just
+        # recurring through mu_e_1/alpha_e_1 instead -- confirmed directly:
+        # with mu_e_1=0.002, alpha_e_1=12 the fitted density at e~0.0025 was
+        # ~2700-30000x the density anywhere else, with ~92% of the intrinsic
+        # PMF mass piling into e<0.005, which also explains why the
+        # completeness-weighted "observed" catalog collapsed everywhere else
+        # (Gamma0_opt is one global scalar set by Lambda_tilde, which that
+        # spike then dominates).
+        #
+        # First fix: raise mu_e_1's floor and lower alpha_e_1's ceiling
+        # together so the worst-case std = mu_e_1_min/sqrt(alpha_e_1_max)
+        # stays above a physically sane floor (~0.01, comparable to real
+        # eccentricity measurement/grid resolution) -- 0.04/sqrt(10) =~
+        # 0.0126. That fix targets the "narrow interior bump" version of the
+        # collapse. Checked against an actual best_fit.json afterwards, the
+        # MCMC had instead exploited a DIFFERENT version of the same
+        # pathology: alpha_e_1 = 0.516 -- barely above the OLD floor of 0.5,
+        # nowhere near the ceiling -- with mu_e_1 = 0.051 (nowhere near
+        # either floor). Any Gamma shape parameter alpha < 1 makes the
+        # density diverge as e->0 (an integrable singularity right at the
+        # domain boundary, not an interior bump), independent of mu -- so
+        # raising mu_e_1's floor and lowering alpha_e_1's ceiling did nothing
+        # to stop this second route in, since alpha_e_1's FLOOR was never
+        # touched. Confirmed directly by evaluating
+        # eccentricity_log_pdf_gamma_mixture at that fit's actual params:
+        # density at e=1e-6 was ~2600x the density at e=0.3, with ~99% of
+        # the intrinsic PMF mass piling into e<0.005.
+        #
+        # Second fix: raise alpha_e_1 AND alpha_e_2's floor to 1.0. This is
+        # categorical, not just a tighter number -- a Gamma's density at e=0
+        # is exactly 0 for alpha>1, a finite constant for alpha=1, and only
+        # diverges for alpha<1, so alpha>=1 makes the boundary-singularity
+        # exploit impossible for either component, not merely less likely.
+        # mu ranges are informed by this project's own multis (very tight,
+        # near e~0) vs. singles (broad, extending past e~0.8) split, and
+        # cross-checked for order-of-magnitude sanity against Stevenson et
+        # al. 2025's fitted single-Gamma values (alpha ~ 1.2-1.5, implied
+        # mean e ~ 0.19-0.26, for a RV sample -- not copied directly, since
+        # that split used known multiplicity labels rather than an
+        # unconditioned mixture).
+        self.add_prior('mu_e_1', 0.04, 0.15, "U", [1])    # tight/low-e component mean
         self.add_prior('mu_e_2', 0.1, 0.7, "U", [1])      # broad/higher-e component mean
-        self.add_prior('alpha_e_1', 0.5, 15, "U", [1])    # tight component shape/concentration
-        self.add_prior('alpha_e_2', 0.5, 15, "U", [1])    # broad component shape/concentration
+        self.add_prior('alpha_e_1', 1.0, 10, "U", [1])    # tight component shape/concentration
+        self.add_prior('alpha_e_2', 1.0, 15, "U", [1])    # broad component shape/concentration
         self.add_prior('f', 0, 1,"U", [1])                # mixing weight on component 1
 
 
