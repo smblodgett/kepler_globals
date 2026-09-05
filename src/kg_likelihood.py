@@ -206,7 +206,7 @@ def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, m
 
     # ---- data term: evaluate every real posterior draw at its own exact location ----
     obs = observed_catalog
-    log_f_obs = joint_log_intrinsic_density(params, obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"], model_id=model_id)
+    log_f_obs = joint_log_intrinsic_density(get_probability_distributions_return["variables"], obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"], model_id=model_id)
 
     obs_points = np.column_stack([obs["R"], obs["P"], obs["M"], obs["e"], obs["omega"]])  # (radius, period, mass, e, omega) order
     # p_tr only -- NOT the combined completeness -- per Neil & Rogers (2020): these

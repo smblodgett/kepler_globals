@@ -1781,6 +1781,124 @@ def _observed_draw_weights(observed_catalog):
     return np.repeat(1.0 / seg_counts, seg_counts)
 
 
+def _precision_weighted_draw_weights(observed_catalog, obs_key, std_floor=None):
+    """
+    Per-draw weight that gives each real planet a total weight reflecting
+    how tightly ITS OWN posterior constrains `obs_key` (one of
+    "P"/"M"/"R"/"e"/"omega"), instead of the flat weight-1-per-planet from
+    _observed_draw_weights.
+
+    Why this exists: the point-process/log-mean-exp likelihood structurally
+    gives more-precisely-constrained planets more leverage over the fitted
+    shape than loosely-constrained ones. A planet with a narrow posterior
+    behaves, in the actual per-planet log-mean-exp term, almost like a
+    point evaluation of log f_pop at its (well-known) value; a planet with
+    a diffuse posterior behaves more like an average of f_pop over a wide
+    range. That's correct, standard inverse-variance-style behavior for a
+    marginal likelihood over heterogeneous measurement uncertainty -- not a
+    bug -- but the flat "data" marginal used by pointprocess_1D_marginal_plot
+    gives every planet equal say regardless, so comparing the model's
+    prediction ("observed catalog") against that flat histogram isn't
+    really comparing against what the likelihood is actually trying to
+    match. This reweights each planet by (an inverse-variance proxy for)
+    its own precision in this dimension instead, for a fairer comparison.
+
+    Uses each planet's own posterior-draw spread (std) in `obs_key` as the
+    precision proxy -- a standard, simple approximation, not a literal
+    re-derivation of the log-mean-exp term's exact local curvature (which
+    depends on the fitted f_pop itself, and would be circular to use here
+    since the whole point is an independent check on the fit).
+
+    std_floor guards against the same kind of collapse this weighting is
+    meant to diagnose in the model: an extremely tight (near-zero-scatter)
+    planet would otherwise get a near-unbounded weight, letting one or two
+    planets dominate the reweighted histogram outright. Defaults to the 1st
+    percentile of all planets' own (nonzero) stds in this dimension -- a
+    robust, data-driven floor rather than an arbitrary constant -- so no
+    single planet can count as more than ~100x more informative than a
+    typical already-tight planet in the catalog.
+
+    Total weight is renormalized to n_planets (matching
+    _observed_draw_weights' convention that every planet contributes total
+    weight 1 when un-reweighted), so the reweighted histogram sits on the
+    same absolute scale as "data"/"observed catalog" and can be overlaid
+    directly -- only each planet's SHARE of that total changes.
+    """
+    n_planets = observed_catalog["n_planets"]
+    seg_counts = observed_catalog["seg_counts"]
+    _means, stds = _grouped_mean_std(observed_catalog, obs_key)
+
+    if std_floor is None:
+        nonzero = stds[stds > 0]
+        std_floor = np.percentile(nonzero, 1) if len(nonzero) > 0 else 1e-6
+    stds_floored = np.maximum(stds, std_floor)
+
+    raw_weight_per_planet = 1.0 / stds_floored ** 2
+    weight_per_planet = raw_weight_per_planet * (n_planets / raw_weight_per_planet.sum())
+
+    return np.repeat(weight_per_planet / seg_counts, seg_counts)
+
+
+def _grouped_mean_std(observed_catalog, obs_key, log=False):
+    """
+    Per-planet (mean, std) of `obs_key` (one of "P"/"M"/"R"/"e"/"omega"),
+    vectorized via reduceat -- draws are pre-sorted by planet (see
+    load_flat_observed_catalog), matching the same reduceat convention used
+    for the grouped log-mean-exp in
+    kg_likelihood.parametric_log_likelihood_pointprocess. Shared by
+    _precision_weighted_draw_weights (uses std as an inverse-variance proxy)
+    and pointprocess_2D_posterior_plot (uses mean/std directly as each
+    planet's plotted point and error bar, and log10-space stats to decide
+    which planets are "unconstrained" for a log-scaled axis).
+
+    log=True computes mean/std of log10(values) instead of the raw values
+    -- for a log-scaled dimension (period/mass/radius), a fixed linear std
+    doesn't mean the same thing at different values (a std of 10 days is
+    huge for a 1-day period and irrelevant for a 400-day one), while a
+    log10-std is a scale-consistent, fractional/multiplicative spread
+    measure, directly comparable to how many decades of the log-axis it
+    covers.
+    """
+    seg_starts = observed_catalog["seg_starts"]
+    seg_counts = observed_catalog["seg_counts"]
+    values = np.asarray(observed_catalog[obs_key], dtype=np.float64)
+    if log:
+        values = np.log10(np.maximum(values, 1e-300))
+
+    sums = np.add.reduceat(values, seg_starts)
+    means = sums / seg_counts
+    sq_sums = np.add.reduceat(values ** 2, seg_starts)
+    variances = np.maximum(sq_sums / seg_counts - means ** 2, 0.0)  # clip tiny negative float error
+    stds = np.sqrt(variances)
+    return means, stds
+
+
+def _unconstrained_planet_mask(observed_catalog, key_x, key_y, edges_x, edges_y, xscale, yscale, threshold=0.4):
+    """
+    True for planets whose posterior spread covers at least `threshold`
+    fraction of the visible axis range in BOTH dimensions at once -- i.e.
+    planets that are basically uninformative in this particular 2D
+    projection (a giant cross spanning most of the plot in both
+    directions). pointprocess_2D_posterior_plot excludes these by default:
+    they add visual clutter without adding diagnostic signal, since a bar
+    that wide can't discriminate between the model being right or wrong
+    anywhere in the plot.
+
+    "Fraction of the visible range" is computed in whichever coordinate
+    system the axis is actually drawn in -- log10 space for a log-scaled
+    axis, linear otherwise (see _grouped_mean_std's `log` argument) -- so a
+    planet isn't judged "unconstrained" in period just because its std in
+    raw days is a big number.
+    """
+    _, std_x = _grouped_mean_std(observed_catalog, key_x, log=(xscale == "log"))
+    _, std_y = _grouped_mean_std(observed_catalog, key_y, log=(yscale == "log"))
+
+    range_x = (np.log10(edges_x.max()) - np.log10(edges_x.min())) if xscale == "log" else (edges_x.max() - edges_x.min())
+    range_y = (np.log10(edges_y.max()) - np.log10(edges_y.min())) if yscale == "log" else (edges_y.max() - edges_y.min())
+
+    return (std_x / range_x >= threshold) & (std_y / range_y >= threshold)
+
+
 def pointprocess_synthetic_catalog(params, stellar_info, voxel_grid, min_density=0.01, max_density=10.0, rank=0, model_id=0):
     """
     Builds the same completeness-weighted synthetic catalog used by
@@ -1937,6 +2055,99 @@ def pointprocess_1D_marginal_plot(params, stellar_info, voxel_grid, observed_cat
         plt.close()
 
 
+def pointprocess_1D_marginal_plot_precision_weighted(params, stellar_info, voxel_grid, observed_catalog,
+                                                      visualization_plot_folder, dims=None,
+                                                      min_density=0.01, max_density=10.0, synthetic_multiplier=200,
+                                                      y_axis_scale="log", mode='save', model_id=0, std_floor=None):
+    """
+    Same physical/data/observed comparison as pointprocess_1D_marginal_plot,
+    plus a fourth series -- "data (precision-weighted)" -- built from
+    _precision_weighted_draw_weights instead of the flat
+    weight-1-per-planet used by "data".
+
+    Motivation: a marginal histogram that weights every real planet equally
+    ("data") isn't actually the thing the point-process/log-mean-exp
+    likelihood is trying to match. That likelihood structurally gives more
+    leverage to tightly-constrained planets than to diffuse ones (a narrow
+    posterior behaves like a near-point evaluation of log f_pop; a diffuse
+    one behaves like an average over a wide range) -- correct,
+    inverse-variance-style behavior for a marginal likelihood over
+    heterogeneous measurement precision, not a bug. "data
+    (precision-weighted)" reweights the real catalog to reflect that same
+    leverage, so it's the fairer target for "observed catalog" to be judged
+    against. If "observed catalog" tracks the precision-weighted curve well
+    but not the flat one, that's a sign the fit is doing what a hierarchical
+    likelihood should -- prioritizing well-constrained planets -- rather
+    than exploiting some other pathology (e.g. a mixture component
+    collapsing onto a cluster of tightly-constrained points, which shows up
+    as a mismatch against BOTH curves, not just the flat one).
+
+    std_floor is forwarded to _precision_weighted_draw_weights (see there
+    for the default); pass a fixed value across multiple calls/dimensions
+    if you want a consistent floor rather than each dimension picking its
+    own 1st-percentile floor independently.
+    """
+    if dims is None:
+        dims = list(_POINTPROCESS_DIM_INFO.keys())
+
+    trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density, model_id=model_id
+    )
+    synth = trimmed_catalog[density_mask]
+    synth_completeness_weights = completeness_weights[density_mask]
+    synth_physical_weights = np.ones_like(synth_completeness_weights)
+    flat_weights = _observed_draw_weights(observed_catalog)
+
+    # Same Lambda_tilde/Gamma0_opt as pointprocess_1D_marginal_plot -- the
+    # precision reweighting only redistributes "data"'s per-planet shares,
+    # it doesn't change the model side of the comparison at all.
+    Lambda_tilde = np.sum(synth_completeness_weights) / synthetic_multiplier
+    Gamma0_opt = profile_optimal_gamma0(observed_catalog["n_planets"], Lambda_tilde)
+    print(f"pointprocess_1D_marginal_plot_precision_weighted: Lambda_tilde={Lambda_tilde:.4f}, "
+          f"Gamma0_opt={Gamma0_opt:.4f}, n_planets={observed_catalog['n_planets']}")
+
+    os.makedirs(visualization_plot_folder, exist_ok=True)
+
+    for dim in dims:
+        col, obs_key, edges, _xscale = _POINTPROCESS_DIM_INFO[dim]
+
+        precision_weights = _precision_weighted_draw_weights(observed_catalog, obs_key, std_floor=std_floor)
+
+        physical_count, _ = np.histogram(synth[:, col], bins=edges, weights=synth_physical_weights)
+        data_flat_count, _ = np.histogram(observed_catalog[obs_key], bins=edges, weights=flat_weights)
+        data_precision_count, _ = np.histogram(observed_catalog[obs_key], bins=edges, weights=precision_weights)
+        observed_count, _ = np.histogram(synth[:, col], bins=edges, weights=synth_completeness_weights)
+
+        physical_count = physical_count * (Gamma0_opt / synthetic_multiplier)
+        observed_count = observed_count * (Gamma0_opt / synthetic_multiplier)
+
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        x = np.arange(len(centers))
+        width = 1
+
+        plt.figure(dpi=300, facecolor='w')
+        for count, label in zip(
+            [physical_count, data_flat_count, data_precision_count, observed_count],
+            ["physical catalog", "data (flat)", "data (precision-weighted)", "observed catalog"],
+        ):
+            plt.bar(x, count, width=width, alpha=0.5, label=label)
+
+        edge_positions = np.arange(len(edges)) - 0.5
+        plt.xticks(edge_positions, [_format_edge(e) for e in edges], rotation=45)
+
+        plt.xlabel(dim, fontsize=10)
+        plt.yscale(y_axis_scale)
+        plt.ylabel("planet count")
+        plt.legend(fontsize=8)
+        plt.title(f"Point-process marginal (precision-weighted): {dim}\n" + r"$\Gamma_0$" +
+                  f"={Gamma0_opt:.3g}, n_planets={observed_catalog['n_planets']}", fontsize=10)
+        if mode == 'save':
+            plt.savefig(f"{visualization_plot_folder}/pointprocess_1D_marginal_precision_weighted_{dim}.pdf")
+        elif mode == 'show':
+            plt.show()
+        plt.close()
+
+
 _POINTPROCESS_2D_PAIRS_DEFAULT = list(combinations(_POINTPROCESS_DIM_INFO.keys(), 2))
 # All C(5,2)=10 axis pairs (period-mass, period-radius, period-eccentricity,
 # period-omega, mass-radius, mass-eccentricity, mass-omega,
@@ -2025,6 +2236,161 @@ def pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_cat
         plt.close()
 
 
+def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_catalog,
+                                    visualization_plot_folder, pairs=None,
+                                    min_density=0.01, max_density=10.0, mode='save', model_id=0,
+                                    n_std=1.0, n_grid=60, smooth_sigma=1.0, n_contour_levels=6,
+                                    max_planets_plotted=None, planet_indices=None, seed=0,
+                                    exclude_unconstrained=True, unconstrained_threshold=0.4):
+    """
+    Per-planet 2D posterior view, for each (dim_x, dim_y) pair in `pairs`
+    (default: all 10 -- see _POINTPROCESS_2D_PAIRS_DEFAULT): every plotted
+    planet is drawn as a single dot at its posterior MEAN in that plane,
+    with a horizontal/vertical bar showing +/- n_std of its OWN posterior
+    spread in each dimension (collapsing the full draw cloud for that
+    planet down to one point-plus-cross instead of an unreadable overlapping
+    scatter of thousands of draws), and the fitted model's intrinsic 2D
+    density is overlaid as contours -- built from the same synthetic-catalog
+    machinery as "physical catalog" in pointprocess_1D_marginal_plot /
+    pointprocess_2D_marginal_plot (a smoothed 2D histogram of a large
+    synthetic draw, not an analytic density -- radius's density isn't
+    independent of mass, so a single formula wouldn't hold for every pair
+    without re-deriving a different marginalization per pair; reusing the
+    same synthetic catalog sidesteps that entirely and stays exactly
+    consistent with what the other diagnostic plots already call "physical
+    catalog").
+
+    This is a more direct, non-aggregated view of the same thing
+    _precision_weighted_draw_weights / pointprocess_1D_marginal_plot_precision_weighted
+    diagnose in aggregate: a tightly-constrained planet (small error bar)
+    sitting on top of a sharp density contour is the model correctly
+    prioritizing a well-constrained measurement -- expected, healthy
+    behavior for this point-process likelihood. Many small error bars all
+    piling onto one narrow contour feature while everything else in the
+    plot is left uncovered, or a small error bar sitting far from every
+    contour, is the mixture-collapse pathology made visible planet-by-planet
+    instead of as a marginal-level mismatch.
+
+    n_std sets the error-bar half-width in units of that planet's own
+    posterior std (see _grouped_mean_std). n_grid/smooth_sigma control the
+    synthetic-density contour's resolution and how much the raw 2D
+    histogram is smoothed (scipy.ndimage.gaussian_filter, in bins) before
+    contouring, to knock down residual Monte Carlo noise rather than
+    contouring a jagged raw histogram.
+
+    Which planets get plotted, per (dim_x, dim_y) pair:
+      - planet_indices: explicit array-like of integer planet indices (into
+        the same 0..n_planets-1 ordering _grouped_mean_std/seg_starts/
+        seg_counts use) to plot instead of the automatic selection below --
+        for "show me exactly these planets." exclude_unconstrained is NOT
+        applied to this explicit list (you picked them on purpose); it's
+        still further randomly thinned by max_planets_plotted if smaller.
+      - exclude_unconstrained (default True, ignored when planet_indices is
+        given): drops planets whose posterior spread covers at least
+        `unconstrained_threshold` of the visible axis range in BOTH
+        dimensions at once (see _unconstrained_planet_mask) -- these are
+        giant, uninformative crosses that only add clutter, since a bar
+        that wide can't discriminate between the model being right or
+        wrong anywhere in the plot. Evaluated separately for each pair,
+        since a planet can be well-constrained in one pair of dimensions
+        and unconstrained in another.
+      - max_planets_plotted randomly subsamples (seeded via `seed`, for
+        reproducibility) from whatever set survives the above, if that's
+        still too dense to read; default None keeps everyone who survives.
+    """
+    from scipy.ndimage import gaussian_filter
+
+    if pairs is None:
+        pairs = _POINTPROCESS_2D_PAIRS_DEFAULT
+
+    trimmed_catalog, completeness_weights, density_mask = pointprocess_synthetic_catalog(
+        params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density, model_id=model_id
+    )
+    synth = trimmed_catalog[density_mask]  # same "physical catalog" source used elsewhere -- unweighted, pre-completeness
+
+    n_planets = observed_catalog["n_planets"]
+    rng = np.random.default_rng(seed)
+
+    os.makedirs(visualization_plot_folder, exist_ok=True)
+
+    for dim_x, dim_y in pairs:
+        col_x, key_x, edges_x, xscale = _POINTPROCESS_DIM_INFO[dim_x]
+        col_y, key_y, edges_y, yscale = _POINTPROCESS_DIM_INFO[dim_y]
+
+        mean_x, std_x = _grouped_mean_std(observed_catalog, key_x)
+        mean_y, std_y = _grouped_mean_std(observed_catalog, key_y)
+
+        # Select which planets to plot for THIS pair -- see the docstring
+        # above for how planet_indices / exclude_unconstrained /
+        # max_planets_plotted compose. Computed fresh per pair since
+        # "unconstrained" depends on which two dimensions are in play.
+        if planet_indices is not None:
+            candidate_idx = np.asarray(planet_indices)
+        elif exclude_unconstrained:
+            keep = ~_unconstrained_planet_mask(observed_catalog, key_x, key_y, edges_x, edges_y,
+                                                xscale, yscale, threshold=unconstrained_threshold)
+            candidate_idx = np.flatnonzero(keep)
+        else:
+            candidate_idx = np.arange(n_planets)
+
+        if max_planets_plotted is not None and max_planets_plotted < len(candidate_idx):
+            plot_idx = rng.choice(candidate_idx, size=max_planets_plotted, replace=False)
+        else:
+            plot_idx = candidate_idx
+
+        status = f"pointprocess_2D_posterior_plot: {dim_x} vs {dim_y} -- plotting {len(plot_idx)}/{n_planets} planets"
+        if planet_indices is None and exclude_unconstrained:
+            n_excluded = n_planets - len(candidate_idx)
+            status += f" ({n_excluded} excluded as unconstrained in both dims)"
+        print(status)
+
+        # Synthetic-density grid, respecting each axis's natural scale so
+        # the contours line up correctly once the axis itself is log-scaled.
+        if xscale == "log":
+            gx = np.logspace(np.log10(edges_x.min()), np.log10(edges_x.max()), n_grid + 1)
+        else:
+            gx = np.linspace(edges_x.min(), edges_x.max(), n_grid + 1)
+        if yscale == "log":
+            gy = np.logspace(np.log10(edges_y.min()), np.log10(edges_y.max()), n_grid + 1)
+        else:
+            gy = np.linspace(edges_y.min(), edges_y.max(), n_grid + 1)
+
+        hist, _, _ = np.histogram2d(synth[:, col_x], synth[:, col_y], bins=[gx, gy])
+        hist_smoothed = gaussian_filter(hist.astype(float), sigma=smooth_sigma)
+
+        gx_centers = 0.5 * (gx[:-1] + gx[1:])
+        gy_centers = 0.5 * (gy[:-1] + gy[1:])
+        X, Y = np.meshgrid(gx_centers, gy_centers)
+
+        plt.figure(figsize=(8, 7), dpi=200, facecolor='w')
+        plt.errorbar(mean_x[plot_idx], mean_y[plot_idx],
+                     xerr=n_std * std_x[plot_idx], yerr=n_std * std_y[plot_idx],
+                     fmt='o', color='tab:blue', ecolor='tab:blue', alpha=0.15,
+                     markersize=5, elinewidth=1, capsize=0, zorder=1)
+        # histogram2d gives H[i,j] indexed (x_bin, y_bin); transpose to the
+        # (y, x) layout meshgrid/contour expect, matching
+        # pointprocess_2D_marginal_plot's same transpose convention.
+        cs = plt.contour(X, Y, hist_smoothed.T, levels=n_contour_levels, cmap='inferno', zorder=2)
+        plt.clabel(cs, inline=True, fontsize=6)
+
+        if xscale == "log":
+            plt.xscale('log')
+        if yscale == "log":
+            plt.yscale('log')
+
+        plt.xlabel(dim_x, fontsize=11)
+        plt.ylabel(dim_y, fontsize=11)
+        plt.title(f"Per-planet posteriors vs. fitted intrinsic density: {dim_x} vs {dim_y}\n"
+                  f"dots = posterior mean, bars = ±{n_std}σ, contours = model's physical catalog", fontsize=9)
+        plt.tight_layout()
+
+        if mode == 'save':
+            plt.savefig(f"{visualization_plot_folder}/pointprocess_2D_posterior_{dim_x}_{dim_y}.png")
+        elif mode == 'show':
+            plt.show()
+        plt.close()
+
+
 def pointprocess_marginal_plots(params, stellar_info, voxel_grid, observed_catalog,
                                  visualization_plot_folder, dims=None, pairs=None,
                                  min_density=0.01, max_density=10.0, synthetic_multiplier=200, mode='save', model_id=0):
@@ -2038,9 +2404,24 @@ def pointprocess_marginal_plots(params, stellar_info, voxel_grid, observed_catal
                                    visualization_plot_folder, dims=dims, min_density=min_density,
                                    max_density=max_density, synthetic_multiplier=synthetic_multiplier, mode=mode,
                                    model_id=model_id)
+    # Precision-weighted companion to the plot above, always run on all five
+    # dimensions regardless of `dims` (which only trims the flat-weighted
+    # plot) -- see pointprocess_1D_marginal_plot_precision_weighted's
+    # docstring for why the flat-weighted "data" curve isn't actually a fair
+    # target for "observed catalog" to be judged against.
+    pointprocess_1D_marginal_plot_precision_weighted(params, stellar_info, voxel_grid, observed_catalog,
+                                                      visualization_plot_folder, dims=None, min_density=min_density,
+                                                      max_density=max_density, synthetic_multiplier=synthetic_multiplier,
+                                                      mode=mode, model_id=model_id)
     pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_catalog,
                                    visualization_plot_folder, pairs=pairs,
                                    min_density=min_density, max_density=max_density, mode=mode, model_id=model_id)
+    # Per-planet posterior-vs-fitted-density view, always run on all ten
+    # dimension pairs regardless of `pairs` (which only trims the binned
+    # residual plot above) -- see pointprocess_2D_posterior_plot's docstring.
+    pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_catalog,
+                                    visualization_plot_folder, pairs=None,
+                                    min_density=min_density, max_density=max_density, mode=mode, model_id=model_id)
 
 
 def pointprocess_gamma0_posterior_plot(reader, nburnin, n_planets, visualization_plot_folder,

@@ -486,7 +486,7 @@ def omega_log_pdf(omega, low=0.0, high=360.0):
     return np.where((omega >= low) & (omega <= high), logpdf, -np.inf)
 
 
-def joint_log_intrinsic_density(params, P, M, R, e, omega,model_id=0):
+def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0):
     """
     Fully analytic, grid-free evaluation of the intrinsic population density
     f_pop(period, mass, radius, e, omega | params) at specific (real or
@@ -501,20 +501,12 @@ def joint_log_intrinsic_density(params, P, M, R, e, omega,model_id=0):
     it's profiled out analytically in kg_likelihood.py rather than sampled,
     so `params` here only ever contains the shape parameters (17 of them).
     """
-    γ0, γ1, γ2 = params[0], params[1], params[2]
-    σ0, σ1, σ2 = params[3], params[4], params[5]
-    mass_break_1, mass_break_2 = params[6], params[7]
-    C = params[8]
-    mu_M, sigma_M = params[9], params[10]
-    β1, β2 = params[11], params[12]
-    Period_break_1 = params[13]
     if model_id == 0:
-        α, λ, σ_e = params[14], params[15], params[16]
         log_f = (
-            period_log_pdf(P, β1, β2, Period_break_1)
-            + mass_log_pdf(M, mu_M, sigma_M)
-            + radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
-            + eccentricity_log_pdf(e, α, λ, σ_e)
+            period_log_pdf(P, variables['β1'], variables['β2'], variables['Period_break_1'])
+            + mass_log_pdf(M, variables['mu_M'], variables['sigma_M'])
+            + radius_given_mass_log_pdf(R, M, variables['γ0'], variables['γ1'], variables['γ2'], variables['mass_break_1'], variables['mass_break_2'], variables['σ0'], variables['σ1'], variables['σ2'], variables['C'])
+            + eccentricity_log_pdf(e, variables['α'], variables['λ'], variables['σ_e'])
             + omega_log_pdf(omega)
             )
     elif model_id == 1:
@@ -522,12 +514,11 @@ def joint_log_intrinsic_density(params, P, M, R, e, omega,model_id=0):
         # adjacent mu_e_1/mu_e_2 ordering in kg_priors.py -- that adjacency is
         # what lets parametric_log_prior enforce mu_e_1 < mu_e_2 (params[i] vs
         # params[i+1]) the same way it already does for Mbreak1/Mbreak2.
-        mu1e, mu2e, α1e, α2e, f = params[14], params[15], params[16], params[17], params[18]
         log_f = (
-            period_log_pdf(P, β1, β2, Period_break_1)
-            + mass_log_pdf(M, mu_M, sigma_M)
-            + radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
-            + eccentricity_log_pdf_gamma_mixture(e, mu1e, α1e, mu2e, α2e, f)
+            period_log_pdf(P, variables['β1'], variables['β2'], variables['Period_break_1'])
+            + mass_log_pdf(M, variables['mu_M'], variables['sigma_M'])
+            + radius_given_mass_log_pdf(R, M, variables['γ0'], variables['γ1'], variables['γ2'], variables['mass_break_1'], variables['mass_break_2'], variables['σ0'], variables['σ1'], variables['σ2'], variables['C'])
+            + eccentricity_log_pdf_gamma_mixture(e, variables['mu_1_e'], variables['α_1_e'], variables['mu_2_e'], variables['α_2_e'], variables['f'])
             + omega_log_pdf(omega)
         )
 
@@ -814,50 +805,31 @@ def params_to_variables_dict(params, model_id=0):
     β2 = params[12]
     Period_break_1 = params[13]
 
+    var_dict = {"γ0": γ0,
+                "γ1": γ1,
+                "γ2": γ2,
+                "σ0": σ0,
+                "σ1": σ1,
+                "σ2": σ2,
+                "mass_break_1": mass_break_1,
+                "mass_break_2": mass_break_2,
+                "C": C,
+                "mu_M": mu_M,
+                "sigma_M": sigma_M,
+                "β1": β1,
+                "β2": β2,
+                "Period_break_1": Period_break_1
+         }
+
     if model_id == 0:
         α, λ, σ_e = params[14], params[15], params[16]
-        return {
-            "γ0": γ0,
-            "γ1": γ1,
-            "γ2": γ2,
-            "σ0": σ0,
-            "σ1": σ1,
-            "σ2": σ2,
-            "mass_break_1": mass_break_1,
-            "mass_break_2": mass_break_2,
-            "C": C,
-            "mu_M": mu_M,
-            "sigma_M": sigma_M,
-            "β1": β1,
-            "β2": β2,
-            "Period_break_1": Period_break_1,
-            "α": α,
-            "λ": λ,
-            "σ_e": σ_e
-        }
+        var_dict.update({"α": α, "λ": λ, "σ_e": σ_e})
+        return var_dict
     elif model_id == 1:
         mu_e_1, mu_e_2, α_e_1, α_e_2, f = params[14], params[15], params[16], params[17], params[18]
-        return {
-            "γ0": γ0,
-            "γ1": γ1,
-            "γ2": γ2,
-            "σ0": σ0,
-            "σ1": σ1,
-            "σ2": σ2,
-            "mass_break_1": mass_break_1,
-            "mass_break_2": mass_break_2,
-            "C": C,
-            "mu_M": mu_M,
-            "sigma_M": sigma_M,
-            "β1": β1,
-            "β2": β2,
-            "Period_break_1": Period_break_1,
-            "mu_e_1": mu_e_1,
-            "mu_e_2": mu_e_2,
-            "α_e_1": α_e_1,
-            "α_e_2": α_e_2,
-            "f": f
-        }
+        var_dict.update({"mu_e_1": mu_e_1, "mu_e_2": mu_e_2, "α_e_1": α_e_1, "α_e_2": α_e_2, "f": f})
+        return var_dict
+            
 
 
 def get_probability_distributions(params, model_id=0):
