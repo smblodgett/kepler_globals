@@ -32,6 +32,16 @@ def find_primordial_radii(M,rng):
     return primordial_radii
 
 
+def find_earth_flux(P, e, omega Rstar, Tstar, Mstar):
+    """
+    Calculate the Earth flux received by a planet based on its orbital period and stellar radius.
+
+    Returns:
+        float: The Earth flux in units of Earth's flux.
+    """
+    return   # Example value in units of Earth's flux
+
+
 def mass_loss_timescale(Menv, Rprim, F_XUV,Fp,eps):
     """
     Calculate the mass loss timescale for a planet due to photoevaporation.
