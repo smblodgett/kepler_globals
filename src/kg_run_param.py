@@ -218,7 +218,7 @@ def main(model_id, runprops):
         # print(stellar_df.columns)
 
         # extract the relevant stellar_df info into a np array 
-        stellar_info = stellar_df[["Rad","Mass"]].to_numpy()
+        stellar_info = stellar_df[["Rad","Mass","Teff"]].to_numpy()
         stellar_info = np.repeat(stellar_info,runprops["synthetic_multiplier"],axis=0)
 
         if runprops["verbose"]: print("len(stellar_df) after reading in: ",len(stellar_df))

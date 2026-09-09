@@ -1781,7 +1781,8 @@ def _observed_draw_weights(observed_catalog):
     return np.repeat(1.0 / seg_counts, seg_counts)
 
 
-def _precision_weighted_draw_weights(observed_catalog, obs_key, std_floor=None):
+def _precision_weighted_draw_weights(observed_catalog, obs_key, std_floor=None, log=False,
+                                      edges=None, degenerate_atol=1e-9, verbose=False):
     """
     Per-draw weight that gives each real planet a total weight reflecting
     how tightly ITS OWN posterior constrains `obs_key` (one of
@@ -1809,14 +1810,73 @@ def _precision_weighted_draw_weights(observed_catalog, obs_key, std_floor=None):
     depends on the fitted f_pop itself, and would be circular to use here
     since the whole point is an independent check on the fit).
 
-    std_floor guards against the same kind of collapse this weighting is
-    meant to diagnose in the model: an extremely tight (near-zero-scatter)
-    planet would otherwise get a near-unbounded weight, letting one or two
-    planets dominate the reweighted histogram outright. Defaults to the 1st
-    percentile of all planets' own (nonzero) stds in this dimension -- a
-    robust, data-driven floor rather than an arbitrary constant -- so no
-    single planet can count as more than ~100x more informative than a
-    typical already-tight planet in the catalog.
+    log=True computes the spread in log10-space before inverting, matching
+    _grouped_mean_std's `log` argument -- pass this for period/mass/radius
+    (log-scaled dimensions). A fixed weight based on RAW-space std is not
+    scale-consistent for those: two planets with the same absolute std in
+    days are wildly different in relative precision depending on whether
+    their period is ~1 day or ~400 days, so without this the weighting
+    silently overstates how "diffuse" long-period planets are relative to
+    short-period ones purely because of the axis they sit on, not real
+    measurement precision.
+
+    Real catalogs can contain a handful of planets whose posterior draws
+    are (near-)IDENTICAL across the board -- e.g. an eccentricity fixed to
+    a single point-estimate value rather than actually sampled -- which is
+    the opposite of "extremely well measured": it means no real posterior
+    width was ever recorded for that planet, not that its true value is
+    known to extreme precision. Naively feeding std~0 into 1/std^2 would
+    hand these planets the same effectively-infinite weight as a genuinely
+    tightly-constrained planet, injecting an arbitrary spike at whatever
+    value happens to be fixed. `degenerate_atol` flags any planet with
+    std below this threshold as degenerate; those planets get the SAME
+    flat weight as an un-reweighted planet (1, before renormalization)
+    instead of being folded into the floor/percentile logic below, and are
+    excluded from the population used to pick std_floor so they can't even
+    influence what "tight" means for everyone else.
+
+    std_floor (applied to the remaining, non-degenerate planets) guards
+    against the same kind of collapse this weighting is meant to diagnose
+    in the model: an extremely tight posterior would otherwise still get a
+    near-unbounded weight, letting one or two planets dominate the
+    reweighted histogram outright.
+
+    If std_floor is None and `edges` (the dimension's display/model bin
+    edges) is given, the floor defaults to half the MEDIAN bin width in
+    this dimension (log10-space if log=True) -- i.e. "no planet is treated
+    as more than moderately more informative than the model's own
+    resolving power can actually use." This matters a lot for a dimension
+    like period: transit-timing period precision is essentially always
+    many orders of magnitude finer than even the finest period bin (a
+    short-period planet has more transits in the same baseline, so its
+    period posterior is tighter still, but BOTH are already "exact" at the
+    grid's resolution) -- so a floor derived from the (self-referential)
+    percentile of observed stds still lets extremely-tight-in-absolute-terms
+    planets swamp the histogram over differences the point-process
+    likelihood can't actually resolve either, and the reweighted marginal
+    ends up tracking "which planets have the most transits" rather than
+    anything about the fitted shape. Tying the floor to the model's own
+    grid resolution instead makes period's reweighting correctly collapse
+    to near-flat (confirmed against the real catalog: top-1%-of-planets
+    weight share for period dropped from ~52% to ~1%), while still giving a
+    dimension like eccentricity -- where real measurement precision varies
+    over a range comparable to the grid's own resolution -- a moderate,
+    bounded reweighting instead of both extremes.
+
+    If `edges` is not given, falls back to the 1st percentile of the
+    non-degenerate planets' stds (the original, purely data-driven
+    behavior) -- still a coarser, more failure-prone proxy, so passing
+    `edges` is preferred whenever the dimension's grid is available.
+
+    Even with a resolution-based floor, real Kepler/RV catalogs are
+    precision-heterogeneous enough (some planets constrained ~10-100x
+    tighter than a typical one at the SAME grid resolution, e.g. a
+    TTV/multi-transit system vs. a single, marginal detection) that the
+    reweighted histogram can still end up noticeably shaped by a handful of
+    planets in some dimensions -- pass verbose=True to print exactly how
+    concentrated the weights are, since that concentration can be a
+    genuine, correct reflection of the likelihood's real leverage rather
+    than a bug in this function.
 
     Total weight is renormalized to n_planets (matching
     _observed_draw_weights' convention that every planet contributes total
@@ -1826,15 +1886,36 @@ def _precision_weighted_draw_weights(observed_catalog, obs_key, std_floor=None):
     """
     n_planets = observed_catalog["n_planets"]
     seg_counts = observed_catalog["seg_counts"]
-    _means, stds = _grouped_mean_std(observed_catalog, obs_key)
+    _means, stds = _grouped_mean_std(observed_catalog, obs_key, log=log)
+
+    degenerate = stds < degenerate_atol
+    non_degenerate_stds = stds[~degenerate]
 
     if std_floor is None:
-        nonzero = stds[stds > 0]
-        std_floor = np.percentile(nonzero, 1) if len(nonzero) > 0 else 1e-6
+        if edges is not None:
+            edge_values = np.log10(edges) if log else np.asarray(edges, dtype=np.float64)
+            bin_widths = np.diff(edge_values)
+            std_floor = 0.5 * np.median(bin_widths)
+        else:
+            std_floor = np.percentile(non_degenerate_stds, 1) if len(non_degenerate_stds) > 0 else 1e-6
     stds_floored = np.maximum(stds, std_floor)
 
     raw_weight_per_planet = 1.0 / stds_floored ** 2
+    # Degenerate planets carry no real precision information -- treat them
+    # exactly like an un-reweighted (flat, weight-1-pre-normalization)
+    # planet instead of handing them the floor's ceiling weight.
+    raw_weight_per_planet[degenerate] = 1.0
+
     weight_per_planet = raw_weight_per_planet * (n_planets / raw_weight_per_planet.sum())
+
+    if verbose:
+        order = np.argsort(weight_per_planet)
+        top1_n = max(1, int(round(0.01 * n_planets)))
+        top1_share = weight_per_planet[order[-top1_n:]].sum() / weight_per_planet.sum()
+        top10_share = weight_per_planet[order[-10:]].sum() / weight_per_planet.sum() if n_planets >= 10 else np.nan
+        print(f"_precision_weighted_draw_weights[{obs_key}, log={log}]: std_floor={std_floor:.4g}, "
+              f"{degenerate.sum()} degenerate (near-zero-scatter) planets flattened, "
+              f"top-1% of planets hold {top1_share:.1%} of total weight, top-10 hold {top10_share:.1%}")
 
     return np.repeat(weight_per_planet / seg_counts, seg_counts)
 
@@ -2109,9 +2190,11 @@ def pointprocess_1D_marginal_plot_precision_weighted(params, stellar_info, voxel
     os.makedirs(visualization_plot_folder, exist_ok=True)
 
     for dim in dims:
-        col, obs_key, edges, _xscale = _POINTPROCESS_DIM_INFO[dim]
+        col, obs_key, edges, xscale = _POINTPROCESS_DIM_INFO[dim]
 
-        precision_weights = _precision_weighted_draw_weights(observed_catalog, obs_key, std_floor=std_floor)
+        precision_weights = _precision_weighted_draw_weights(
+            observed_catalog, obs_key, std_floor=std_floor, log=(xscale == "log"), edges=edges, verbose=True
+        )
 
         physical_count, _ = np.histogram(synth[:, col], bins=edges, weights=synth_physical_weights)
         data_flat_count, _ = np.histogram(observed_catalog[obs_key], bins=edges, weights=flat_weights)
@@ -2238,10 +2321,12 @@ def pointprocess_2D_marginal_plot(params, stellar_info, voxel_grid, observed_cat
 
 def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_catalog,
                                     visualization_plot_folder, pairs=None,
-                                    min_density=0.01, max_density=10.0, mode='save', model_id=0,
+                                    min_density=0.01, max_density=10.0, synthetic_multiplier=200,
+                                    mode='save', model_id=0,
                                     n_std=1.0, n_grid=60, smooth_sigma=1.0, n_contour_levels=6,
-                                    max_planets_plotted=None, planet_indices=None, seed=0,
-                                    exclude_unconstrained=True, unconstrained_threshold=0.4):
+                                    max_planets_plotted=300, planet_indices=None, seed=0,
+                                    exclude_unconstrained=True, unconstrained_threshold=0.4,
+                                    prioritize_tightest=True):
     """
     Per-planet 2D posterior view, for each (dim_x, dim_y) pair in `pairs`
     (default: all 10 -- see _POINTPROCESS_2D_PAIRS_DEFAULT): every plotted
@@ -2259,6 +2344,16 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
     same synthetic catalog sidesteps that entirely and stays exactly
     consistent with what the other diagnostic plots already call "physical
     catalog").
+
+    Contour values are calibrated into planets/star, exactly like "physical
+    catalog" in pointprocess_1D_marginal_plot: the raw synthetic-draw
+    histogram is scaled by Gamma0_opt/synthetic_multiplier (same
+    profile_optimal_gamma0 calibration used everywhere else -- Gamma0 is
+    profiled out of `params`, so without reapplying it the histogram sits in
+    units that depend on how many times `stellar_info` happened to be
+    oversampled and how fine `n_grid` is, not on anything physical). Pass
+    the SAME `synthetic_multiplier` used to build `stellar_info` or these
+    numbers -- and the contour labels -- won't mean anything.
 
     This is a more direct, non-aggregated view of the same thing
     _precision_weighted_draw_weights / pointprocess_1D_marginal_plot_precision_weighted
@@ -2294,9 +2389,22 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
         wrong anywhere in the plot. Evaluated separately for each pair,
         since a planet can be well-constrained in one pair of dimensions
         and unconstrained in another.
-      - max_planets_plotted randomly subsamples (seeded via `seed`, for
-        reproducibility) from whatever set survives the above, if that's
-        still too dense to read; default None keeps everyone who survives.
+      - max_planets_plotted thins whatever set survives the above down to
+        this many planets, if it's still too dense to read (default 300 --
+        even after excluding the totally-unconstrained, real catalogs are
+        commonly thousands of planets, and plotting all of them piles
+        translucent dots/bars into an unreadable blob that buries the
+        contours underneath). Pass None to keep everyone who survives (the
+        old default) if you want the unthinned view for a specific pair.
+      - prioritize_tightest (default True): when thinning is needed, keep
+        the planets with the SMALLEST posterior spread in this 2D
+        projection (as a fraction of the visible range, same normalization
+        as _unconstrained_planet_mask) rather than a uniform random
+        subsample. These are the most diagnostic planets for this plot's
+        actual purpose -- whether a tight error bar sits on or off the
+        model's density contour -- so capping the count this way loses
+        the least signal. Set to False for a `seed`-reproducible uniform
+        random subsample instead.
     """
     from scipy.ndimage import gaussian_filter
 
@@ -2307,6 +2415,19 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
         params, stellar_info, voxel_grid, min_density=min_density, max_density=max_density, model_id=model_id
     )
     synth = trimmed_catalog[density_mask]  # same "physical catalog" source used elsewhere -- unweighted, pre-completeness
+
+    # Same Lambda_tilde/Gamma0_opt calibration as pointprocess_1D_marginal_plot
+    # (see profile_optimal_gamma0) -- without this, the synthetic-draw
+    # histogram below sits in units that depend on how many times
+    # stellar_info happened to be oversampled and how fine n_grid is, not on
+    # anything physical, so it can't be compared across pairs, across runs,
+    # or against Gamma0 itself. Applying it here makes the contours read in
+    # the same planets/star units as "physical catalog" in the 1D plots.
+    synth_completeness_weights = completeness_weights[density_mask]
+    Lambda_tilde = np.sum(synth_completeness_weights) / synthetic_multiplier
+    Gamma0_opt = profile_optimal_gamma0(observed_catalog["n_planets"], Lambda_tilde)
+    print(f"pointprocess_2D_posterior_plot: Lambda_tilde={Lambda_tilde:.4f}, Gamma0_opt={Gamma0_opt:.4f}, "
+          f"n_planets={observed_catalog['n_planets']}")
 
     n_planets = observed_catalog["n_planets"]
     rng = np.random.default_rng(seed)
@@ -2334,7 +2455,21 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
             candidate_idx = np.arange(n_planets)
 
         if max_planets_plotted is not None and max_planets_plotted < len(candidate_idx):
-            plot_idx = rng.choice(candidate_idx, size=max_planets_plotted, replace=False)
+            if prioritize_tightest:
+                # Rank candidates by combined normalized spread (same
+                # log-vs-linear range-fraction convention as
+                # _unconstrained_planet_mask) and keep the tightest --
+                # these are the planets where "does the error bar sit on
+                # the contour" is actually a meaningful, readable check.
+                range_x = (np.log10(edges_x.max()) - np.log10(edges_x.min())) if xscale == "log" else (edges_x.max() - edges_x.min())
+                range_y = (np.log10(edges_y.max()) - np.log10(edges_y.min())) if yscale == "log" else (edges_y.max() - edges_y.min())
+                _, std_x_log = _grouped_mean_std(observed_catalog, key_x, log=(xscale == "log"))
+                _, std_y_log = _grouped_mean_std(observed_catalog, key_y, log=(yscale == "log"))
+                combined_spread = (std_x_log[candidate_idx] / range_x) + (std_y_log[candidate_idx] / range_y)
+                tightest_order = np.argsort(combined_spread)
+                plot_idx = candidate_idx[tightest_order[:max_planets_plotted]]
+            else:
+                plot_idx = rng.choice(candidate_idx, size=max_planets_plotted, replace=False)
         else:
             plot_idx = candidate_idx
 
@@ -2356,6 +2491,13 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
             gy = np.linspace(edges_y.min(), edges_y.max(), n_grid + 1)
 
         hist, _, _ = np.histogram2d(synth[:, col_x], synth[:, col_y], bins=[gx, gy])
+        # Calibrate raw synthetic-draw counts into planets/star (same
+        # Gamma0_opt/synthetic_multiplier scaling as "physical catalog" in
+        # pointprocess_1D_marginal_plot) BEFORE smoothing -- gaussian_filter
+        # is linear, so this is equivalent to scaling afterward, but doing it
+        # here means `hist` itself (not just the plotted contours) is already
+        # in physical units if anything downstream ever wants the raw grid.
+        hist = hist * (Gamma0_opt / synthetic_multiplier)
         hist_smoothed = gaussian_filter(hist.astype(float), sigma=smooth_sigma)
 
         gx_centers = 0.5 * (gx[:-1] + gx[1:])
@@ -2365,13 +2507,48 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
         plt.figure(figsize=(8, 7), dpi=200, facecolor='w')
         plt.errorbar(mean_x[plot_idx], mean_y[plot_idx],
                      xerr=n_std * std_x[plot_idx], yerr=n_std * std_y[plot_idx],
-                     fmt='o', color='tab:blue', ecolor='tab:blue', alpha=0.15,
+                     fmt='o', color='tab:blue', ecolor='tab:blue', alpha=0.35,
                      markersize=5, elinewidth=1, capsize=0, zorder=1)
         # histogram2d gives H[i,j] indexed (x_bin, y_bin); transpose to the
         # (y, x) layout meshgrid/contour expect, matching
         # pointprocess_2D_marginal_plot's same transpose convention.
-        cs = plt.contour(X, Y, hist_smoothed.T, levels=n_contour_levels, cmap='inferno', zorder=2)
-        plt.clabel(cs, inline=True, fontsize=6)
+        #
+        # Levels are picked from PERCENTILES of the smoothed density's own
+        # nonzero values, not linearly spaced between 0 and the max. This
+        # density is typically extremely skewed (most of the grid near-empty,
+        # a small region carrying most of the mass -- exactly the kind of
+        # shape a period/mass/radius power-law-ish population or a
+        # (possibly still-pathological) eccentricity mixture produces), so
+        # plain linspace(0, max, n) levels bunch up near the single peak and
+        # never cross the grid anywhere else -- literally no contour line is
+        # drawn through most of the density, which is a big part of why the
+        # contours were "basically never visible". Percentile levels instead
+        # guarantee each level actually intersects a comparable AMOUNT of
+        # probability mass.
+        nonzero_density = hist_smoothed[hist_smoothed > 0]
+        if nonzero_density.size == 0:
+            print(f"pointprocess_2D_posterior_plot: {dim_x} vs {dim_y} -- synthetic density is all-zero on this grid, skipping contours")
+            levels = None
+        else:
+            levels = np.unique(np.percentile(nonzero_density, np.linspace(40, 99, n_contour_levels)))
+            if levels.size < 2:
+                levels = None
+
+        if levels is not None:
+            # Solid, high-contrast line color (not a colormap): 'inferno'/
+            # similar colormaps go through near-white/bright-yellow at their
+            # high end, which is nearly invisible against this plot's white
+            # background -- exactly where the tightest, most important
+            # contour (the peak) lives. A single dark color with a white
+            # halo (path_effects) stays legible on top of the blue error
+            # bars AND the white background regardless of level.
+            cs = plt.contour(X, Y, hist_smoothed.T, levels=levels, colors='black', linewidths=1.3, zorder=3)
+            cs.set(path_effects=[PathEffects.withStroke(linewidth=2.5, foreground='white')])
+            # Values are now Gamma0-calibrated planets/star per grid cell
+            # (see the Lambda_tilde/Gamma0_opt scaling above), typically
+            # small numbers -- '%.2g' keeps labels readable instead of
+            # matplotlib's default formatting collapsing them to "0".
+            plt.clabel(cs, inline=True, fontsize=7, fmt='%.2g')
 
         if xscale == "log":
             plt.xscale('log')
@@ -2381,7 +2558,8 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
         plt.xlabel(dim_x, fontsize=11)
         plt.ylabel(dim_y, fontsize=11)
         plt.title(f"Per-planet posteriors vs. fitted intrinsic density: {dim_x} vs {dim_y}\n"
-                  f"dots = posterior mean, bars = ±{n_std}σ, contours = model's physical catalog", fontsize=9)
+                  r"dots = posterior mean, bars = ±" + f"{n_std}" + r"$\sigma$, contours = physical catalog density [planets/star], "
+                  + r"$\Gamma_0$" + f"={Gamma0_opt:.3g}", fontsize=9)
         plt.tight_layout()
 
         if mode == 'save':
@@ -2421,7 +2599,8 @@ def pointprocess_marginal_plots(params, stellar_info, voxel_grid, observed_catal
     # residual plot above) -- see pointprocess_2D_posterior_plot's docstring.
     pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_catalog,
                                     visualization_plot_folder, pairs=None,
-                                    min_density=min_density, max_density=max_density, mode=mode, model_id=model_id)
+                                    min_density=min_density, max_density=max_density,
+                                    synthetic_multiplier=synthetic_multiplier, mode=mode, model_id=model_id)
 
 
 def pointprocess_gamma0_posterior_plot(reader, nburnin, n_planets, visualization_plot_folder,

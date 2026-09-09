@@ -102,7 +102,7 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
     ### how to get the eccentricity to be less elevated? How do we deweight the high eccentricities?
     ### cut out all samples with q < 2 stellar radii and reweight?
 
-    return eccentricity, omega
+    return eccentricity, omega, rho_star_sample
 
 
 def _sample_positive_normal(rng, loc, scale, size):
@@ -213,7 +213,16 @@ def process_unconverged_multis_df(unconverged_multis_dr_df,stellar_df,lower_rho,
         print(f"[rank {rank}] number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
         print(f"[rank {rank}] number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
 
-        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
+        eccentricity, omega, rho_star_sample = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
+
+        i = np.arccos(b * planet_star_radius_ratio * (1 + eccentricity * np.sin(omega * np.pi / 180)) / (1 - eccentricity**2)) * 180 / np.pi
+
+        mass_star = stellar_df[stellar_df["KIC"]==row["kepid"]]["Mass"].values[0]
+        mass_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_Mass"].values[0]
+        mass_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_Mass"].values[0]
+        mass_star_uncertainty = np.maximum(np.abs(mass_star_upper_uncertainty), np.abs(mass_star_lower_uncertainty))
+        mass_star = _sample_positive_normal(row_rng, mass_star, mass_star_uncertainty)
+
 
         sampled_indices = row_rng.choice(range(num_sampling_draws), size=num_posteriors_per_planet, replace=True)
 
@@ -222,8 +231,11 @@ def process_unconverged_multis_df(unconverged_multis_dr_df,stellar_df,lower_rho,
         mass = mass[sampled_indices]
         eccentricity = eccentricity[sampled_indices]
         omega = omega[sampled_indices]
+        i = i[sampled_indices]
+        radius_star = radius_star[sampled_indices]
+        mass_star = mass_star[sampled_indices]
 
-        row_result = np.array([radius, period, mass, eccentricity, omega,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
+        row_result = np.array([radius, period, mass, eccentricity, omega, i, radius_star, mass_star, np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
         partial_rows.append((index, row_result))
 
     all_results = comm.gather(partial_rows, root=0)
@@ -238,7 +250,7 @@ def process_unconverged_multis_df(unconverged_multis_dr_df,stellar_df,lower_rho,
             final_singles_array = np.zeros((0,6))
         else:
             final_singles_array = np.concatenate([row_result for _, row_result in flat], axis=0)
-        df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","kepid","planet_number"])
+        df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","i","R_s","M_s","kepid","planet_number"])
 
         error = np.zeros(len(df))
         for i in range(len(df)):
@@ -360,17 +372,28 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         print(f"[rank {rank}] number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
         print(f"[rank {rank}] number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
 
-        eccentricity, omega = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
+        eccentricity, omega, rho_star_sample = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
 
         sampled_indices = row_rng.choice(range(num_sampling_draws), size=num_posteriors_per_planet, replace=True)
+
+        i = np.arccos(b * planet_star_radius_ratio * (1 + eccentricity * np.sin(omega * np.pi / 180)) / (1 - eccentricity**2)) * 180 / np.pi
+
+        mass_star = stellar_df[stellar_df["KIC"]==row["kepid"]]["Mass"].values[0]
+        mass_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_Mass"].values[0]
+        mass_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_Mass"].values[0]
+        mass_star_uncertainty = np.maximum(np.abs(mass_star_upper_uncertainty), np.abs(mass_star_lower_uncertainty))
+        mass_star = _sample_positive_normal(row_rng, mass_star, mass_star_uncertainty)
 
         radius = radius[sampled_indices]
         period = period[sampled_indices]
         mass = mass[sampled_indices]
         eccentricity = eccentricity[sampled_indices]
         omega = omega[sampled_indices]
+        i = i[sampled_indices]
+        radius_star = radius_star[sampled_indices]
+        mass_star = mass_star[sampled_indices]
 
-        row_result = np.array([radius, period, mass, eccentricity, omega,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
+        row_result = np.array([radius, period, mass, eccentricity, omega, i,radius_star,mass_star,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
         partial_rows.append((index, row_result))
 
     all_results = comm.gather(partial_rows, root=0)
@@ -385,7 +408,7 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
             final_singles_array = np.zeros((0,6))
         else:
             final_singles_array = np.concatenate([row_result for _, row_result in flat], axis=0)
-        df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","kepid"])
+        df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","i","R_s","M_s","kepid"])
     else:
         df = None
 
@@ -416,7 +439,7 @@ def main(runprops):
             df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
             if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
             print("now we're caching it!")
-            df = df[["R_pE","Period_days","M_pE","e","omega","KIC","rho_p","planet"]]#,"p_trans","MES_rowe"]]
+            df = df[["R_pE","Period_days","M_pE","e","omega","KIC","rho_p","i","M_s","R_s","planet"]]#,"p_trans","MES_rowe"]]
             #df = create_probability_weighted(df)
             df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
             if runprops["verbose"]: print("data has been cached for future runs!")
@@ -609,6 +632,13 @@ def main(runprops):
         final_kdc_df = pd.concat([df, processed_singles_dr_df.rename(columns={"kepid":"KIC"})], ignore_index=True)
         ######## ADD A FLAG TO SEE IF ITS A SINGLE OR A MULTI (FOR PLOTTING PURPOSES)
 
+        # Where there doesn't exist a PhoDyMM value, fill with the best guess from the stellar catalog.
+        final_kdc_df["M_s"] = final_kdc_df.fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Mass"]))
+        final_kdc_df["R_s"] = final_kdc_df.fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Rad"]))
+
+        final_kdc_df["Teff"] = final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Teff"])
+
+
         print("final_kdc_df: ",final_kdc_df)
 
         print("final_kdc_df columns: ",final_kdc_df.columns)
@@ -618,7 +648,7 @@ def main(runprops):
         # Add the data to the RPMeoGrid voxel grid object (this object will be written to a json, then read in for the model runs)
         voxel_grid.add_data(final_kdc_df)
 
-        # Create a small stellar df with 100 random stars, to set up the completeness grid. (could be expanded to entire stellar catalog)
+        # Create a small stellar df with 1000 random stars, to set up the completeness grid. (could be expanded to entire stellar catalog)
         stellar_df_reduced=stellar_df.sample(n=1000,random_state=44)
 
 

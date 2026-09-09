@@ -15,6 +15,7 @@ from scipy.special import gamma, gammaln, gammainc, logsumexp, ndtr, ndtri
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
 from kg_utilities import radius_given_density_mass, density_given_mass_radius
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
+from kg_photoevaporation import p_retention
 
 
 class PeriodDistribution:
@@ -388,6 +389,30 @@ def radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, �
     logpdf = norm.logpdf(z) - np.log(sigma) - norm.logsf(a)
     return np.where(R >= lower_bound, logpdf, -np.inf)
 
+def radius_given_mass_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, density_upper_limit=10.0):
+    """
+    Analytic conditional density of radius given mass: a Gaussian with
+    mean/width from RadiusDistribution.mu_total/sigma_total, truncated below
+    at the radius implied by density_upper_limit (matching
+    RadiusDistribution.sample_radius_given_mass, so this likelihood is
+    self-consistent with how the synthetic catalog is actually generated).
+    """
+    M = np.asarray(M, dtype=np.float64)
+    R = np.asarray(R, dtype=np.float64)
+
+    radius_dist = RadiusDistribution(γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C)
+    S1 = radius_dist._SN(M, mass_break_1)
+    S2 = radius_dist._SN(M, mass_break_2)
+    mu = radius_dist.mu_total(M, S1, S2)
+    sigma = mu * radius_dist.sigma_total(M, S1, S2)
+
+    lower_bound = radius_given_density_mass(density_upper_limit, M)
+    a = (lower_bound - mu) / sigma
+    z = (R - mu) / sigma
+
+    pdf = norm.pdf(z) / (sigma * norm.sf(a))
+    return np.where(R >= lower_bound, pdf, 0.0)
+
 
 def eccentricity_log_pdf(e, alpha, lam, sigma_e):
     """
@@ -486,7 +511,7 @@ def omega_log_pdf(omega, low=0.0, high=360.0):
     return np.where((omega >= low) & (omega <= high), logpdf, -np.inf)
 
 
-def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0):
+def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0, tloss=None, tau=None):
     """
     Fully analytic, grid-free evaluation of the intrinsic population density
     f_pop(period, mass, radius, e, omega | params) at specific (real or
@@ -521,6 +546,24 @@ def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0):
             + eccentricity_log_pdf_gamma_mixture(e, variables['mu_1_e'], variables['α_1_e'], variables['mu_2_e'], variables['α_2_e'], variables['f'])
             + omega_log_pdf(omega)
         )
+    elif model_id == 2:
+        log_f = (
+            period_log_pdf(P, variables['β1'], variables['β2'], variables['Period_break_1'])
+            + mass_log_pdf(M, variables['mu_M'], variables['sigma_M'])
+            + np.log(p_retention(variables['a'], tloss, tau) * radius_given_mass_pdf(R, M, variables['γ0'], variables['γ1'], 
+                                                                         variables['γ2'], variables['mass_break_1'], 
+                                                                         variables['mass_break_2'], variables['σ0'], 
+                                                                         variables['σ1'], variables['σ2'], variables['C'])
+                    + (1 - p_retention(variables['a'], tloss, tau)) * radius_given_mass_pdf(R, M, variables['γ0'], variables['γ1'],
+                                                                         variables['γ2'], variables['mass_break_1'],
+                                                                         variables['mass_break_2'], variables['σ0'],
+                                                                         variables['σ1'], variables['σ2'], variables['C']))
+        
+            + eccentricity_log_pdf(e, variables['mu_1_e'], variables['α_1_e'], variables['mu_2_e'], variables['α_2_e'], variables['f'])
+            + omega_log_pdf(omega)
+        )
+    else:
+        raise ValueError(f"Unknown model_id {model_id} in joint_log_intrinsic_density")
 
     return log_f
 
@@ -546,7 +589,7 @@ def load_flat_observed_catalog(csv_path):
     those arrays), seg_counts (int64 number of draws for that planet), and
     n_planets.
     """
-    cols = ["Period_days", "M_pE", "R_pE", "e", "omega", "unique_planet"]
+    cols = ["Period_days", "M_pE", "R_pE", "e", "omega", "i","M_s","R_s","Teff", "unique_planet"]
     df = pd.read_csv(csv_path, usecols=cols, engine="pyarrow")
     df = df.dropna(subset=cols)
 
@@ -565,6 +608,10 @@ def load_flat_observed_catalog(csv_path):
         "R": df["R_pE"].to_numpy(dtype=np.float64),
         "e": df["e"].to_numpy(dtype=np.float64),
         "omega": df["omega"].to_numpy(dtype=np.float64),
+        "inc": df["i"].to_numpy(dtype=np.float64),
+        "R_s": df["R_s"].to_numpy(dtype=np.float64),
+        "M_s": df["M_s"].to_numpy(dtype=np.float64),
+        "Teff": df["Teff"].to_numpy(dtype=np.float64),
         "seg_starts": seg_starts.astype(np.int64),
         "seg_counts": seg_counts.astype(np.int64),
         "n_planets": len(seg_counts),
@@ -778,6 +825,7 @@ def generate_catalog(stellar_info,get_probability_distributions_return,rank,mast
     fake_catalog[:,4] = rng.uniform(0,360,len_stellar_info)  # omega (argument of periastron)
     # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
     
+    fake_catalog[:,5] = rng.uniform(0,360,size=len_stellar_info)  # inclination (degrees)
     # print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
 
     return fake_catalog, rng_metadata
@@ -829,7 +877,11 @@ def params_to_variables_dict(params, model_id=0):
         mu_e_1, mu_e_2, α_e_1, α_e_2, f = params[14], params[15], params[16], params[17], params[18]
         var_dict.update({"mu_e_1": mu_e_1, "mu_e_2": mu_e_2, "α_e_1": α_e_1, "α_e_2": α_e_2, "f": f})
         return var_dict
-            
+    elif model_id == 2:
+        α, λ, σ_e = params[14], params[15], params[16]
+        a = params[17]
+        var_dict.update({"α": α, "λ": λ, "σ_e": σ_e, "a": a})
+        return var_dict
 
 
 def get_probability_distributions(params, model_id=0):
