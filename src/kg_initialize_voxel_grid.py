@@ -376,13 +376,13 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
 
         sampled_indices = row_rng.choice(range(num_sampling_draws), size=num_posteriors_per_planet, replace=True)
 
-        i = np.arccos(b * planet_star_radius_ratio * (1 + eccentricity * np.sin(omega * np.pi / 180)) / (1 - eccentricity**2)) * 180 / np.pi
+        i = np.arccos(np.clip(b * planet_star_radius_ratio * (1 + eccentricity * np.sin(omega * np.pi / 180)) / (1 - eccentricity**2), -1, 1)) * 180 / np.pi
 
         mass_star = stellar_df[stellar_df["KIC"]==row["kepid"]]["Mass"].values[0]
         mass_star_upper_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["E_Mass"].values[0]
         mass_star_lower_uncertainty = stellar_df[stellar_df["KIC"]==row["kepid"]]["e_Mass"].values[0]
         mass_star_uncertainty = np.maximum(np.abs(mass_star_upper_uncertainty), np.abs(mass_star_lower_uncertainty))
-        mass_star = _sample_positive_normal(row_rng, mass_star, mass_star_uncertainty)
+        mass_star = _sample_positive_normal(row_rng, mass_star, mass_star_uncertainty, num_sampling_draws)
 
         radius = radius[sampled_indices]
         period = period[sampled_indices]
@@ -633,8 +633,8 @@ def main(runprops):
         ######## ADD A FLAG TO SEE IF ITS A SINGLE OR A MULTI (FOR PLOTTING PURPOSES)
 
         # Where there doesn't exist a PhoDyMM value, fill with the best guess from the stellar catalog.
-        final_kdc_df["M_s"] = final_kdc_df.fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Mass"]))
-        final_kdc_df["R_s"] = final_kdc_df.fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Rad"]))
+        final_kdc_df["M_s"] = final_kdc_df['M_s'].fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Mass"]))
+        final_kdc_df["R_s"] = final_kdc_df['R_s'].fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Rad"]))
 
         final_kdc_df["Teff"] = final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Teff"])
 
