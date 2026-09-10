@@ -2345,15 +2345,21 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
     consistent with what the other diagnostic plots already call "physical
     catalog").
 
-    Contour values are calibrated into planets/star, exactly like "physical
-    catalog" in pointprocess_1D_marginal_plot: the raw synthetic-draw
-    histogram is scaled by Gamma0_opt/synthetic_multiplier (same
-    profile_optimal_gamma0 calibration used everywhere else -- Gamma0 is
-    profiled out of `params`, so without reapplying it the histogram sits in
-    units that depend on how many times `stellar_info` happened to be
-    oversampled and how fine `n_grid` is, not on anything physical). Pass
-    the SAME `synthetic_multiplier` used to build `stellar_info` or these
-    numbers -- and the contour labels -- won't mean anything.
+    Contour values are calibrated into a genuine planets/star DENSITY -- the
+    same Gamma0/profile_optimal_gamma0 calibration used everywhere else,
+    but divided by the actual number of stars (len(stellar_info),
+    accounting for the `synthetic_multiplier`-fold oversampling already
+    baked into `stellar_info` by the time it's passed in here), not merely
+    by `synthetic_multiplier` alone. Dividing by synthetic_multiplier alone
+    (what pointprocess_1D_marginal_plot's "physical catalog"/"observed
+    catalog" bars do) calibrates to total PLANET COUNT across the whole
+    stellar sample -- which is why those bars sit on a "planet count" axis,
+    not "planets/star" -- and is NOT the same thing as a per-star rate: a
+    single fine grid cell here should almost always show a small FRACTION
+    of Gamma0's total value, not something comparable to or bigger than it.
+    Pass the SAME `synthetic_multiplier` used to build `stellar_info` or
+    none of this -- Lambda_tilde, Gamma0_opt, or the contour values
+    themselves -- will mean anything.
 
     This is a more direct, non-aggregated view of the same thing
     _precision_weighted_draw_weights / pointprocess_1D_marginal_plot_precision_weighted
@@ -2421,13 +2427,34 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
     # histogram below sits in units that depend on how many times
     # stellar_info happened to be oversampled and how fine n_grid is, not on
     # anything physical, so it can't be compared across pairs, across runs,
-    # or against Gamma0 itself. Applying it here makes the contours read in
-    # the same planets/star units as "physical catalog" in the 1D plots.
+    # or against Gamma0 itself.
+    #
+    # IMPORTANT: Gamma0_opt/synthetic_multiplier alone (what
+    # pointprocess_1D_marginal_plot's "physical catalog"/"observed catalog"
+    # bars use) is calibrated to total PLANET COUNT across the whole
+    # stellar_info sample -- that's why those bars are plotted on a
+    # "planet count" axis, not "planets/star". `stellar_info` here has
+    # already been oversampled by `synthetic_multiplier` (repeated
+    # row-for-row) before being passed in, so len(stellar_info) is
+    # n_stars*synthetic_multiplier, not n_stars alone -- dividing the
+    # synthetic-multiplier back out is NOT the same as dividing by the
+    # number of actual stars. To land on a genuine per-star RATE/DENSITY --
+    # what Gamma0 itself actually is, and what was asked for here --
+    # dividing by len(stellar_info) directly (i.e. Gamma0_opt/len(stellar_info)
+    # instead of Gamma0_opt/synthetic_multiplier) is required. This is a real
+    # difference: a fine grid cell's local density should almost always be a
+    # small FRACTION of Gamma0's total (integrated over the whole domain,
+    # across many cells), not comparable to or bigger than it -- the
+    # previous version could show a single cell's value (e.g. ~100) many
+    # times BIGGER than Gamma0 itself (~4), which was the tell that it was
+    # still counting total planets across the survey, not a per-star density.
     synth_completeness_weights = completeness_weights[density_mask]
     Lambda_tilde = np.sum(synth_completeness_weights) / synthetic_multiplier
     Gamma0_opt = profile_optimal_gamma0(observed_catalog["n_planets"], Lambda_tilde)
+    n_stars = len(stellar_info) / synthetic_multiplier
+    density_calibration = Gamma0_opt / len(stellar_info)
     print(f"pointprocess_2D_posterior_plot: Lambda_tilde={Lambda_tilde:.4f}, Gamma0_opt={Gamma0_opt:.4f}, "
-          f"n_planets={observed_catalog['n_planets']}")
+          f"n_planets={observed_catalog['n_planets']}, n_stars={n_stars:.1f}")
 
     n_planets = observed_catalog["n_planets"]
     rng = np.random.default_rng(seed)
@@ -2491,24 +2518,23 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
             gy = np.linspace(edges_y.min(), edges_y.max(), n_grid + 1)
 
         hist, _, _ = np.histogram2d(synth[:, col_x], synth[:, col_y], bins=[gx, gy])
-        # Calibrate raw synthetic-draw counts into planets/star (same
-        # Gamma0_opt/synthetic_multiplier scaling as "physical catalog" in
-        # pointprocess_1D_marginal_plot) BEFORE smoothing -- gaussian_filter
-        # is linear, so this is equivalent to scaling afterward, but doing it
-        # here means `hist` itself (not just the plotted contours) is already
-        # in physical units if anything downstream ever wants the raw grid.
-        hist = hist * (Gamma0_opt / synthetic_multiplier)
+        # Calibrate raw synthetic-draw counts into a genuine planets/star
+        # DENSITY (see density_calibration = Gamma0_opt/len(stellar_info)
+        # above -- dividing by the full, already-oversampled stellar_info
+        # count, not just synthetic_multiplier, is what actually lands on a
+        # per-star rate rather than a per-survey planet count) BEFORE
+        # smoothing -- gaussian_filter is linear, so this is equivalent to
+        # scaling afterward, but doing it here means `hist` itself (not just
+        # the plotted contours) is already in physical units if anything
+        # downstream ever wants the raw grid.
+        hist = hist * density_calibration
         hist_smoothed = gaussian_filter(hist.astype(float), sigma=smooth_sigma)
 
         gx_centers = 0.5 * (gx[:-1] + gx[1:])
         gy_centers = 0.5 * (gy[:-1] + gy[1:])
         X, Y = np.meshgrid(gx_centers, gy_centers)
 
-        plt.figure(figsize=(8, 7), dpi=200, facecolor='w')
-        plt.errorbar(mean_x[plot_idx], mean_y[plot_idx],
-                     xerr=n_std * std_x[plot_idx], yerr=n_std * std_y[plot_idx],
-                     fmt='o', color='tab:blue', ecolor='tab:blue', alpha=0.35,
-                     markersize=5, elinewidth=1, capsize=0, zorder=1)
+        plt.figure(figsize=(8.8, 7), dpi=200, facecolor='w')
         # histogram2d gives H[i,j] indexed (x_bin, y_bin); transpose to the
         # (y, x) layout meshgrid/contour expect, matching
         # pointprocess_2D_marginal_plot's same transpose convention.
@@ -2525,24 +2551,54 @@ def pointprocess_2D_posterior_plot(params, stellar_info, voxel_grid, observed_ca
         # contours were "basically never visible". Percentile levels instead
         # guarantee each level actually intersects a comparable AMOUNT of
         # probability mass.
+        #
+        # The FILL uses many levels starting low (1st percentile) so the
+        # shaded color extends out to wherever the model has ANY meaningful
+        # density, rather than stopping abruptly at whatever narrow band the
+        # (much sparser) labeled line levels pick out -- `extend='both'`
+        # smoothly continues the color past the lowest/highest level instead
+        # of leaving the tails an abrupt flat white/max color.
         nonzero_density = hist_smoothed[hist_smoothed > 0]
         if nonzero_density.size == 0:
             print(f"pointprocess_2D_posterior_plot: {dim_x} vs {dim_y} -- synthetic density is all-zero on this grid, skipping contours")
-            levels = None
+            fill_levels, line_levels = None, None
         else:
-            levels = np.unique(np.percentile(nonzero_density, np.linspace(40, 99, n_contour_levels)))
-            if levels.size < 2:
-                levels = None
+            fill_levels = np.unique(np.percentile(nonzero_density, np.linspace(1, 99.9, 25)))
+            if fill_levels.size < 2:
+                fill_levels = None
+            # Line levels span a much WIDER percentile range than before (1st
+            # to 99th, not 40th to 99th) so the labeled contours reach out
+            # into the lower-density outskirts instead of cutting off right
+            # around the peak -- fewer of them (n_contour_levels) so labels
+            # stay readable.
+            line_levels = np.unique(np.percentile(nonzero_density, np.linspace(1, 99, n_contour_levels)))
+            if line_levels.size < 2:
+                line_levels = None
 
-        if levels is not None:
+        if fill_levels is not None:
+            cf = plt.contourf(X, Y, hist_smoothed.T, levels=fill_levels, cmap='viridis',
+                               alpha=0.75, extend='both', zorder=0)
+            cbar = plt.colorbar(cf, pad=0.02)
+            cbar.set_label("physical catalog density [planets/star]", fontsize=8)
+            cbar.ax.tick_params(labelsize=7)
+
+        # White-on-black-edge markers read clearly against viridis across its
+        # whole range (its own palette never goes white), unlike the earlier
+        # tab:blue which nearly disappeared into viridis's dark-purple low end.
+        plt.errorbar(mean_x[plot_idx], mean_y[plot_idx],
+                     xerr=n_std * std_x[plot_idx], yerr=n_std * std_y[plot_idx],
+                     fmt='o', color='white', ecolor='white', markeredgecolor='black',
+                     markeredgewidth=0.5, alpha=0.55, markersize=5, elinewidth=1, capsize=0, zorder=1)
+
+        if line_levels is not None:
             # Solid, high-contrast line color (not a colormap): 'inferno'/
             # similar colormaps go through near-white/bright-yellow at their
-            # high end, which is nearly invisible against this plot's white
+            # high end, which is nearly invisible against this plot's
             # background -- exactly where the tightest, most important
             # contour (the peak) lives. A single dark color with a white
-            # halo (path_effects) stays legible on top of the blue error
-            # bars AND the white background regardless of level.
-            cs = plt.contour(X, Y, hist_smoothed.T, levels=levels, colors='black', linewidths=1.3, zorder=3)
+            # halo (path_effects) stays legible on top of the fill, the
+            # error bars, AND the plain white background regardless of level.
+            cs = plt.contour(X, Y, hist_smoothed.T, levels=line_levels, colors='black', linewidths=1.3, zorder=3)
             cs.set(path_effects=[PathEffects.withStroke(linewidth=2.5, foreground='white')])
             # Values are now Gamma0-calibrated planets/star per grid cell
             # (see the Lambda_tilde/Gamma0_opt scaling above), typically
