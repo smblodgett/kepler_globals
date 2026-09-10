@@ -36,7 +36,7 @@ from kg_utilities import ReadJson, density_given_mass_radius
 from kg_plots import MES_grid_plot
 from kg_grid_object_hook import grid_object_hook
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
-from kg_probability_distributions import load_flat_observed_catalog
+from kg_probability_distributions import load_flat_observed_catalog, precompute_observed_transit_log_prob
 
 # print(f"[Rank {rank}/{size}] on host: {os.uname().nodename}", flush=True)
 
@@ -279,6 +279,15 @@ def main(model_id, runprops):
         if likelihood_method == "pointprocess":
             if runprops["verbose"]: print("[Rank 0] loading flat observed catalog for point-process likelihood")
             observed_catalog = load_flat_observed_catalog(runprops.get("observed_catalog_filename", "../data/final_kdc.csv"))
+            # Precompute the per-draw log transit-probability term once here --
+            # it depends only on these fixed real-data points and the fixed
+            # voxel_grid completeness/transit-probability arrays (both already
+            # available on rank 0 at this point), never on the MCMC's sampled
+            # parameters. Without this, kg_likelihood.py's point-process
+            # likelihood was recomputing this identical 5-D interpolation over
+            # every real posterior draw on every single likelihood evaluation.
+            # See kg_probability_distributions.precompute_observed_transit_log_prob.
+            observed_catalog = precompute_observed_transit_log_prob(observed_catalog, voxel_grid)
             if runprops["verbose"]: print(f"[Rank 0] loaded observed catalog: {observed_catalog['n_planets']} planets, {len(observed_catalog['P'])} posterior draws")
         else:
             observed_catalog = None

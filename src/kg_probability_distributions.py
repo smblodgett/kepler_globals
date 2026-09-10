@@ -9,13 +9,26 @@ from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
 from scipy.stats import lognorm, norm # truncnorm #, gaussian_kde
 # from scipy.stats import gamma as gamma_dist
-from scipy.special import gamma, gammaln, gammainc, logsumexp, ndtr, ndtri
+from scipy.special import gamma, gammaln, gammainc, logsumexp, ndtr, ndtri, log_ndtr
 
 
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
 from kg_utilities import radius_given_density_mass, density_given_mass_radius
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
 from kg_photoevaporation import p_retention, find_mass_loss_timescale, NOMINAL_TAU_YR
+
+
+# Precomputed constants for the direct (non-scipy.stats) Normal/lognormal
+# closed-form densities below (mass_log_pdf, radius_given_mass_log_pdf,
+# radius_given_mass_pdf, rocky_radius_given_mass_pdf). These are
+# mathematically identical to scipy.stats.norm/lognorm's own pdf/logpdf,
+# but avoid the generic rv_continuous dispatch machinery (broadcasting and
+# support-mask handling meant for arbitrary distributions), which profiling
+# showed cost several times more wall-clock time than the closed-form
+# formula itself, at the ~1e6-3e6 point scale these are evaluated at per
+# likelihood call.
+_LOG_SQRT_2PI = 0.5 * np.log(2 * np.pi)
+_SQRT_2PI = np.sqrt(2 * np.pi)
 
 
 class PeriodDistribution:
@@ -360,8 +373,19 @@ def period_log_pdf(P, beta1, beta2, period_break_1, P_min=0.1, P_max=500.0):
 
 
 def mass_log_pdf(M, mu_M, sigma_M):
-    """Analytic log-normal mass density (already closed form, no grid needed)."""
-    return lognorm.logpdf(M, s=sigma_M, scale=np.exp(mu_M))
+    """
+    Analytic log-normal mass density (already closed form, no grid needed).
+    Evaluated directly from the lognormal formula (mathematically identical
+    to scipy.stats.lognorm.logpdf(M, s=sigma_M, scale=np.exp(mu_M)), verified
+    to agree to floating-point precision) instead of through scipy.stats'
+    generic dispatch -- see the _LOG_SQRT_2PI comment above for why.
+    """
+    M = np.asarray(M, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        logM = np.log(M)
+        z = (logM - mu_M) / sigma_M
+        logpdf = -0.5 * z * z - np.log(sigma_M) - logM - _LOG_SQRT_2PI
+    return np.where(M > 0, logpdf, -np.inf)
 
 
 def radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, density_upper_limit=10.0):
@@ -385,7 +409,10 @@ def radius_given_mass_log_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, �
     a = (lower_bound - mu) / sigma
     z = (R - mu) / sigma
 
-    logpdf = norm.logpdf(z) - np.log(sigma) - norm.logsf(a)
+    # norm.logpdf(z) and norm.logsf(a) written directly (logsf(a) ==
+    # log_ndtr(-a) exactly, by the standard normal's symmetry) instead of via
+    # scipy.stats.norm -- see the _LOG_SQRT_2PI comment above.
+    logpdf = (-0.5 * z * z - _LOG_SQRT_2PI) - np.log(sigma) - log_ndtr(-a)
     return np.where(R >= lower_bound, logpdf, -np.inf)
 
 def radius_given_mass_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, σ1, σ2, C, density_upper_limit=10.0):
@@ -409,7 +436,9 @@ def radius_given_mass_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, 
     a = (lower_bound - mu) / sigma
     z = (R - mu) / sigma
 
-    pdf = norm.pdf(z) / (sigma * norm.sf(a))
+    # norm.pdf(z) and norm.sf(a) written directly instead of via
+    # scipy.stats.norm -- see the _LOG_SQRT_2PI comment above.
+    pdf = (np.exp(-0.5 * z * z) / _SQRT_2PI) / (sigma * ndtr(-a))
     return np.where(R >= lower_bound, pdf, 0.0)
 
 
@@ -435,7 +464,10 @@ def rocky_radius_given_mass_pdf(R, M, scatter_frac=0.05):
     R = np.asarray(R, dtype=np.float64)
     mu = pure_silicate_radius(M)
     sigma = scatter_frac * mu
-    return norm.pdf(R, loc=mu, scale=sigma)
+    # norm.pdf(R, loc=mu, scale=sigma) written directly -- see the
+    # _LOG_SQRT_2PI comment above.
+    z = (R - mu) / sigma
+    return np.exp(-0.5 * z * z) / (sigma * _SQRT_2PI)
 
 
 def eccentricity_log_pdf(e, alpha, lam, sigma_e):
@@ -649,6 +681,35 @@ def load_flat_observed_catalog(csv_path):
         "seg_counts": seg_counts.astype(np.int64),
         "n_planets": len(seg_counts),
     }
+
+
+def precompute_observed_transit_log_prob(observed_catalog, voxel_grid, alpha=1e-300):
+    """
+    Precompute, once at startup, the per-draw log geometric transit
+    probability log(p_tr) for every real posterior draw in
+    observed_catalog, caching it as observed_catalog["log_transit_prob"].
+
+    This term (voxel_grid.interpolate_transit_probability evaluated at the
+    real data's own exact (radius, period, mass, e, omega) locations) does
+    not depend on the sampled shape parameters at all -- only on the fixed
+    real-data points and the fixed completeness/transit-probability grids,
+    neither of which changes over the course of an MCMC run. Previously
+    parametric_log_likelihood_pointprocess (kg_likelihood.py) recomputed
+    this identical 5-D interpolation, over every one of the real catalog's
+    posterior draws, on every single likelihood evaluation -- i.e.
+    nwalkers*nsteps times over a run, for a value that never changes after
+    the first call. Call this once (from kg_run_param.py, right after
+    observed_catalog is loaded and voxel_grid is available, before either is
+    broadcast to the MPI ranks) and have the likelihood read
+    observed_catalog["log_transit_prob"] back out instead.
+    """
+    obs_points = np.column_stack([
+        observed_catalog["R"], observed_catalog["P"], observed_catalog["M"],
+        observed_catalog["e"], observed_catalog["omega"],
+    ])
+    transit_prob_obs = voxel_grid.interpolate_transit_probability(obs_points)
+    observed_catalog["log_transit_prob"] = np.log(np.maximum(transit_prob_obs, alpha))
+    return observed_catalog
 
 
 def get_MES(stellar_df, mass, radius, period, ecc, omega, b):

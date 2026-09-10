@@ -714,37 +714,43 @@ class RPMeoGrid(RPMGrid):
             #                                                   self.omega_grid_array),
             #                                                   self.completeness_array
             #                                                   )
+    def _grid_coordinates(self, points):
+        """
+        Shared coordinate transform for interpolate_completeness and
+        interpolate_transit_probability: converts physical (radius, period,
+        mass, eccentricity, omega) points into fractional grid-index
+        coordinates for map_coordinates, on each of the 5 irregularly spaced
+        grid axes.
+
+        Writes directly into one preallocated (5, N) buffer instead of
+        stacking 5 separately-returned arrays via np.array(list-of-arrays) --
+        profiling showed that outer stacking step alone costing as much
+        wall-clock time as the map_coordinates call it feeds, at the
+        ~1.5e6-3e6 point scale this runs at per likelihood evaluation.
+        """
+        grids = (self.radius_grid_array, self.period_grid_array, self.mass_grid_array,
+                 self.eccentricity_grid_array, self.omega_grid_array)
+        coords = np.empty((5, points.shape[0]), dtype=np.float64)
+        for axis, grid in enumerate(grids):
+            val = points[:, axis]
+            idx = np.searchsorted(grid, val, side='right') - 1
+            np.clip(idx, 0, len(grid) - 2, out=idx)
+            lo = grid[idx]
+            hi = grid[idx + 1]
+            coords[axis] = idx + (val - lo) / (hi - lo)
+        return coords
+
     def interpolate_completeness(self, points):
         """
         points: np.ndarray of shape (N, 5)
                 columns: (radius, period, mass, eccentricity, omega)
-        
+
         Drop-in replacement for self.completeness_interp(points)
         using map_coordinates for speed.
         """
-        def to_index(val, grid):
-            idx = np.searchsorted(grid, val, side='right') - 1
-            idx = np.clip(idx, 0, len(grid) - 2)
-            lo = grid[idx]
-            hi = grid[idx + 1]
-            frac = (val - lo) / (hi - lo)
-            return idx + frac
-
-        coords = np.array([
-            to_index(points[:, 0], self.radius_grid_array),
-            to_index(points[:, 1], self.period_grid_array),
-            to_index(points[:, 2], self.mass_grid_array),
-            to_index(points[:, 3], self.eccentricity_grid_array),
-            to_index(points[:, 4], self.omega_grid_array),
-        ])  # shape (5, N)
-        
-        # print("C contiguous: ", self.completeness_array.flags['C_CONTIGUOUS'])
-        # print(type(self.completeness_array.base))       # is it a memmap?
-        # print(self.completeness_array.flags['OWNDATA'])  # False often means it's a view onto a memmap
-
         return map_coordinates(
             self.completeness_array,
-            coords,
+            self._grid_coordinates(points),
             order=1,
             mode='nearest'
         )
@@ -761,25 +767,9 @@ class RPMeoGrid(RPMGrid):
         points: np.ndarray of shape (N, 5)
                 columns: (radius, period, mass, eccentricity, omega)
         """
-        def to_index(val, grid):
-            idx = np.searchsorted(grid, val, side='right') - 1
-            idx = np.clip(idx, 0, len(grid) - 2)
-            lo = grid[idx]
-            hi = grid[idx + 1]
-            frac = (val - lo) / (hi - lo)
-            return idx + frac
-
-        coords = np.array([
-            to_index(points[:, 0], self.radius_grid_array),
-            to_index(points[:, 1], self.period_grid_array),
-            to_index(points[:, 2], self.mass_grid_array),
-            to_index(points[:, 3], self.eccentricity_grid_array),
-            to_index(points[:, 4], self.omega_grid_array),
-        ])  # shape (5, N)
-
         return map_coordinates(
             self.transit_prob_array,
-            coords,
+            self._grid_coordinates(points),
             order=1,
             mode='nearest'
         )

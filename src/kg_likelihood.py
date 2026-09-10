@@ -224,17 +224,21 @@ def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, m
         tloss = find_mass_loss_timescale(obs["M"], obs["R"], obs["P"], obs["e"], obs["omega"], obs["inc"], obs["R_s"], obs["M_s"], obs["Teff"], real_data_rng)
     log_f_obs = joint_log_intrinsic_density(get_probability_distributions_return["variables"], obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"], model_id=model_id, tloss=tloss, tau=tau)
 
-    obs_points = np.column_stack([obs["R"], obs["P"], obs["M"], obs["e"], obs["omega"]])  # (radius, period, mass, e, omega) order
     # p_tr only -- NOT the combined completeness -- per Neil & Rogers (2020): these
     # are already-confirmed detections, so re-multiplying by p_det here would
     # double-condition on their detection (see the docstring above).
 
     # in more understandable words, these HAVE ALREADY BEEN DETECTED
     # so p_det is already 1 for them, and we can't multiply by p_det again...that would double-count it!
-    transit_prob_obs = voxel_grid.interpolate_transit_probability(obs_points) #
 
-    ALPHA = 1e-300
-    log_transit_prob_obs = np.log(np.maximum(transit_prob_obs, ALPHA))
+    # This 5-D interpolation depends only on the fixed real-data points and the
+    # fixed completeness grid -- never on `params` -- so it is precomputed once
+    # at startup (kg_probability_distributions.precompute_observed_transit_log_prob,
+    # called from kg_run_param.py right after observed_catalog is loaded) instead
+    # of being recomputed by this 5-D interpolation on every single likelihood
+    # evaluation. This alone was one of the largest fixed per-step costs in the
+    # whole likelihood.
+    log_transit_prob_obs = obs["log_transit_prob"]
 
     vals = log_f_obs + log_transit_prob_obs
     vals = np.where(np.isfinite(vals), vals, -700.0)  # floor rather than -inf so reduceat stays well-behaved
