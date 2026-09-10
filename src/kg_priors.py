@@ -49,23 +49,34 @@ class PriorArgs:
         # Gamma0's full posterior after the fact from the per-step
         # lambda_tilde blob, so nothing about Gamma0 is actually lost by
         # dropping it from here.
-        self.add_prior('gamma_0', -1,1,"U", [0,1])
-        self.add_prior('gamma_1', -3, 5,"U", [0,1])  # lnN(0.6,0.1)
-        self.add_prior('gamma_2', -1, 5,"U", [0,1])  # lnN(0,0.1)
-        self.add_prior('sigma_0', 0, 5,"U", [0,1])  # lnN(-1.8, 0.25)
-        self.add_prior('sigma_1', 0, 5,"U", [0,1])  # lnN(-1.3, 0.25)
-        self.add_prior('sigma_2', 0, 5,"U", [0,1])  # lnN(-2.3, 0.25)
-        self.add_prior('Mbreak1', 0.1, 50,"U", [0,1])  # lnN(2,1)
-        self.add_prior('Mbreak2', 50, 10000,"U", [0,1])  # lnN(5,0.25)
-        self.add_prior('C', 0.2,4.5,"U", [0,1])       
-        self.add_prior('mu_M', 0, 10,"U", [0,1])  # N(1,2) 
-        self.add_prior('sigma_M', -10, 10,"U", [0,1])  # lnN(1,0.25)
-        self.add_prior('Beta1', 0.0, 5.0,"U", [0,1])  # N(0.5,0.5)
-        self.add_prior('Beta2', -3.0, 0.0,"U", [0,1])  # N(-0.5,0.5)
-        self.add_prior('Pbreak1', 3.0, 15,"U", [0,1])   # lnN(2,1)
-        self.add_prior('alpha_e', 0,2,"U", [0])
-        self.add_prior('lambda_e', 0,50,"U", [0])
-        self.add_prior('sigma_e',0,1,"U", [0])
+        self.add_prior('gamma_0', -1,1,"U", [0,1,2])
+        self.add_prior('gamma_1', -3, 5,"U", [0,1,2])  # lnN(0.6,0.1)
+        self.add_prior('gamma_2', -1, 5,"U", [0,1,2])  # lnN(0,0.1)
+        self.add_prior('sigma_0', 0, 5,"U", [0,1,2])  # lnN(-1.8, 0.25)
+        self.add_prior('sigma_1', 0, 5,"U", [0,1,2])  # lnN(-1.3, 0.25)
+        self.add_prior('sigma_2', 0, 5,"U", [0,1,2])  # lnN(-2.3, 0.25)
+        self.add_prior('Mbreak1', 0.1, 50,"U", [0,1,2])  # lnN(2,1)
+        self.add_prior('Mbreak2', 50, 10000,"U", [0,1,2])  # lnN(5,0.25)
+        self.add_prior('C', 0.2,4.5,"U", [0,1,2])       
+        self.add_prior('mu_M', 0, 10,"U", [0,1,2])  # N(1,2) 
+        self.add_prior('sigma_M', -10, 10,"U", [0,1,2])  # lnN(1,0.25)
+        self.add_prior('Beta1', 0.0, 5.0,"U", [0,1,2])  # N(0.5,0.5)
+        self.add_prior('Beta2', -3.0, 0.0,"U", [0,1,2])  # N(-0.5,0.5)
+        self.add_prior('Pbreak1', 3.0, 15,"U", [0,1,2])   # lnN(2,1)
+        self.add_prior('alpha_e', 0,2,"U", [0,2])
+        self.add_prior('lambda_e', 0,50,"U", [0,2])
+        self.add_prior('sigma_e',0,1,"U", [0,2])
+        # model_id 2 only: photoevaporation retention-probability scaling
+        # (Neil & Rogers 2020 Eq. 15's alpha, renamed 'a' here to avoid
+        # colliding with the Rayleigh+Exponential eccentricity model's own
+        # alpha_e -- model 2 reuses that Rayleigh+Exponential ecc model,
+        # not the Gamma mixture from model_id 1). a=1 means take
+        # eps/F_XUV,E100/tau at their NR20 nominal values (see
+        # kg_photoevaporation.NOMINAL_*); a scales all three uncertainties
+        # at once. Bounded well above 1 so retention isn't forced to
+        # saturate at 0 or 1 for every planet, and at 0 below since a
+        # itself should never be negative.
+        self.add_prior('a', 0, 10, "U", [2])
 
         # model_id 1: 2-component Gamma mixture on eccentricity, parametrized
         # by (mean, shape) per component -- see
@@ -165,6 +176,7 @@ class PriorArgs:
                             '$α_e$',
                             '$λ_e$',
                             '$σ_e$',
+                            '$a$',
                             '$μ_{e,1}$',
                             '$μ_{e,2}$',
                             '$α_{e,1}$',

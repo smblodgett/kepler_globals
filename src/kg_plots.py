@@ -588,7 +588,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
         # via save_pointprocess_regions_of_interest -- the point-process
         # analogue of save_region_of_interest_summation.)
         pointprocess_synthetic_multiplier = 200
-        stellar_info = stellar_df[["Rad", "Mass"]].to_numpy(dtype=np.float32)
+        stellar_info = stellar_df[["Rad", "Mass", "Teff"]].to_numpy(dtype=np.float32)
         stellar_info = np.repeat(stellar_info, pointprocess_synthetic_multiplier, axis=0)
         observed_catalog = load_flat_observed_catalog(observed_catalog_filename)
         pointprocess_marginal_plots(top_samples[0], stellar_info, voxel_grid, observed_catalog, visualization_plot_folder,
@@ -626,7 +626,7 @@ def param_analysis_plots(results_folder,model_run_folder,model_id,nburnin,nthinn
     plt.xlabel("p_mass")
     plt.savefig("p_mass.png")
 
-    stellar_info = stellar_df[["Rad","Mass"]].to_numpy(dtype=np.float32)
+    stellar_info = stellar_df[["Rad","Mass","Teff"]].to_numpy(dtype=np.float32)
     stellar_info = np.repeat(stellar_info,synthetic_multiplier,axis=0)
 
     synthetic_catalog, rng_metadata = generate_catalog(stellar_info, get_probability_distributions_return, rank_seed, master_seed=master_seed, time_seed=time_seed)

@@ -17,9 +17,10 @@ from kg_probability_distributions import (
     get_probability_distributions,
     joint_log_intrinsic_density,
     profile_optimal_gamma0,
+    random_seed_generation,
 )
 from kg_utilities import density_given_mass_radius
-from kg_photoevaporation import mass_loss_timescale
+from kg_photoevaporation import find_mass_loss_timescale, NOMINAL_TAU_YR
 
 stellar_info = None # this is a np array from the stellar_df that is defined and given cuts in kg_initialize_voxel_grid.py. Its length is the same as the synthetic catalog's
 voxel_grid = None
@@ -210,7 +211,17 @@ def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, m
     tloss = None
     tau = None
     if model_id == 2:
-        tloss = mass_loss_timescale(obs["R"], obs["P"], obs["M"], obs["e"], obs["omega"], obs["inc"], obs["R_s"], obs["M_s"], obs["Teff"])
+        # Reconstruct a deterministic RNG from the exact seed metadata
+        # generate_catalog already produced above (same master_seed/rank/
+        # time_seed), rather than drawing from a fresh, unseeded RNG here --
+        # this keeps the real-data term's primordial-radius draw (inside
+        # find_mass_loss_timescale) reproducible given fixed params, instead
+        # of logL(params) silently changing between identical calls at the
+        # same parameter vector.
+        tau = NOMINAL_TAU_YR
+        real_data_rng_seed = random_seed_generation(rng_metadata["master_seed"], rng_metadata["rank_seed"], rng_metadata["time_seed"])
+        real_data_rng = np.random.default_rng(seed=real_data_rng_seed)
+        tloss = find_mass_loss_timescale(obs["M"], obs["R"], obs["P"], obs["e"], obs["omega"], obs["inc"], obs["R_s"], obs["M_s"], obs["Teff"], real_data_rng)
     log_f_obs = joint_log_intrinsic_density(get_probability_distributions_return["variables"], obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"], model_id=model_id, tloss=tloss, tau=tau)
 
     obs_points = np.column_stack([obs["R"], obs["P"], obs["M"], obs["e"], obs["omega"]])  # (radius, period, mass, e, omega) order

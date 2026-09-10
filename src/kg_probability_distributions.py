@@ -15,7 +15,7 @@ from scipy.special import gamma, gammaln, gammainc, logsumexp, ndtr, ndtri
 from kg_constants import G, RETORS, RSCM, MSKG, MEKG, RECM, RSCM
 from kg_utilities import radius_given_density_mass, density_given_mass_radius
 from kg_param_boundary_arrays import radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array
-from kg_photoevaporation import p_retention
+from kg_photoevaporation import p_retention, find_mass_loss_timescale, NOMINAL_TAU_YR
 
 
 class PeriodDistribution:
@@ -117,8 +117,7 @@ class RadiusDistribution:
         return self.radius_pdf_area(low_radius,high_radius)
 
     def _pure_silicate_radius(self,M):
-        M1 = 10.55
-        return 3.9 * 10**(-0.209594 + (1/3)*np.log10(M/M1) - 0.0799*(M/M1)**0.413)
+        return pure_silicate_radius(M)
 
     def _SN(self,M,mass_break_N):
         return 1 / (1 + np.exp(-5*(np.log(M)-np.log(mass_break_N))))
@@ -414,6 +413,31 @@ def radius_given_mass_pdf(R, M, γ0, γ1, γ2, mass_break_1, mass_break_2, σ0, 
     return np.where(R >= lower_bound, pdf, 0.0)
 
 
+def pure_silicate_radius(M):
+    """
+    Seager et al. (2007) mass-radius relation for a pure-silicate (rocky)
+    core -- the fixed "currently rocky" branch of the Neil & Rogers (2020)
+    photoevaporation mixture (their Eq. 12). M in Earth masses, returns
+    radius in Earth radii.
+    """
+    M1 = 10.55
+    return 3.9 * 10**(-0.209594 + (1/3)*np.log10(M/M1) - 0.0799*(M/M1)**0.413)
+
+
+def rocky_radius_given_mass_pdf(R, M, scatter_frac=0.05):
+    """
+    Fixed "currently rocky" radius-given-mass density: a Normal centered on
+    the Seager et al. (2007) pure-silicate curve with a fixed fractional
+    scatter (5%% per Neil & Rogers 2020 Eq. 17). Unlike the gaseous branch,
+    this component has no free parameters -- it isn't fit to the data.
+    """
+    M = np.asarray(M, dtype=np.float64)
+    R = np.asarray(R, dtype=np.float64)
+    mu = pure_silicate_radius(M)
+    sigma = scatter_frac * mu
+    return norm.pdf(R, loc=mu, scale=sigma)
+
+
 def eccentricity_log_pdf(e, alpha, lam, sigma_e):
     """
     Analytic eccentricity density. rayleigh_exponential is already a
@@ -547,19 +571,28 @@ def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0, tloss=N
             + omega_log_pdf(omega)
         )
     elif model_id == 2:
+        # NR20 Model 2: same gaseous formation channel as model 0 (shared
+        # p(P), p(M), and the Rayleigh+Exponential eccentricity model --
+        # see kg_priors.py), but radius given mass is now a two-branch
+        # mixture: p_ret * (still gaseous) + (1-p_ret) * (stripped to a
+        # bare rocky core). p_ret is the photoevaporation retention
+        # probability (kg_photoevaporation.p_retention), which depends on
+        # this planet's own mass-loss timescale (tloss, supplied by the
+        # caller -- see kg_likelihood.parametric_log_likelihood_pointprocess)
+        # relative to the assumed stellar age (tau).
+        p_ret = p_retention(variables['a'], tloss, tau)
+        radius_mixture_pdf = (
+            p_ret * radius_given_mass_pdf(R, M, variables['γ0'], variables['γ1'], variables['γ2'],
+                                           variables['mass_break_1'], variables['mass_break_2'],
+                                           variables['σ0'], variables['σ1'], variables['σ2'], variables['C'])
+            + (1 - p_ret) * rocky_radius_given_mass_pdf(R, M)
+        )
+        ALPHA_FLOOR = 1e-300  # avoid log(0) for a mixture density that underflows to exactly 0
         log_f = (
             period_log_pdf(P, variables['β1'], variables['β2'], variables['Period_break_1'])
             + mass_log_pdf(M, variables['mu_M'], variables['sigma_M'])
-            + np.log(p_retention(variables['a'], tloss, tau) * radius_given_mass_pdf(R, M, variables['γ0'], variables['γ1'], 
-                                                                         variables['γ2'], variables['mass_break_1'], 
-                                                                         variables['mass_break_2'], variables['σ0'], 
-                                                                         variables['σ1'], variables['σ2'], variables['C'])
-                    + (1 - p_retention(variables['a'], tloss, tau)) * radius_given_mass_pdf(R, M, variables['γ0'], variables['γ1'],
-                                                                         variables['γ2'], variables['mass_break_1'],
-                                                                         variables['mass_break_2'], variables['σ0'],
-                                                                         variables['σ1'], variables['σ2'], variables['C']))
-        
-            + eccentricity_log_pdf(e, variables['mu_1_e'], variables['α_1_e'], variables['mu_2_e'], variables['α_2_e'], variables['f'])
+            + np.log(np.maximum(radius_mixture_pdf, ALPHA_FLOOR))
+            + eccentricity_log_pdf(e, variables['α'], variables['λ'], variables['σ_e'])
             + omega_log_pdf(omega)
         )
     else:
@@ -823,10 +856,46 @@ def generate_catalog(stellar_info,get_probability_distributions_return,rank,mast
     # print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
 
     fake_catalog[:,4] = rng.uniform(0,360,len_stellar_info)  # omega (argument of periastron)
-    # fake_catalog[:,5] = np.random.uniform(-1,1,len_stellar_df)  # b (impact parameter) ... do we need this? why do we need it?
-    
-    fake_catalog[:,5] = rng.uniform(0,360,size=len_stellar_info)  # inclination (degrees)
     # print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
+
+    if "a" in variables:
+        # Model 2 (photoevaporation): decide, per synthetic planet, whether
+        # it stays gaseous or gets stripped to a bare rocky core, so the
+        # synthetic catalog used for Lambda_tilde (and the legacy grid
+        # path) reflects the same mixture as the real-data term in
+        # joint_log_intrinsic_density -- otherwise the normalization
+        # integral would be computed under a different population model
+        # than the one the data are scored against.
+        #
+        # Inclination is NOT drawn directly uniform in i (that was wrong --
+        # isotropic orbit orientations are uniform in cos(i), not in i
+        # itself). Instead the impact parameter b is drawn uniformly first
+        # (equivalent to drawing cos(i) ~ Uniform(0,1), i.e. isotropic
+        # orientations restricted to i in [0,90] by the usual up/down
+        # transit-geometry symmetry), then transformed into i using the
+        # same b<->i relation kg_plots/get_MES already uses:
+        # b = (a/Rstar)*cos(i)*(1-e^2)/(1+e*sin(omega)).
+        ecc = fake_catalog[:,3]
+        omega_rad = np.radians(fake_catalog[:,4])
+        Rstar_m = stellar_info[:,0] * (RSCM / 100.0)  # solar radii -> meters
+        Mstar_solar = stellar_info[:,1]
+        Teff = stellar_info[:,2]
+        sm_axis = (G * (fake_catalog[:,0]*24*3600)**2 * (fake_catalog[:,1]*MEKG + Mstar_solar*MSKG) / (4*np.pi**2))**(1/3)  # meters
+
+        cos_i = rng.uniform(0, 1, size=len_stellar_info)
+        b = cos_i * (sm_axis / Rstar_m) * (1 - ecc**2) / (1 + ecc*np.sin(omega_rad))
+        cos_i_recovered = np.clip(((1 + ecc*np.sin(omega_rad)) / (1 - ecc**2)) * (Rstar_m * b / sm_axis), -1, 1)
+        inc_deg = np.degrees(np.arccos(cos_i_recovered))
+
+        tloss = find_mass_loss_timescale(fake_catalog[:,1], fake_catalog[:,2], fake_catalog[:,0], ecc,
+                                          fake_catalog[:,4], inc_deg, stellar_info[:,0], Mstar_solar, Teff, rng)
+        p_ret = p_retention(variables["a"], tloss, NOMINAL_TAU_YR)
+
+        rocky_mu = pure_silicate_radius(fake_catalog[:,1])
+        rocky_radius = rng.normal(loc=rocky_mu, scale=0.05*rocky_mu)
+
+        retained = rng.uniform(0, 1, size=len_stellar_info) < p_ret
+        fake_catalog[:,2] = np.where(retained, fake_catalog[:,2], rocky_radius)
 
     return fake_catalog, rng_metadata
 
