@@ -616,24 +616,39 @@ class RPMeoGrid(RPMGrid):
             print("period input: ", self.period_grid_array[j])
             print("eccentricity input: ", self.eccentricity_grid_array[l])
             print("omega input: ", self.omega_grid_array[m])
-            MESs = []
-            n_transits_list = []
+            # MESs = []
+            # n_transits_list = []
             transit_prob_list = []
             detection_prob_list = []
             completeness_list = []
             for star_ind, star_row in stellar_df.iterrows():
                 star_df = stellar_df.loc[[star_ind]]
-                MES,n_transits = get_MES(star_df, self.mass_grid_array[k],
-                                                        self.radius_grid_array[i],
-                                                        self.period_grid_array[j],
-                                                        self.eccentricity_grid_array[l],
-                                                        self.omega_grid_array[m],
-                                                        b=0
-                                                        )
-                if np.isnan(MES) and np.isnan(n_transits):
+
+                k_rp = RETORS * self.radius_grid_array[i] / star_df['Rad'].iloc[0]
+                b_nodes = np.linspace(0,1+k_rp,20)
+                p_dets = []
+                for b in b_nodes:
+                    MES_b,n_transits = get_MES(star_df, self.mass_grid_array[k],
+                                                            self.radius_grid_array[i],
+                                                            self.period_grid_array[j],
+                                                            self.eccentricity_grid_array[l],
+                                                            self.omega_grid_array[m],
+                                                            b=b
+                                                            )
+                    if np.isnan(MES_b) or n_transits <= 2:
+                        continue
+                    p_dets.append(get_detection_probability_hsu(MES_b, n_transits)[0])
+
+                if len(p_dets) == 0:
                     continue
-                MESs.append(MES)
-                n_transits_list.append(n_transits)
+                
+                detection_prob = np.mean(p_dets)
+
+                # if np.isnan(MES) and np.isnan(n_transits):
+                #     continue
+
+                # MESs.append(MES)
+                # n_transits_list.append(n_transits)
                 transit_prob = get_transit_probability(star_df, self.mass_grid_array[k],
                                                                  self.radius_grid_array[i],
                                                                  self.period_grid_array[j],
@@ -646,11 +661,11 @@ class RPMeoGrid(RPMGrid):
                           "ecc=",self.eccentricity_grid_array[l], "omega=",self.omega_grid_array[m] )
                 transit_prob_list.append(transit_prob)
                 
-                if n_transits > 2:
-                    detection_prob = get_detection_probability_hsu(MES,n_transits)[0]
-                else:
-                    print(f"n transits = {n_transits}")
-                    detection_prob = 0
+                # if n_transits > 2:
+                #     detection_prob = get_detection_probability_hsu(MES,n_transits)[0]
+                # else:
+                #     print(f"n transits = {n_transits}")
+                #     detection_prob = 0
                 if detection_prob > 1:
                     print("detection_prob > 1! Warning!! detection_prob = ", detection_prob)
 
