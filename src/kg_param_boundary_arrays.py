@@ -1,4 +1,4 @@
-radius_grid_array = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.5,2.0,2.5,3.0,4.0,0.6,8.0,10.0,12.0,16.0,20] # len=18 earth radii !!!!
+radius_grid_array = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.5,2.0,2.5,3.0,4.0,6.0,8.0,10.0,12.0,16.0,20] # len=18 earth radii !!!!
 # SHOULD increase resolution in lowest range, so that completeness graph looks better
 # radius_grid_array = [0.3,0.75,1.0,1.1,1.25,1.5,1.75,2.0,3.0,5.0,8.0,20] # earth radii         #### 6-8, 8-20
 # radius_grid_array = [0.1,16,20] ### TESTING

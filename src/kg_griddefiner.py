@@ -625,7 +625,7 @@ class RPMeoGrid(RPMGrid):
                 star_df = stellar_df.loc[[star_ind]]
 
                 k_rp = RETORS * self.radius_grid_array[i] / star_df['Rad'].iloc[0]
-                b_nodes = np.linspace(0,1+k_rp,20)
+                b_nodes = np.linspace(0,1+k_rp,15)
                 p_dets = []
                 for b in b_nodes:
                     MES_b,n_transits = get_MES(star_df, self.mass_grid_array[k],

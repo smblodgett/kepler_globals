@@ -76,7 +76,7 @@ class PriorArgs:
         # at once. Bounded well above 1 so retention isn't forced to
         # saturate at 0 or 1 for every planet, and at 0 below since a
         # itself should never be negative.
-        self.add_prior('a', 0, 10, "U", [2])
+        self.add_prior('a', 0, 100, "U", [2])
 
         # model_id 1: 2-component Gamma mixture on eccentricity, parametrized
         # by (mean, shape) per component -- see
