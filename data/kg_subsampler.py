@@ -255,6 +255,8 @@ def calculate_params(df):
     df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt(np.maximum(0,(1-df['R_p/R_s'])**2 - df['b_trans']**2))/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
     df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
 
+    df['phodymm_converged'] = 1 # flag for whether the PhoDyMM run converged (1) or not (0).
+
     df = occurrence_rate_params(df) # The Hsu et al occurrence rate parameters.
 
     df = mean_anomaly_corrections(df) # Per-row anomaly/eccentricity corrections (Hamann et al. formulation).

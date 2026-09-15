@@ -12,7 +12,7 @@ import os
 from kg_random_row_selector import PHODYMM_PATH, find_koi
 
 sys.path.append(str(Path.cwd().parent / "src"))
-from kg_initialize_voxel_grid import process_singles_df
+from kg_initialize_voxel_grid import process_singles_df, process_unconverged_multis_df
 from kg_constants import *
 
 # All ranks read/filter the catalogs and call process_singles_df() together --
@@ -90,19 +90,49 @@ def main():
 
 
 
-    # Remove the planets in the singles df that have nans in their period errors, since we need these for sampling the posteriors
+    # Remove the planets in the nc multis df that have nans in their period errors, since we need these for sampling the posteriors
     ncmultis_dr_df = ncmultis_dr_df[~(ncmultis_dr_df["koi_period_err1"].isna() | ncmultis_dr_df["koi_period_err2"].isna())]
-    # Reset the index so we can iterate through singles df
+    # Reset the index so we can iterate through nc multis df
     ncmultis_dr_df = ncmultis_dr_df.reset_index(drop=True)
 
     ncmultis_dr_df['planet_number'] = ncmultis_dr_df['kepid'].map(ncmultis_dr_df.groupby('kepid').cumcount() + 1)
     # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
-    processed_ncmultis_dr_df = process_unconverged_multis_df(ncmultis_dr_df,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
+    processed_ncmultis_dr_df = process_singles_df(ncmultis_dr_df,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
+
+    processed_ncmultis_dr_df['planet_order'] = processed_ncmultis_dr_df.groupby('kepid')['Period_days'].rank(method='first')
+
+    a = (G * (processed_ncmultis_dr_df['M_s'] * MSKG + processed_ncmultis_dr_df['M_pE'] * MEKG) * (processed_ncmultis_dr_df['Period_days'] * 24 * 3600)**2 / (4 * np.pi**2) )**(1/3)
+
+    crossing_orbits = np.zeros(len(processed_ncmultis_dr_df), dtype=bool)
+    for index, row in processed_ncmultis_dr_df.iterrows():
+        if row['planet_number'] == 1:
+            crossing_orbits[index] = False
+        else:
+            inner_planet = processed_ncmultis_dr_df[(processed_ncmultis_dr_df['kepid'] == row['kepid']) & (processed_ncmultis_dr_df['planet_number'] == row['planet_number'] - 1)]
+            if not inner_planet.empty:
+                inner_a = inner_planet.iloc[0]['a_AU']
+                inner_e = inner_planet.iloc[0]['e']
+                outer_a = row['a_AU']
+                outer_e = row['e']
+                if (outer_a * (1 - outer_e)) < (inner_a * (1 + inner_e)):
+                    crossing_orbits[index] = True
+                else:
+                    crossing_orbits[index] = False
+            else:
+                crossing_orbits[index] = False
+
+        
+
+
+    crossing_orbits = processed_ncmultis_dr_df['a_AU'] * (1 - processed_ncmultis_dr_df['e'])  
+    
+    
+
 
     if rank == 0:
         print("finished processing!")
 
-        df = processed_singles_dr_df.merge(
+        df = processed_ncmultis_dr_df.merge(
                                                                 stellar_df,
                                                                 left_on='kepid',
                                                                 right_on='KIC',
@@ -214,12 +244,16 @@ def main():
         df["eout/e"] = -1
         df["omega-omegain"] = -1
         df["omegaout-omega"] = -1
+
+        ######## INSERT THE WAY TO FIX THESE COLUMNS HERE
+
         df["dilute"] = -1
         df["chisq"] = -1
         df["Chain#"] = np.nan
         df["chisq_rank"] = np.nan
         df["step_number"] = np.nan
         df["phodymm_index"] = np.nan
+        df["phodymm_converged"] = -1
 
 
 

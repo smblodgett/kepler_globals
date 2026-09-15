@@ -188,6 +188,7 @@ if rank == 0:
     df["chisq_rank"] = np.nan
     df["step_number"] = np.nan
     df["phodymm_index"] = np.nan
+    df["phodymm_converged"] = np.nan
 
 
 

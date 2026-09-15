@@ -7,7 +7,7 @@ import warnings
 from scipy.integrate import quad
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import curve_fit
-from scipy.stats import lognorm, norm # truncnorm #, gaussian_kde
+from scipy.stats import lognorm # truncnorm #, gaussian_kde, norm, laplace -- see hand-rolled *_log_pdf functions below
 # from scipy.stats import gamma as gamma_dist
 from scipy.special import gamma, gammaln, gammainc, logsumexp, ndtr, ndtri, log_ndtr
 
@@ -567,6 +567,81 @@ def omega_log_pdf(omega, low=0.0, high=360.0):
     return np.where((omega >= low) & (omega <= high), logpdf, -np.inf)
 
 
+def eccentricity_omega_log_pdf_laplace_hk(e, omega, sigma_h, sigma_k):
+    """
+    Model 3's joint (e, omega) density: the h/k = e*sin(omega), e*cos(omega)
+    reparametrization (Shabram et al. 2016), with h and k each modeled as
+    independent, zero-centered Laplace distributions -- with their OWN scale
+    parameters, NOT a shared scale/pooled dataset. Shabram et al. pool h and
+    k together because omega-uniformity implies h and k are drawn from the
+    *same* distribution -- but a direct check of this project's own KDC
+    catalog (per-planet posterior means, which is the right level to check
+    at -- see load_flat_observed_catalog's docstring on per-planet
+    marginalization) found std(mean_h) ~= 0.165 vs std(mean_k) ~= 0.067, a
+    ~2.5x difference, so that equal-distribution assumption does not hold
+    here and pooling would just manufacture spurious excess kurtosis (mixing
+    two different-scale symmetric distributions always looks more
+    heavy-tailed than either one alone). MLE fits of Laplace vs. Normal vs.
+    Student-t to per-planet-mean h and k independently confirmed Laplace
+    decisively beats Normal for BOTH variables (ΔAIC of >1200 and >2300
+    respectively), which is what motivates the Laplace family here (see
+    kg_ecc_hk_diagnostic_fits.py for the fits/figure that established this).
+
+    This replaces the draft EccentricityOmegaMixtureDistribution/
+    EccentricityOmegaLaplaceDistribution classes (removed) that used to live
+    above EccentricityDistribution. Those had several issues that made them
+    unusable as-is in the point-process likelihood: their np.trapezoid(...)
+    calls integrated over the WHOLE input array, returning one scalar for an
+    entire batch rather than a per-point density (joint_log_intrinsic_density
+    needs one log-density value per (P,M,R,e,omega) point, exactly like
+    every other *_log_pdf function below); they operated on omega directly
+    with no np.radians() conversion, while every other place omega is used
+    in this codebase (generate_catalog, omega_log_pdf, the omega grid array,
+    the observed catalog's own omega column) is in DEGREES, 0-360; they
+    returned a raw linear-space pdf instead of a log-density, with no
+    log-space combination and no domain guards; and they called
+    scipy.stats.norm/laplace.pdf directly, despite this file's own
+    documented avoidance of that dispatch overhead for hot-loop densities
+    (see the _LOG_SQRT_2PI comment near the top of this file) -- Laplace's
+    log-density is a two-line closed form, so it's hand-rolled here too.
+
+    No Jacobian factor (the |d(h,k)/d(e,omega)| = e that a genuine
+    (e, omega) -> (h, k) change of variables carries) is needed here. Every
+    place e/omega values are used in this codebase is either (a) a per-point
+    density evaluation at a real or synthetic draw's own exact (h, k) -- a
+    coordinate substitution, not a change of integration measure -- or
+    (b) the Lambda_tilde Monte Carlo integral (generate_catalog +
+    synthetic_catalog_with_weights), which samples directly from a (h, k)
+    density and only ever evaluates completeness at the resulting point,
+    never a grid quadrature over (e, omega) that would need dh*dk = e*de*domega
+    made explicit. See the module-level "Semi-analytical...machinery"
+    comment block above for why this project's likelihood is fully
+    Monte-Carlo (not grid-quadrature) in this dimension.
+    """
+    e = np.asarray(e, dtype=np.float64)
+    omega = np.asarray(omega, dtype=np.float64)
+
+    if sigma_h <= 0 or sigma_k <= 0:
+        # Fail safe with -inf rather than dividing by a non-positive scale --
+        # matching the domain-guard style of eccentricity_log_pdf_gamma_mixture
+        # above (should never trigger if kg_priors.py's bounds are respected,
+        # but the MCMC can propose an out-of-bounds step before the prior
+        # rejects it).
+        return np.full(np.broadcast(e, omega).shape, -np.inf)
+
+    omega_rad = np.radians(omega)
+    h = e * np.sin(omega_rad)
+    k = e * np.cos(omega_rad)
+
+    # Hand-rolled Laplace log-density, -log(2*scale) - |x|/scale, instead of
+    # scipy.stats.laplace.logpdf -- see the _LOG_SQRT_2PI comment above.
+    log_pdf_h = -np.log(2.0 * sigma_h) - np.abs(h) / sigma_h
+    log_pdf_k = -np.log(2.0 * sigma_k) - np.abs(k) / sigma_k
+    logpdf = log_pdf_h + log_pdf_k
+
+    return np.where((e >= 0.0) & (e <= 1.0) & (omega >= 0.0) & (omega <= 360.0), logpdf, -np.inf)
+
+
 def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0, tloss=None, tau=None):
     """
     Fully analytic, grid-free evaluation of the intrinsic population density
@@ -626,6 +701,18 @@ def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0, tloss=N
             + np.log(np.maximum(radius_mixture_pdf, ALPHA_FLOOR))
             + eccentricity_log_pdf(e, variables['α'], variables['λ'], variables['σ_e'])
             + omega_log_pdf(omega)
+        )
+    elif model_id == 3:
+        # (h, k) = (e*sin(omega), e*cos(omega)) reparametrization, each an
+        # independent zero-centered Laplace with its own scale -- replaces
+        # eccentricity_log_pdf(...) + omega_log_pdf(omega) with a single
+        # joint term. See eccentricity_omega_log_pdf_laplace_hk's docstring
+        # for why no separate omega term or Jacobian factor is needed here.
+        log_f = (
+            period_log_pdf(P, variables['β1'], variables['β2'], variables['Period_break_1'])
+            + mass_log_pdf(M, variables['mu_M'], variables['sigma_M'])
+            + radius_given_mass_log_pdf(R, M, variables['γ0'], variables['γ1'], variables['γ2'], variables['mass_break_1'], variables['mass_break_2'], variables['σ0'], variables['σ1'], variables['σ2'], variables['C'])
+            + eccentricity_omega_log_pdf_laplace_hk(e, omega, variables['sigma_h'], variables['sigma_k'])
         )
     else:
         raise ValueError(f"Unknown model_id {model_id} in joint_log_intrinsic_density")
@@ -912,12 +999,28 @@ def generate_catalog(stellar_info,get_probability_distributions_return,rank,mast
     # fake_catalog[:,2] = np.random.choice(fake_catalog[:,1],size=len_stellar_info,p=p_radius)  # Radius THIS NEEDS EDITING RADIUS IS WEIRD
     # print("radius gen time: ", (radius_gen_time:=time.time()) - mass_gen_time)
     
-    fake_catalog[:,3] = rng.choice(return_dict["eccentricity_fine_grid"],size=len_stellar_info,p=return_dict["pmf_ecc"])  # Eccentricity
+    if "sigma_h" in variables:
+        # Model 3: eccentricity/omega replaced by an independent 2-Laplace
+        # (h, k) = (e*sin(omega), e*cos(omega)) population model -- see
+        # eccentricity_omega_log_pdf_laplace_hk. Sampling is fully analytic
+        # (no fine-grid PMF/rng.choice needed, unlike every other model_id's
+        # eccentricity draw above/below), and since this synthetic catalog
+        # is only ever used to Monte Carlo integrate Lambda_tilde (never
+        # binned against a quadrature grid in e/omega), no Jacobian
+        # correction is needed for drawing directly in (h, k) and
+        # converting to (e, omega) afterward -- see that function's
+        # docstring for why.
+        h = rng.laplace(0.0, variables["sigma_h"], size=len_stellar_info)
+        k = rng.laplace(0.0, variables["sigma_k"], size=len_stellar_info)
+        fake_catalog[:,3] = np.hypot(h, k)  # Eccentricity
+        fake_catalog[:,4] = np.degrees(np.arctan2(h, k)) % 360.0  # omega (argument of periastron)
+    else:
+        fake_catalog[:,3] = rng.choice(return_dict["eccentricity_fine_grid"],size=len_stellar_info,p=return_dict["pmf_ecc"])  # Eccentricity
 
-    # print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
+        # print("ecc gen time: ", (ecc_gen_time:=time.time()) - radius_gen_time)
 
-    fake_catalog[:,4] = rng.uniform(0,360,len_stellar_info)  # omega (argument of periastron)
-    # print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
+        fake_catalog[:,4] = rng.uniform(0,360,len_stellar_info)  # omega (argument of periastron)
+        # print("omega gen time: ", (omega_gen_time:=time.time()) - ecc_gen_time)
 
     if "a" in variables:
         # Model 2 (photoevaporation): decide, per synthetic planet, whether
@@ -1012,6 +1115,19 @@ def params_to_variables_dict(params, model_id=0):
         a = params[17]
         var_dict.update({"α": α, "λ": λ, "σ_e": σ_e, "a": a})
         return var_dict
+    elif model_id == 3:
+        # (h, k) 2-Laplace eccentricity/omega model -- see
+        # eccentricity_omega_log_pdf_laplace_hk. Only 2 extra parameters
+        # (vs. 3 for model 0/2's Rayleigh+Exponential or 5 for model 1's
+        # Gamma mixture), and no ordering/identifiability constraint is
+        # needed in kg_likelihood.parametric_log_prior the way mu_e_1/mu_e_2
+        # need one -- sigma_h and sigma_k are not interchangeable mixture
+        # components, they're tied to two structurally different
+        # coordinates, so there's no label-switching degeneracy to guard
+        # against.
+        sigma_h, sigma_k = params[14], params[15]
+        var_dict.update({"sigma_h": sigma_h, "sigma_k": sigma_k})
+        return var_dict
 
 
 def get_probability_distributions(params, model_id=0):
@@ -1054,20 +1170,29 @@ def get_probability_distributions(params, model_id=0):
     eccentricity_fine_grid = np.linspace(0,1,10000,dtype=np.float32)
     if model_id == 1:
         pdf_ecc = np.exp(eccentricity_log_pdf_gamma_mixture(eccentricity_fine_grid, variables["mu_e_1"], variables["α_e_1"], variables["mu_e_2"], variables["α_e_2"], variables["f"]))
+        pmf_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_fine_grid)
+    elif model_id == 3:
+        # Model 3 samples (h, k) directly in generate_catalog (the
+        # "sigma_h" in variables branch there), fully analytically -- there
+        # is no ecc-only fine-grid PMF to build or sample from here, unlike
+        # every other model_id. Left as None (rather than omitted) so the
+        # nan/inf/neg checks below, and any caller that just threads this
+        # dict through without indexing into it, don't need special-casing.
+        pmf_ecc = None
     else:
         pdf_ecc = EccentricityDistribution(eccentricity_fine_grid,variables["α"],variables["λ"],variables["σ_e"]).eccentricity_pdf(eccentricity_fine_grid)
-    pmf_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_fine_grid)
+        pmf_ecc = normalize_pdf_to_pmf(pdf_ecc, eccentricity_fine_grid)
     # print("p_ecc: ", p_ecc)
     # print("area under eccentricity distribution: ", np.trapezoid(p_ecc, eccentricity_grid))
 
 
-    is_nan_in_pmfs = (np.isnan(pmf_ecc).any() or np.isnan(pmf_Period).any() or np.isnan(pmf_mass).any())
+    is_nan_in_pmfs = (np.isnan(pmf_Period).any() or np.isnan(pmf_mass).any() or (pmf_ecc is not None and np.isnan(pmf_ecc).any()))
     #     # print("Warning: PMFs contain NaN. This parameter draw is bad, let's skip it!")
 
-    is_inf_in_pmfs = (not np.isfinite(pmf_ecc).any() or not np.isfinite(pmf_Period).any() or not np.isfinite(pmf_mass).any())
+    is_inf_in_pmfs = (not np.isfinite(pmf_Period).any() or not np.isfinite(pmf_mass).any() or (pmf_ecc is not None and not np.isfinite(pmf_ecc).any()))
     #     # print("Warning: PMFs contain inf. This parameter draw is bad, let's skip it!")
 
-    is_neg_in_pmfs = (np.any(pmf_ecc < 0) or np.any(pmf_Period < 0) or np.any(pmf_mass < 0))
+    is_neg_in_pmfs = (np.any(pmf_Period < 0) or np.any(pmf_mass < 0) or (pmf_ecc is not None and np.any(pmf_ecc < 0)))
         # print("Warning: PMFs contain negative values. This parameter draw is bad, let's skip it!")
 
     get_probability_distributions_return_dict = {"variables": variables,

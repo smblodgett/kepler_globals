@@ -49,20 +49,20 @@ class PriorArgs:
         # Gamma0's full posterior after the fact from the per-step
         # lambda_tilde blob, so nothing about Gamma0 is actually lost by
         # dropping it from here.
-        self.add_prior('gamma_0', -1,1,"U", [0,1,2])
-        self.add_prior('gamma_1', -3, 5,"U", [0,1,2])  # lnN(0.6,0.1)
-        self.add_prior('gamma_2', -1, 5,"U", [0,1,2])  # lnN(0,0.1)
-        self.add_prior('sigma_0', 0, 5,"U", [0,1,2])  # lnN(-1.8, 0.25)
-        self.add_prior('sigma_1', 0, 5,"U", [0,1,2])  # lnN(-1.3, 0.25)
-        self.add_prior('sigma_2', 0, 5,"U", [0,1,2])  # lnN(-2.3, 0.25)
-        self.add_prior('Mbreak1', 0.1, 50,"U", [0,1,2])  # lnN(2,1)
-        self.add_prior('Mbreak2', 50, 10000,"U", [0,1,2])  # lnN(5,0.25)
-        self.add_prior('C', 0.2,4.5,"U", [0,1,2])       
-        self.add_prior('mu_M', 0, 10,"U", [0,1,2])  # N(1,2) 
-        self.add_prior('sigma_M', -10, 10,"U", [0,1,2])  # lnN(1,0.25)
-        self.add_prior('Beta1', 0.0, 5.0,"U", [0,1,2])  # N(0.5,0.5)
-        self.add_prior('Beta2', -3.0, 0.0,"U", [0,1,2])  # N(-0.5,0.5)
-        self.add_prior('Pbreak1', 3.0, 15,"U", [0,1,2])   # lnN(2,1)
+        self.add_prior('gamma_0', -1,1,"U", [0,1,2,3])
+        self.add_prior('gamma_1', -3, 5,"U", [0,1,2,3])  # lnN(0.6,0.1)
+        self.add_prior('gamma_2', -1, 5,"U", [0,1,2,3])  # lnN(0,0.1)
+        self.add_prior('sigma_0', 0, 5,"U", [0,1,2,3])  # lnN(-1.8, 0.25)
+        self.add_prior('sigma_1', 0, 5,"U", [0,1,2,3])  # lnN(-1.3, 0.25)
+        self.add_prior('sigma_2', 0, 5,"U", [0,1,2,3])  # lnN(-2.3, 0.25)
+        self.add_prior('Mbreak1', 0.1, 50,"U", [0,1,2,3])  # lnN(2,1)
+        self.add_prior('Mbreak2', 50, 10000,"U", [0,1,2,3])  # lnN(5,0.25)
+        self.add_prior('C', 0.2,4.5,"U", [0,1,2,3])
+        self.add_prior('mu_M', 0, 10,"U", [0,1,2,3])  # N(1,2)
+        self.add_prior('sigma_M', -10, 10,"U", [0,1,2,3])  # lnN(1,0.25)
+        self.add_prior('Beta1', 0.0, 5.0,"U", [0,1,2,3])  # N(0.5,0.5)
+        self.add_prior('Beta2', -3.0, 0.0,"U", [0,1,2,3])  # N(-0.5,0.5)
+        self.add_prior('Pbreak1', 3.0, 15,"U", [0,1,2,3])   # lnN(2,1)
         self.add_prior('alpha_e', 0,2,"U", [0,2])
         self.add_prior('lambda_e', 0,50,"U", [0,2])
         self.add_prior('sigma_e',0,1,"U", [0,2])
@@ -149,10 +149,22 @@ class PriorArgs:
         self.add_prior('alpha_e_2', 1.0, 15, "U", [1])    # broad component shape/concentration
         self.add_prior('f', 0, 1,"U", [1])                # mixing weight on component 1
 
+        # model_id 3: (h, k) = (e*sin(omega), e*cos(omega)) reparametrization,
+        # each an independent zero-centered Laplace with its own scale -- see
+        # kg_probability_distributions.eccentricity_omega_log_pdf_laplace_hk.
+        # No ordering constraint needed (unlike mu_e_1/mu_e_2 above) since
+        # sigma_h and sigma_k are not interchangeable mixture components --
+        # they're tied to two structurally different coordinates, so there's
+        # no label-switching degeneracy. Bounds of (0, 1) are generous: real
+        # per-planet-mean MLE fits gave scale ~0.10 (h) and ~0.036 (k), and h,
+        # k are themselves bounded to magnitude < 1 since e in [0, 1].
+        self.add_prior('sigma_h', 0, 1, "U", [3])  # Laplace scale for h = e*sin(omega)
+        self.add_prior('sigma_k', 0, 1, "U", [3])  # Laplace scale for k = e*cos(omega)
 
 
-        # self.add_prior('Log10(m)', -8,8,"U", [0])  
-        # self.add_prior('Log10(p_noise)',-10,-3,"U", [0])  
+
+        # self.add_prior('Log10(m)', -8,8,"U", [0])
+        # self.add_prior('Log10(p_noise)',-10,-3,"U", [0])
 
 
         return self
@@ -181,7 +193,9 @@ class PriorArgs:
                             '$μ_{e,2}$',
                             '$α_{e,1}$',
                             '$α_{e,2}$',
-                            '$f$'
+                            '$f$',
+                            '$σ_h$',
+                            '$σ_k$'
                             # r'$\mathrm{log}_{10}(m)$',
                             # r'$\mathrm{logit}(P_{noise})$'
                             ]

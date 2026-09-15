@@ -215,6 +215,7 @@ def process_unconverged_multis_df(unconverged_multis_dr_df,stellar_df,lower_rho,
 
         eccentricity, omega, rho_star_sample = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
 
+
         i = np.arccos(b * planet_star_radius_ratio * (1 + eccentricity * np.sin(omega * np.pi / 180)) / (1 - eccentricity**2)) * 180 / np.pi
 
         mass_star = stellar_df[stellar_df["KIC"]==row["kepid"]]["Mass"].values[0]
