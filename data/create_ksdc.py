@@ -22,6 +22,7 @@ rank = comm.Get_rank()
 
 stellar_data_filename = "../data/berger_2020_keplerstellar.tsv"
 rowe_stellar_data_filename ="../data/rowe_table_final.csv"
+additional_stellar_data_filename = 'keplerstellar.csv'
 dr_25_data_filename = "../data/q1_q17_dr25.csv"
 
 
@@ -31,11 +32,46 @@ stellar_df = pd.read_csv(stellar_data_filename,engine='pyarrow',delimiter='\t') 
 rowe_stellar_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # this is the stellar data from Rowe et al 2015.
 # rowe_stellar_df = rowe_stellar_df[rowe_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
 
+rowe_stellar_df['multiplicity'] = rowe_stellar_df['KIC'].map(rowe_stellar_df['KIC'].value_counts())
+
+rowe_singles = rowe_stellar_df[rowe_stellar_df['multiplicity']==1]
+
+rowe_singles['koi_prad'] = rowe_singles['Rp_rowe']
+
+rowe_singles['koi_prad_err1'] = rowe_singles['e_Rp_rowe']
+
+rowe_singles['koi_prad_err2'] = rowe_singles['E_Rp_rowe']
+
+rowe_singles['koi_prad_err2'] = rowe_singles['E_Rp_rowe']
+
+rowe_singles['koi_period'] = rowe_singles['Period_days_rowe']
+
+rowe_singles['koi_period_err1'] = rowe_singles['e_Period_rowe']
+
+rowe_singles['koi_period_err2'] = rowe_singles['e_Period_rowe']
+
+rowe_singles['koi_impact'] = rowe_singles['b_rowe']
+
+rowe_singles['koi_impact_err1'] = rowe_singles['b_rowe_e']
+
+rowe_singles['koi_impact_err2'] = rowe_singles['b_rowe_E']
+
+rowe_singles['koi_duration'] = rowe_singles['TDur_rowe']
+
+rowe_singles['koi_duration_err1'] = rowe_singles['e_TDur_rowe']
+
+rowe_singles['koi_duration_err2'] = rowe_singles['e_TDur_rowe']
+
+
+
+
+
 print("len(stellar_df) before cuts: ",len(stellar_df))
 
 # Make the cuts to stellar catalog based off of temperature, logg
-stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
-stellar_df = stellar_df[(stellar_df["logg"]>4)]
+
+# stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
+# stellar_df = stellar_df[(stellar_df["logg"]>4)]
 
 print("len(stellar_df) after hsu cuts: ",len(stellar_df))
 
@@ -46,6 +82,17 @@ stellar_df = stellar_df.merge(
                             how='left'   # keeps all rows from stellar_df
                         )
 
+additional_stellar_df = pd.read_csv(additional_stellar_data_filename,engine='pyarrow')
+
+
+stellar_df = stellar_df.merge(
+                            additional_stellar_df,
+                            left_on='KIC',
+                            right_on='KIC',
+                            how='left'
+
+                        )
+
 dr_df = pd.read_csv(dr_25_data_filename,engine='pyarrow')
 
 # create a column for the multipliity of each DR25 planet
@@ -54,14 +101,36 @@ dr_df['multiplicity'] = dr_df['kepid'].map(dr_df['kepid'].value_counts())
 
 singles_dr_df = dr_df[dr_df["multiplicity"]==1]  
 
+
+
+singles_dr_df = singles_dr_df.merge(
+                                  rowe_singles,
+                                  left_on='kepid',
+                                  right_on='KIC',
+                                  how='outer'
+                                    )
+
+
+
+
+print("sum singles_dr_df) : ", np.sum(singles_dr_df))
 print("sum singles_dr_df['kepid'].isin(stellar_df['KIC']) : ", np.sum(singles_dr_df["kepid"].isin(stellar_df['KIC'])))
 
+
+####   ??????????????? vvvvv
+print("len singles df before removing not in berger: ", len(singles_dr_df))
 singles_dr_df = singles_dr_df[singles_dr_df["kepid"].isin(stellar_df['KIC'])]
+print("len singles df after removing not in berger: ", len(singles_dr_df))
 
 
 
 # Remove the planets in the singles df that have nans in their period errors, since we need these for sampling the posteriors
+print("len singles df before removing period error: ", len(singles_dr_df))
 singles_dr_df = singles_dr_df[~(singles_dr_df["koi_period_err1"].isna() | singles_dr_df["koi_period_err2"].isna())]
+print("len singles df after removing period error: ", len(singles_dr_df))
+
+
+
 # Reset the index so we can iterate through singles df
 singles_dr_df = singles_dr_df.reset_index(drop=True)
 # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
@@ -71,11 +140,11 @@ if rank == 0:
     print("finished processing!")
 
     df = processed_singles_dr_df.merge(
-                                                            stellar_df,
-                                                            left_on='kepid',
-                                                            right_on='KIC',
-                                                            how='left'
-                                                    )
+                                    stellar_df,
+                                    left_on='kepid',
+                                    right_on='KIC',
+                                    how='left'
+                            )
 
     # process_singles_df() only returns ["R_pE","Period_days","M_pE","e","omega","kepid"] --
     # it consumes koi_impact/koi_duration (and their error columns) internally but never
@@ -190,6 +259,9 @@ if rank == 0:
     df["phodymm_index"] = np.nan
     df["phodymm_converged"] = np.nan
 
+    ## add other cdpp columns and stuff from DR25 
+    ## run a completeness rate calculation on all planets, add that column to all stuff
+
 
 
     df["omega_rad"] = df["omega"] * np.pi / 180
@@ -220,7 +292,7 @@ if rank == 0:
     df["corrected_true_anomaly_800"] = np.nan
 
     df["interior_mass_pJ"] = 0
-    df["mu"] = df['mu'] = (
+    df["mu"] = (
             GAU * (
                 df['M_s']
             + df['M_pJ']    / MSTOMJ

@@ -828,6 +828,20 @@ def make_df_from_subsample(subsampled_rows,koi):
     return matched
 
 
+def add_additional_stellar_info(df):
+    additional_stellar_info_path = 'keplerstellar.csv'
+    additional_stellar_df = pd.read_csv(additional_stellar_info_path,engine='pyarrow')
+    df = df.merge(
+                additional_stellar_df,
+                left_on='kepid',
+                right_on='KIC',
+                how='left'
+                )
+    return df
+
+
+
+
 def read_in_rows_write(breakpoints=False):
     """Tries to read in an output file from PhoDyMM; if anything errors for processing that file, this logs it."""
     for file in tqdm(os.listdir(SUBSAMPLED_PATH)):
@@ -856,6 +870,7 @@ def single_df_write(subsampled_rows,koi):
     """"Creates a dataframe from one PhoDyMM output file, processes it, and then writes it to all_thin.csv ."""
     df = make_df_from_subsample(subsampled_rows,koi)
     df = process_dataframe(df,koi)
+    df = add_additional_stellar_info(df)
     write_header = not os.path.exists('thinned/KMDC.csv')
     df.to_csv('thinned/KMDC.csv', mode='a', header=write_header, index=False) # need to verify that index false works for the pipeline...
 

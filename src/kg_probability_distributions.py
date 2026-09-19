@@ -567,7 +567,7 @@ def omega_log_pdf(omega, low=0.0, high=360.0):
     return np.where((omega >= low) & (omega <= high), logpdf, -np.inf)
 
 
-def eccentricity_omega_log_pdf_laplace_hk(e, omega, sigma_h, sigma_k):
+def eccentricity_omega_log_pdf_laplace_hk(h, k, sigma_h, sigma_k):
     """
     Model 3's joint (e, omega) density: the h/k = e*sin(omega), e*cos(omega)
     reparametrization (Shabram et al. 2016), with h and k each modeled as
@@ -618,8 +618,8 @@ def eccentricity_omega_log_pdf_laplace_hk(e, omega, sigma_h, sigma_k):
     comment block above for why this project's likelihood is fully
     Monte-Carlo (not grid-quadrature) in this dimension.
     """
-    e = np.asarray(e, dtype=np.float64)
-    omega = np.asarray(omega, dtype=np.float64)
+    h = np.asarray(h, dtype=np.float64)
+    k = np.asarray(k, dtype=np.float64)
 
     if sigma_h <= 0 or sigma_k <= 0:
         # Fail safe with -inf rather than dividing by a non-positive scale --
@@ -627,11 +627,7 @@ def eccentricity_omega_log_pdf_laplace_hk(e, omega, sigma_h, sigma_k):
         # above (should never trigger if kg_priors.py's bounds are respected,
         # but the MCMC can propose an out-of-bounds step before the prior
         # rejects it).
-        return np.full(np.broadcast(e, omega).shape, -np.inf)
-
-    omega_rad = np.radians(omega)
-    h = e * np.sin(omega_rad)
-    k = e * np.cos(omega_rad)
+        return np.full(np.broadcast(h, k).shape, -np.inf)
 
     # Hand-rolled Laplace log-density, -log(2*scale) - |x|/scale, instead of
     # scipy.stats.laplace.logpdf -- see the _LOG_SQRT_2PI comment above.
@@ -639,10 +635,10 @@ def eccentricity_omega_log_pdf_laplace_hk(e, omega, sigma_h, sigma_k):
     log_pdf_k = -np.log(2.0 * sigma_k) - np.abs(k) / sigma_k
     logpdf = log_pdf_h + log_pdf_k
 
-    return np.where((e >= 0.0) & (e <= 1.0) & (omega >= 0.0) & (omega <= 360.0), logpdf, -np.inf)
+    return logpdf
 
 
-def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0, tloss=None, tau=None):
+def joint_log_intrinsic_density(variables, P, M, R, e, omega,h,k,model_id=0, tloss=None, tau=None):
     """
     Fully analytic, grid-free evaluation of the intrinsic population density
     f_pop(period, mass, radius, e, omega | params) at specific (real or
@@ -712,7 +708,7 @@ def joint_log_intrinsic_density(variables, P, M, R, e, omega,model_id=0, tloss=N
             period_log_pdf(P, variables['β1'], variables['β2'], variables['Period_break_1'])
             + mass_log_pdf(M, variables['mu_M'], variables['sigma_M'])
             + radius_given_mass_log_pdf(R, M, variables['γ0'], variables['γ1'], variables['γ2'], variables['mass_break_1'], variables['mass_break_2'], variables['σ0'], variables['σ1'], variables['σ2'], variables['C'])
-            + eccentricity_omega_log_pdf_laplace_hk(e, omega, variables['sigma_h'], variables['sigma_k'])
+            + eccentricity_omega_log_pdf_laplace_hk(h, k, variables['sigma_h'], variables['sigma_k'])
         )
     else:
         raise ValueError(f"Unknown model_id {model_id} in joint_log_intrinsic_density")
@@ -760,6 +756,8 @@ def load_flat_observed_catalog(csv_path):
         "R": df["R_pE"].to_numpy(dtype=np.float64),
         "e": df["e"].to_numpy(dtype=np.float64),
         "omega": df["omega"].to_numpy(dtype=np.float64),
+        "h": df["e"].to_numpy(dtype=np.float64) * np.sin(np.radians(df["omega"].to_numpy(dtype=np.float64))),
+        "k": df["e"].to_numpy(dtype=np.float64) * np.cos(np.radians(df["omega"].to_numpy(dtype=np.float64))),
         "inc": df["i"].to_numpy(dtype=np.float64),
         "R_s": df["R_s"].to_numpy(dtype=np.float64),
         "M_s": df["M_s"].to_numpy(dtype=np.float64),

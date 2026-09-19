@@ -8,8 +8,8 @@ class PriorArgs:
     def __init__(self):
         self.priors = []
         self.plot_labels = []
-    def add_prior(self, parameter_name, mu, sigma, prior_type,model_id_list):
-        self.priors.append([parameter_name,mu,sigma,prior_type,model_id_list])
+    def add_prior(self, parameter_name,plot_label, mu, sigma, prior_type,model_id_list):
+        self.priors.append([parameter_name,plot_label, mu, sigma, prior_type,model_id_list])
     def get_priors(self,model_id):
         # Non-mutating filter. The old version removed non-matching entries
         # from self.priors while iterating over that same list -- a classic
@@ -21,11 +21,11 @@ class PriorArgs:
         # an already-filtered list and shrinks it further still. Returning a
         # fresh filtered list each time, without touching self.priors, fixes
         # both problems.
-        return [prior for prior in self.priors if model_id in prior[4]]
+        return [prior for prior in self.priors if model_id in prior[5]]
     def get_prior_arguments(self,parameter_name):
         for prior in self.priors:
             if prior[0] == parameter_name:
-                return prior[1], prior[2], prior[3]
+                return prior[2], prior[3], prior[4]
         return None
     def get_initial_guess_from_priors(self, parameter_name, nwalkers):
         mu, sigma, prior_type =  self.get_prior_arguments(parameter_name)
@@ -48,24 +48,27 @@ class PriorArgs:
         # and kg_plots.pointprocess_gamma0_posterior_plot, which reconstructs
         # Gamma0's full posterior after the fact from the per-step
         # lambda_tilde blob, so nothing about Gamma0 is actually lost by
-        # dropping it from here.
-        self.add_prior('gamma_0', -1,1,"U", [0,1,2,3])
-        self.add_prior('gamma_1', -3, 5,"U", [0,1,2,3])  # lnN(0.6,0.1)
-        self.add_prior('gamma_2', -1, 5,"U", [0,1,2,3])  # lnN(0,0.1)
-        self.add_prior('sigma_0', 0, 5,"U", [0,1,2,3])  # lnN(-1.8, 0.25)
-        self.add_prior('sigma_1', 0, 5,"U", [0,1,2,3])  # lnN(-1.3, 0.25)
-        self.add_prior('sigma_2', 0, 5,"U", [0,1,2,3])  # lnN(-2.3, 0.25)
-        self.add_prior('Mbreak1', 0.1, 50,"U", [0,1,2,3])  # lnN(2,1)
-        self.add_prior('Mbreak2', 50, 10000,"U", [0,1,2,3])  # lnN(5,0.25)
-        self.add_prior('C', 0.2,4.5,"U", [0,1,2,3])
-        self.add_prior('mu_M', 0, 10,"U", [0,1,2,3])  # N(1,2)
-        self.add_prior('sigma_M', -10, 10,"U", [0,1,2,3])  # lnN(1,0.25)
-        self.add_prior('Beta1', 0.0, 5.0,"U", [0,1,2,3])  # N(0.5,0.5)
-        self.add_prior('Beta2', -3.0, 0.0,"U", [0,1,2,3])  # N(-0.5,0.5)
-        self.add_prior('Pbreak1', 3.0, 15,"U", [0,1,2,3])   # lnN(2,1)
-        self.add_prior('alpha_e', 0,2,"U", [0,2])
-        self.add_prior('lambda_e', 0,50,"U", [0,2])
-        self.add_prior('sigma_e',0,1,"U", [0,2])
+        # dropping it from here.  
+
+
+        self.add_prior('gamma_0','$γ_0$', -1,1,"U", [0,1,2,3])
+        self.add_prior('gamma_1', '$γ_1$', -3, 5,"U", [0,1,2,3])  # lnN(0.6,0.1)
+        self.add_prior('gamma_2', '$γ_2$', -1, 5,"U", [0,1,2,3])  # lnN(0,0.1)
+        self.add_prior('sigma_0', '$σ_0$', 0, 5,"U", [0,1,2,3])  # lnN(-1.8, 0.25)
+        self.add_prior('sigma_1', '$σ_1$', 0, 5,"U", [0,1,2,3])  # lnN(-1.3, 0.25)
+        self.add_prior('sigma_2', '$σ_2$', 0, 5,"U", [0,1,2,3])  # lnN(-2.3, 0.25)
+        self.add_prior('Mbreak1', '$M_{break,1}$', 0.1, 50,"U", [0,1,2,3])  # lnN(2,1)
+        self.add_prior('Mbreak2', '$M_{break,2}$', 50, 10000,"U", [0,1,2,3])  # lnN(5,0.25)
+        self.add_prior('C', 'C', 0.2,4.5,"U", [0,1,2,3])
+        self.add_prior('mu_M', r'$μ_M$', 0, 10,"U", [0,1,2,3])  # N(1,2)
+        self.add_prior('sigma_M', r'$σ_M$', -10, 10,"U", [0,1,2,3])  # lnN(1,0.25)
+        self.add_prior('Beta1', '$β_1$', 0.0, 5.0,"U", [0,1,2,3])  # N(0.5,0.5)
+        self.add_prior('Beta2', '$β_2$', -3.0, 0.0,"U", [0,1,2,3])  # N(-1.0,0.5)
+
+        self.add_prior('Pbreak1','$P_{break,1}$' , 3.0, 15,"U", [0,1,2,3])   # lnN(2,1)
+        self.add_prior('alpha_e', '$α_e$',0,2,"U", [0,2])
+        self.add_prior('lambda_e', '$λ_e$', 0,50,"U", [0,2])
+        self.add_prior('sigma_e', '$σ_e$',0,1,"U", [0,2])
         # model_id 2 only: photoevaporation retention-probability scaling
         # (Neil & Rogers 2020 Eq. 15's alpha, renamed 'a' here to avoid
         # colliding with the Rayleigh+Exponential eccentricity model's own
@@ -76,7 +79,7 @@ class PriorArgs:
         # at once. Bounded well above 1 so retention isn't forced to
         # saturate at 0 or 1 for every planet, and at 0 below since a
         # itself should never be negative.
-        self.add_prior('a', 0, 100, "U", [2])
+        self.add_prior('a', '$a$', 0, 100, "U", [2,3])
 
         # model_id 1: 2-component Gamma mixture on eccentricity, parametrized
         # by (mean, shape) per component -- see
@@ -143,11 +146,11 @@ class PriorArgs:
         # mean e ~ 0.19-0.26, for a RV sample -- not copied directly, since
         # that split used known multiplicity labels rather than an
         # unconditioned mixture).
-        self.add_prior('mu_e_1', 0.04, 0.15, "U", [1])    # tight/low-e component mean
-        self.add_prior('mu_e_2', 0.1, 0.7, "U", [1])      # broad/higher-e component mean
-        self.add_prior('alpha_e_1', 1.0, 10, "U", [1])    # tight component shape/concentration
-        self.add_prior('alpha_e_2', 1.0, 15, "U", [1])    # broad component shape/concentration
-        self.add_prior('f', 0, 1,"U", [1])                # mixing weight on component 1
+        self.add_prior('$μ_{e,1}$', 0.04, 0.15, "U", [1])    # tight/low-e component mean
+        self.add_prior('$μ_{e,2}$', 0.1, 0.7, "U", [1])      # broad/higher-e component mean
+        self.add_prior('$α_{e,1}$', 1.0, 10, "U", [1])    # tight component shape/concentration
+        self.add_prior('$α_{e,2}$', 1.0, 15, "U", [1])    # broad component shape/concentration
+        self.add_prior('$f$', 0, 1,"U", [1])                # mixing weight on component 1
 
         # model_id 3: (h, k) = (e*sin(omega), e*cos(omega)) reparametrization,
         # each an independent zero-centered Laplace with its own scale -- see
@@ -158,8 +161,8 @@ class PriorArgs:
         # no label-switching degeneracy. Bounds of (0, 1) are generous: real
         # per-planet-mean MLE fits gave scale ~0.10 (h) and ~0.036 (k), and h,
         # k are themselves bounded to magnitude < 1 since e in [0, 1].
-        self.add_prior('sigma_h', 0, 1, "U", [3])  # Laplace scale for h = e*sin(omega)
-        self.add_prior('sigma_k', 0, 1, "U", [3])  # Laplace scale for k = e*cos(omega)
+        self.add_prior('sigma_h','$σ_h$' ,0, 10, "U", [3])  # Laplace scale for h = e*sin(omega)
+        self.add_prior('sigma_k', '$σ_k$', 0, 10, "U", [3])  # Laplace scale for k = e*cos(omega)
 
 
 
@@ -205,7 +208,7 @@ class PriorArgs:
         # self.plot_labels on every call -- self.priors[i] no longer lines up
         # with self.plot_labels[i] the second time this or get_priors runs).
         self.load_plot_labels()
-        return [label for prior, label in zip(self.priors, self.plot_labels) if model_id in prior[4]]
+        return [label for prior, label in zip(self.priors, self.plot_labels) if model_id in prior[5]]
         
 
             

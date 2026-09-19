@@ -55,7 +55,7 @@ def parametric_log_prior(params, model_id):
     # print("params.shape: ", params.shape)
     lp = 0.0 
     for parameter_name, i in zip(priors, range(len(params))):
-        mu, sigma, prior_type = parameter_name[1], parameter_name[2], parameter_name[3]
+        mu, sigma, prior_type = parameter_name[2], parameter_name[3], parameter_name[4]
         # parameter_name here is the whole [name, mu, sigma, type, model_ids]
         # prior entry, not just the name -- match on parameter_name[0] (the
         # actual name string) below. (Previously this matched on the whole
@@ -222,7 +222,7 @@ def parametric_log_likelihood_pointprocess(params, model_id, min_density=None, m
         real_data_rng_seed = random_seed_generation(rng_metadata["master_seed"], rng_metadata["rank_seed"], rng_metadata["time_seed"])
         real_data_rng = np.random.default_rng(seed=real_data_rng_seed)
         tloss = find_mass_loss_timescale(obs["M"], obs["R"], obs["P"], obs["e"], obs["omega"], obs["inc"], obs["R_s"], obs["M_s"], obs["Teff"], real_data_rng)
-    log_f_obs = joint_log_intrinsic_density(get_probability_distributions_return["variables"], obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"], model_id=model_id, tloss=tloss, tau=tau)
+    log_f_obs = joint_log_intrinsic_density(get_probability_distributions_return["variables"], obs["P"], obs["M"], obs["R"], obs["e"], obs["omega"],obs["h"], obs["k"], model_id=model_id, tloss=tloss, tau=tau)
 
     # p_tr only -- NOT the combined completeness -- per Neil & Rogers (2020): these
     # are already-confirmed detections, so re-multiplying by p_det here would
