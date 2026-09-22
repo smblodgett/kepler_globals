@@ -43,6 +43,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 
 from kg_constants import *  # Import constants from kg_constants.py
 from kg_kmdc_col_headers import col_headers
+from kg_utilities import repair_rowe_df_numeric_columns
 
 RAW_PATH = '/hdd2/backup/danielkj/PhoDyMM_results_final/completed_systems/'   # pathway to directory with raw PhoDyMM output posterior data
 SUBSAMPLED_PATH = '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/' # pathway to directory containing lists of subsampled rows for each different KOI output by PhoDyMM
@@ -125,6 +126,14 @@ def process_dataframe(df,koi):
         final_system_df = rowe_table_attach(koi,final_system_df) # Add table from Lissauer et al.
         final_system_df = is_in_hsu(final_system_df)
         final_system_df = find_hidden_planet(koi,final_system_df) # Flag which planet (if any) is a "hidden" planet.
+        # PhoDyMM's own stellar mass/radius fit is seeded from and
+        # constrained by Berger et al. 2020 (not an independent
+        # characterization), same provenance as create_ksdc.py's and
+        # create_nckmdc.py's real Berger rows -- flag it the same way (see
+        # kg_kmdc_col_headers.py's stellar_source comment for the full 0/1
+        # code list) so it stays traceable once all three catalogs are
+        # stacked together.
+        final_system_df["stellar_source"] = 0
         final_system_df = final_system_df.drop("Unnamed: 0", axis=1) # Get rid of read-in column.
         id_number_identifier = final_system_df["chisq_rank"].astype(int)
         # Build the "KMDC index" as KOI-integer-part (XXXX, zero-padded) + KOI's
@@ -472,6 +481,7 @@ def add_interior_mass_and_positions(df):
 def rowe_table_attach(koi,df):
     """Attaches Jason Rowe's table to a system df (from Lissauer et al 2024)."""
     rowe_df = _cached_read_csv("rowe_table_final.csv", low_memory=False)
+    rowe_df = repair_rowe_df_numeric_columns(rowe_df)
 
     # Add Jason Rowe's columns as one pre-named block of NaNs, instead of the
     # old add-num_new_cols-placeholder-columns-then-rename-them-all-by-position
@@ -833,8 +843,8 @@ def add_additional_stellar_info(df):
     additional_stellar_df = pd.read_csv(additional_stellar_info_path,engine='pyarrow')
     df = df.merge(
                 additional_stellar_df,
-                left_on='kepid',
-                right_on='KIC',
+                left_on='KIC',
+                right_on='kepid',
                 how='left'
                 )
     return df
@@ -854,7 +864,10 @@ def read_in_rows_write(breakpoints=False):
 
         except Exception as e:
             print("koi ",koi," failed")
+            err_string = str(e.with_traceback)
+            print(err_string)
             with open("subsampler_error_log.txt", "a") as file:
+                file.write(err_string+'\n')
                 file.write(koi+"\n")
 
 

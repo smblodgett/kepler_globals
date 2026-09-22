@@ -11,7 +11,7 @@ import os
 from kg_random_row_selector import PHODYMM_PATH, find_koi
 
 sys.path.append(str(Path.cwd().parent / "src"))
-from kg_initialize_voxel_grid import process_singles_df
+from kg_initialize_voxel_grid import process_singles_df, augment_stellar_df_with_fallbacks, repair_rowe_df_numeric_columns
 from kg_constants import *
 
 # All ranks read/filter the catalogs and call process_singles_df() together --
@@ -29,7 +29,7 @@ additional_stellar_data_filename = "keplerstellar.csv"
 dr_25_data_filename = "../data/q1_q17_dr25.csv"
 
 
-def find_converged_systems():
+def find_converged_systems(verbose=True):
     kois = []
     for folder in os.listdir(PHODYMM_PATH):
             folder_path = os.path.join(PHODYMM_PATH, folder)
@@ -40,7 +40,7 @@ def find_converged_systems():
                         for file in os.listdir(path_full):
                             if file == 'dqa_allparam.csv':
                                 path_full = os.path.join(path_full, file)
-                                print(path_full)
+                                if verbose: print(path_full)
                                 koi = find_koi(path_full)
                                 kois.append(koi)
     return kois
@@ -217,10 +217,19 @@ def main():
     # posterior-sampling pipeline as everything else, rather than being dropped
     # up front.
     rowe_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # Jason Rowe's expanded catalog: transit-fit + stellar parameters, one row per candidate.
+    rowe_df = repair_rowe_df_numeric_columns(rowe_df)  # fix the rho*_rowe/E_Rp_rowe fixed-width-overflow rows
 
     converged_multis_kois = find_converged_systems()
 
     rowe_df = rowe_df[~rowe_df['KIC'].isin(converged_multis_kois)]
+
+    # Berger doesn't cover every KOI host star -- give every star Rowe lists a
+    # usable stellar_df row (Rowe's own params for Source_rowe in {2,3}, DR25/
+    # keplerstellar.csv for Source_rowe==0's "assume solar" placeholders) rather
+    # than silently losing every planet around a star Berger's catalog missed.
+    # Same fix as create_ksdc.py -- see augment_stellar_df_with_fallbacks's own
+    # docstring for the full reasoning.
+    stellar_df = augment_stellar_df_with_fallbacks(stellar_df, additional_stellar_df, rowe_df)
 
     rowe_df['multiplicity'] = rowe_df['KIC'].map(rowe_df['KIC'].value_counts())
 
@@ -252,8 +261,13 @@ def main():
 
     print("sum ncmultis_dr_df['kepid'].isin(stellar_df['KIC']) : ", np.sum(ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])))
 
+    # augment_stellar_df_with_fallbacks (above) already gave every Source_rowe
+    # in {0,2,3} KIC a stellar_df row, so this should now only drop a KIC in
+    # the rare case Source_rowe==0 *and* keplerstellar.csv also has no row for
+    # it (logged loudly by that function if it happens) -- not a silent "no
+    # Berger data" cut anymore.
     ncmultis_dr_df = ncmultis_dr_df[ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])]
-    print("len ncmultis_dr_df after removing not in berger: ", len(ncmultis_dr_df))
+    print("len ncmultis_dr_df after stellar_df-coverage filter: ", len(ncmultis_dr_df))
 
     print("ncmultis before removal of bad period error: ", len(ncmultis_dr_df))
     # Remove the planets in the nc multis df that have nans in their period errors, since we need these for sampling the posteriors
@@ -414,9 +428,9 @@ def main():
         df['c_1'] = np.nan
         df['c_2'] = np.nan
         df['R_p/R_s'] = df['R_pE'] * RETORS / df['R_s']
-        df['R_pJ'] = df['R_pE'] * RJTORE
+        df['R_pJ'] = df['R_pE'] / RJTORE
         df['rho_p'] = df['M_pE'] * MEG / (4/3 * np.pi * (df['R_pE'] * RECM)**3)
-        df['rho_s'] = 10**(df['rho']) * RHOS
+        df['rho_s'] = 10**(df['rho']) * RHOS / 1000
         df['M_p/M_s'] = df['M_pE'] * MEKG / (df['M_s'] * MSKG)
         df['M_pJ'] = df['M_pE'] * METOMJ
         df['sqrt(e)_cos(omega)'] = np.sqrt(df['e']) * np.cos(df['omega'] * np.pi / 180)
@@ -447,18 +461,23 @@ def main():
         df['d_R_s'] = (df['d_AU']/RSAU) / df['R_s'] # star-planet separation at transit in stellar radii
 
         ## impact, probability, and duration parameters
+        # Inverting kg_subsampler.py's forward relation
+        # (b_trans = a_R_s * cos(i) * (1-e**2)/(1+e*sin(omega))) for cos(i), using the full
+        # eccentricity/omega-corrected formula rather than the circular-orbit shortcut
+        # (b_trans/a_R_s) -- this used to also carry a spurious extra R_s factor, fixed here.
         # b_trans is an independent normal draw (line above) and a_R_s is derived separately
-        # from Period/M_s/M_pE/R_s, so cos(i) = b_trans*R_s/a_R_s isn't guaranteed to land in
-        # [-1, 1] -- an unlucky sample can push it just outside, which makes arccos silently
-        # return NaN (with a RuntimeWarning) instead of raising. Clip into the valid domain,
-        # but log how many rows needed it and by how much: a few hits at ~1e-10 are just
-        # floating-point noise, while many rows or a large excess means b_trans and a_R_s are
-        # systematically inconsistent for those planets and is worth investigating separately.
-        cos_i = df['b_trans'] * df['R_s'] / df['a_R_s']
+        # from Period/M_s/M_pE/R_s, so cos(i) isn't guaranteed to land in [-1, 1] -- an unlucky
+        # sample can push it just outside, which makes arccos silently return NaN (with a
+        # RuntimeWarning) instead of raising. Clip into the valid domain, but log how many rows
+        # needed it and by how much: a few hits at ~1e-10 are just floating-point noise, while
+        # many rows or a large excess means b_trans and a_R_s are systematically inconsistent
+        # for those planets and is worth investigating separately.
+        cos_i = (df['b_trans'] * (1 + df['e'] * np.sin(df['omega'] * np.pi / 180))
+                 / (df['a_R_s'] * (1 - df['e']**2)))
         n_invalid = int((cos_i.abs() > 1).sum())
         if n_invalid:
             max_excess = float((cos_i.abs() - 1).clip(lower=0).max())
-            print(f"[warn] {n_invalid}/{len(df)} rows have |b_trans*R_s/a_R_s| > 1 "
+            print(f"[warn] {n_invalid}/{len(df)} rows have |cos(i)| > 1 "
                 f"(max excess {max_excess:.3g}); clipping to the arccos domain [-1, 1]")
         df['i'] = np.arccos(cos_i.clip(-1, 1)) * 180 / np.pi
 

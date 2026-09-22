@@ -1,14 +1,10 @@
 col_headers = [
-    # kmdc index
 "kmdc_index",
-    # stellar information
 "M_s",
 "R_s",
 "c_1",
 "c_2",
 "R_p/R_s",
-
-    # planet mass/radius information
 "R_pJ",
 "R_pE",
 "M_pE",
@@ -16,7 +12,6 @@ col_headers = [
 "rho_s",
 "M_p/M_s",
 "M_pJ",
-    # orbital angles
 "sqrt(e)_cos(omega)",
 "sqrt(e)_sin(omega)",
 "i",
@@ -27,7 +22,6 @@ col_headers = [
 "eccentric_anomaly",
 "mean_anomaly",
 "mean_longitude",
-    # corrected anomalies (Hamann et al. formulation, epochs 800/850 BKJD)
 "omega_rad",
 "falsetrueanomaly",
 "f",
@@ -45,7 +39,6 @@ col_headers = [
 "true_anomaly_hamann_850",
 "corrected_eccentric_anomaly_800",
 "corrected_true_anomaly_800",
-    # orbital distances
 "a_AU",
 "a_R_s",
 "peri_AU",
@@ -54,7 +47,6 @@ col_headers = [
 "apo_R_s",
 "d_AU",
 "d_R_s",
-    # interior-planet-mass-weighted mu, pericenter time, and cartesian state vectors
 "interior_mass_pJ",
 "mu",
 "q",
@@ -65,7 +57,6 @@ col_headers = [
 "vx",
 "vy",
 "vz",
-    # period, transit information
 "Period_days",
 "T_0",
 "b_trans",
@@ -75,12 +66,10 @@ col_headers = [
 "T_total_hr",
 "T_full_hr",
 "K_RV",
-    # hsu occurrence rate stuff
 "occurrence_rate_hsu",
 "E_or_hsu",
 "e_or_hsu",
 "hsu_flag",
-    # system data
 "multiplicity",
 "P/Pin",
 "P/Pout",
@@ -104,21 +93,30 @@ col_headers = [
 "eout/e",
 "omega-omegain",
 "omegaout-omega",
-# phodymm run data
 "dilute",
 "chisq",
 "Chain#",
 "chisq_rank",
 "step_number",
 "phodymm_index",
-# system/planet identifiers
 "planet",
 "is_hidden_planet",
 "is_monotransiting",
+"phodymm_converged",
+"stellar_source",  # 0=Berger et al. 2020 -- real Berger rows, Rowe's own
+                   # columns for stars Berger doesn't cover but Rowe's
+                   # Source_rowe flags as Berger-derived, and kg_subsampler.py's
+                   # converged systems (PhoDyMM's stellar mass/radius fit is
+                   # seeded from and constrained by Berger, not an independent
+                   # characterization). 1=DR25/keplerstellar.csv fallback, for
+                   # stars Rowe itself only has solar-parameter placeholders
+                   # for -- this also covers Rowe's Source_rowe==3 rows, which
+                   # despite being documented as Fulton & Petigura (2018) are,
+                   # in this file, identical placeholder rows rather than real
+                   # measurements.
 "KIC",
 "KOI",
 "Kepler",
-# rowe table 
 "Period_days_rowe",
 "e_Period_rowe",
 "T0_rowe",
@@ -200,4 +198,50 @@ col_headers = [
 "E_Blog(g)*_rowe",
 "e_Blog(g)*_rowe",
 "BZ*_rowe",
-"e_BZ*_rowe"]
+"e_BZ*_rowe",
+"tm_designation",       
+"ra",                    
+"dec",                   
+"kepmag",                
+"teff",                    
+"teff_prov",               
+"logg",                    
+"logg_prov",               
+"feh",                     
+"feh_prov",                
+"radius",                  
+"mass",               
+"dens",               
+"prov_sec",           
+"dist",               
+"av",                 
+"limbdark_coeff1",    
+"limbdark_coeff2",   
+"limbdark_coeff3",    
+"limbdark_coeff4",    
+"nconfp",                  
+"nkoi",                    
+"ntce",                    
+"st_quarters",        
+"st_vet_date",             
+"dutycycle",          
+"dutycycle_post",     
+"dataspan",           
+"dataspan_post",      
+"rrmscdpp01p5",       
+"rrmscdpp02p0",       
+"rrmscdpp02p5",       
+"rrmscdpp03p0",       
+"rrmscdpp03p5",       
+"rrmscdpp04p5",       
+"rrmscdpp05p0",       
+"rrmscdpp06p0",       
+"rrmscdpp07p5",       
+"rrmscdpp09p0",       
+"rrmscdpp10p5",       
+"rrmscdpp12p0",       
+"rrmscdpp12p5",       
+"rrmscdpp15p0",      
+"cdppslplong",        
+"cdppslpshrt",
+]

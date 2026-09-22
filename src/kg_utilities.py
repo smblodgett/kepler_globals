@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import commentjson as json
 from scipy.integrate import quad, simpson
 from scipy.special import gamma
@@ -52,3 +53,54 @@ class ReadJson:
     def outProps(self):
         """Return the parsed Json dictionary."""
         return self.data
+
+
+def repair_rowe_df_numeric_columns(rowe_df):
+    """
+    rowe_table_final.csv has two numeric columns where a batch of rows carry
+    two whitespace-jammed-together numbers instead of a clean float --
+    'rho*_rowe' (55 rows, all a run of consecutive later-appended KOIs from
+    roughly KOI 8339 on) and 'E_Rp_rowe' (4 rows). This is a fixed-width-to-
+    CSV conversion artifact (rho* sits right after the unusually long,
+    high-precision Kmag_rowe field in the original MRT layout), not a real
+    measurement -- e.g. "55   1.48712" for one row's rho*_rowe.
+
+    Cross-checked against an independent physical estimate
+    (M*_rowe/R*_rowe**3 * solar density): the LAST whitespace-separated token
+    matches that estimate to ~1.7% median error across all 55 rho*_rowe rows,
+    while the leading token is unrelated (off by a median factor of >400x --
+    values like 55 or 916 g/cm^3 aren't plausible densities for the R*/M*
+    those same rows report). E_Rp_rowe's 4 affected rows show the same
+    pattern (an absurd ~10-11 digit leading token, a small plausible trailing
+    one that lines up with that row's own e_Rp_rowe).
+
+    Recovers the real value from the last token instead of discarding it via
+    pd.to_numeric(errors='coerce'), which would otherwise silently NaN out
+    real data -- 53 of the 55 rho*_rowe rows are real, kept singles (17
+    Rowe-endorsed P candidates, 36 S, 2 F).
+
+    Used by both create_ksdc.py/create_nckmdc.py (via
+    kg_initialize_voxel_grid.py, right after each of their own rowe_df reads)
+    and kg_subsampler.py's rowe_table_attach() (right after its own
+    _cached_read_csv("rowe_table_final.csv", ...) call) -- every place this
+    pipeline reads rowe_table_final.csv needs the same repair, since the
+    corruption lives in the source file itself, not in how any one script
+    reads it.
+    """
+    rowe_df = rowe_df.copy()
+
+    def _last_token(v):
+        if isinstance(v, str):
+            parts = v.split()
+            if len(parts) > 1:
+                try:
+                    return float(parts[-1])
+                except ValueError:
+                    return v  # leave anything unparseable for to_numeric to NaN out
+        return v
+
+    for col in ["rho*_rowe", "E_Rp_rowe"]:
+        rowe_df[col] = rowe_df[col].apply(_last_token)
+        rowe_df[col] = pd.to_numeric(rowe_df[col], errors="coerce")
+
+    return rowe_df

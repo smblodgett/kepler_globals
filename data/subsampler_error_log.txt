@@ -8,3 +8,10 @@
 2449
 
 
+2449
+'KIC'
+2449
+[Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
+
+[Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
+
