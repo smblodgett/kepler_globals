@@ -23,47 +23,9 @@ rank = comm.Get_rank()
 stellar_data_filename = "../data/berger_2020_keplerstellar.tsv"
 rowe_stellar_data_filename ="../data/rowe_table_final.csv"
 additional_stellar_data_filename = 'keplerstellar.csv'
-dr_25_data_filename = "../data/q1_q17_dr25.csv"
 
 
 stellar_df = pd.read_csv(stellar_data_filename,engine='pyarrow',delimiter='\t') # used to be from ../data/keplerstellar.csv, now is from Berger et al 2020
-
-# Read in the expanded stellar df, which has CDPP values
-rowe_stellar_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # this is the stellar data from Rowe et al 2015.
-# rowe_stellar_df = rowe_stellar_df[rowe_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
-
-rowe_stellar_df['multiplicity'] = rowe_stellar_df['KIC'].map(rowe_stellar_df['KIC'].value_counts())
-
-rowe_singles = rowe_stellar_df[rowe_stellar_df['multiplicity']==1]
-
-rowe_singles['koi_prad'] = rowe_singles['Rp_rowe']
-
-rowe_singles['koi_prad_err1'] = rowe_singles['e_Rp_rowe']
-
-rowe_singles['koi_prad_err2'] = rowe_singles['E_Rp_rowe']
-
-rowe_singles['koi_prad_err2'] = rowe_singles['E_Rp_rowe']
-
-rowe_singles['koi_period'] = rowe_singles['Period_days_rowe']
-
-rowe_singles['koi_period_err1'] = rowe_singles['e_Period_rowe']
-
-rowe_singles['koi_period_err2'] = rowe_singles['e_Period_rowe']
-
-rowe_singles['koi_impact'] = rowe_singles['b_rowe']
-
-rowe_singles['koi_impact_err1'] = rowe_singles['b_rowe_e']
-
-rowe_singles['koi_impact_err2'] = rowe_singles['b_rowe_E']
-
-rowe_singles['koi_duration'] = rowe_singles['TDur_rowe']
-
-rowe_singles['koi_duration_err1'] = rowe_singles['e_TDur_rowe']
-
-rowe_singles['koi_duration_err2'] = rowe_singles['e_TDur_rowe']
-
-
-
 
 
 print("len(stellar_df) before cuts: ",len(stellar_df))
@@ -75,49 +37,99 @@ print("len(stellar_df) before cuts: ",len(stellar_df))
 
 print("len(stellar_df) after hsu cuts: ",len(stellar_df))
 
-stellar_df = stellar_df.merge(
-                            rowe_stellar_df,
-                            left_on='KIC',
-                            right_on='KIC',
-                            how='left'   # keeps all rows from stellar_df
-                        )
+# NOTE: stellar_df here is ONLY Berger 2020 + keplerstellar.csv (additional stellar
+# info) -- it is NOT merged with Jason Rowe's table (rowe_table_final.csv). Rowe's
+# table has up to ~8 rows per KIC (one per candidate planet, not one per star), so
+# merging it onto stellar_df by KIC alone would silently duplicate stellar_df's rows
+# for every multi-candidate star. Rowe's table is instead read separately, below, as
+# the planet catalog itself (see the big comment right before `rowe_df = ...`).
 
 additional_stellar_df = pd.read_csv(additional_stellar_data_filename,engine='pyarrow')
 
+# keplerstellar.csv stacks five different stellar-catalog deliveries under one
+# 'kepid' column (q1_q17_dr25_stellar, q1_q17_dr24_stellar, q1_q16_stellar,
+# q1_q17_dr25_supp_stellar, q1_q12_stellar -- confirmed against this file: 990,244
+# rows for 200,038 distinct stars). Without filtering to one delivery, the merge
+# below fans every star's row out 5x. The file also has no 'KIC' column at all
+# (only 'kepid'), so the merge needs right_on='kepid', not 'KIC'.
+additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
 
 stellar_df = stellar_df.merge(
                             additional_stellar_df,
                             left_on='KIC',
-                            right_on='KIC',
-                            how='left'
+                            right_on='kepid',
+                            how='left',
+                            # 'logg' exists (case-sensitive) in BOTH Berger's tsv and keplerstellar.csv --
+                            # without suffixes, that collision silently splits it into logg_x/logg_y and
+                            # neither survives as a plain 'logg' column, which kg_kmdc_col_headers.py's
+                            # final column list needs (it wants keplerstellar.csv's own 'logg', alongside
+                            # Berger's separately-used stellar params). Keep Berger's copy under a distinct
+                            # name (unused elsewhere) and let keplerstellar.csv's own 'logg' stay plain.
+                            suffixes=('_berger', '')
+                        ).drop(columns=['kepid'])  # redundant with 'KIC' (same star) -- left in place, this
+                                                    # collides with 'kepid' in every later kepid-keyed merge onto
+                                                    # stellar_df, silently splitting THAT into kepid_x/kepid_y too.
 
-                        )
+# ------------------------------------------------------------------------
+# Planet catalog: Jason Rowe's table (rowe_table_final.csv) is now the SOLE
+# source of planetary/transit-fit parameters for singles -- DR25
+# (q1_q17_dr25.csv) is no longer read at all. A data audit found that every
+# DR25 CONFIRMED/CANDIDATE KOI already has a row in Rowe's table, that none of
+# DR25's own stellar parameters (koi_steff/koi_slogg/koi_srad) are actually
+# used anywhere in this pipeline, and that Rowe's own stellar columns
+# (Teff_rowe/R*_rowe/M*_rowe/log(g)*_rowe/Z*_rowe) are essentially identical to
+# Berger et al. 2020's (median fractional difference ~0%, correlation >0.97) --
+# so nothing is lost by dropping DR25, and Rowe's table also recovers real
+# candidates DR25's snapshot excluded outright. We deliberately keep using
+# Berger's stellar density ('rho' in stellar_df, used inside
+# process_singles_df), NOT Rowe's rho*_rowe/rho*M_rowe -- those come from the
+# transit fit itself (a/R*), not an isochrone match, and empirically diverge a
+# lot from Berger's (correlation ~0.57 vs >0.97 for Teff/radius/mass/logg/feh).
+#
+# Per-KOI vetting: we deliberately do NOT filter out rows whose own current
+# disposition (first letter of Status_rowe) isn't 'P' (planet/candidate).
+# This catalog is meant to be a superset/successor to Rowe's own table, so
+# every KOI here -- including ones Rowe itself currently calls a false alarm
+# (F), too-low S/N (S), too-large radius (R), or too-massive-for-a-planet (M)
+# -- still gets run through the same posterior-sampling pipeline as everything
+# else, rather than being dropped up front. (If specific ones fail to converge
+# in the eccentricity/omega importance sampling inside process_singles_df,
+# that's worth its own try/except + a "failed to converge" flag -- not a
+# pre-filter here.)
+rowe_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # Jason Rowe's expanded catalog: transit-fit + stellar parameters, one row per candidate.
 
-dr_df = pd.read_csv(dr_25_data_filename,engine='pyarrow')
+# Systems PhoDyMM has already converged (handled entirely by kg_subsampler.py,
+# already in posterior-draw mode) shouldn't also be processed here.
+from create_nckmdc import find_converged_systems
+converged_multis_kois = find_converged_systems()
+rowe_df = rowe_df[~rowe_df['KIC'].isin(converged_multis_kois)]
 
-# create a column for the multipliity of each DR25 planet
-dr_df['multiplicity'] = dr_df['kepid'].map(dr_df['kepid'].value_counts())
+rowe_df['multiplicity'] = rowe_df['KIC'].map(rowe_df['KIC'].value_counts())
+
+singles_dr_df = rowe_df[rowe_df['multiplicity']==1].copy()
+singles_dr_df['kepid'] = singles_dr_df['KIC']
+
+singles_dr_df['koi_prad'] = singles_dr_df['Rp_rowe']
+singles_dr_df['koi_prad_err1'] = singles_dr_df['e_Rp_rowe']
+singles_dr_df['koi_prad_err2'] = singles_dr_df['E_Rp_rowe']
+
+singles_dr_df['koi_period'] = singles_dr_df['Period_days_rowe']
+singles_dr_df['koi_period_err1'] = singles_dr_df['e_Period_rowe']
+singles_dr_df['koi_period_err2'] = singles_dr_df['e_Period_rowe']
+
+singles_dr_df['koi_impact'] = singles_dr_df['b_rowe']
+singles_dr_df['koi_impact_err1'] = singles_dr_df['e_b_rowe']
+singles_dr_df['koi_impact_err2'] = singles_dr_df['E_b_rowe']
+
+singles_dr_df['koi_duration'] = singles_dr_df['TDur_rowe']
+singles_dr_df['koi_duration_err1'] = singles_dr_df['e_TDur_rowe']
+singles_dr_df['koi_duration_err2'] = singles_dr_df['e_TDur_rowe']
 
 
-singles_dr_df = dr_df[dr_df["multiplicity"]==1]  
-
-
-
-singles_dr_df = singles_dr_df.merge(
-                                  rowe_singles,
-                                  left_on='kepid',
-                                  right_on='KIC',
-                                  how='outer'
-                                    )
-
-
-
-
-print("sum singles_dr_df) : ", np.sum(singles_dr_df))
+print("len singles_dr_df) : ", len(singles_dr_df))
 print("sum singles_dr_df['kepid'].isin(stellar_df['KIC']) : ", np.sum(singles_dr_df["kepid"].isin(stellar_df['KIC'])))
 
 
-####   ??????????????? vvvvv
 print("len singles df before removing not in berger: ", len(singles_dr_df))
 singles_dr_df = singles_dr_df[singles_dr_df["kepid"].isin(stellar_df['KIC'])]
 print("len singles df after removing not in berger: ", len(singles_dr_df))
@@ -148,12 +160,16 @@ if rank == 0:
 
     # process_singles_df() only returns ["R_pE","Period_days","M_pE","e","omega","kepid"] --
     # it consumes koi_impact/koi_duration (and their error columns) internally but never
-    # carries them through. Bring them back from the DR25 catalog (one row per kepid here,
-    # since singles_dr_df was already filtered to multiplicity == 1) so b_trans/T_total_hr
-    # below can resample from the raw catalog values.
+    # carries them through. Bring them back, along with KOI/Kepler and every *_rowe
+    # column -- every row here already IS a Rowe row (singles_dr_df was built directly
+    # from rowe_df above), so there's no separate attach/period-matching step needed
+    # anymore, just carrying columns through on a plain merge on 'kepid' (singles_dr_df
+    # has exactly one row per kepid, since it was already filtered to multiplicity == 1).
+    _rowe_passthrough_cols = [c for c in rowe_df.columns if c not in ('KIC', 'Unnamed: 0', 'multiplicity')]
     df = df.merge(
                     singles_dr_df[['kepid', 'koi_impact', 'koi_impact_err1', 'koi_impact_err2',
-                                    'koi_duration', 'koi_duration_err1', 'koi_duration_err2']],
+                                    'koi_duration', 'koi_duration_err1', 'koi_duration_err2']
+                                    + _rowe_passthrough_cols],
                     on='kepid',
                     how='left'
                 )
@@ -177,7 +193,7 @@ if rank == 0:
 
     df['Omega'] = 0
     df['is_hidden_planet'] = 0
-    df['is_monotransiting'] = 0
+    df['is_monotransiting'] = df['Period_days_rowe'] < 0
     df['planet'] = 0
     df['multiplicity'] = 1
 

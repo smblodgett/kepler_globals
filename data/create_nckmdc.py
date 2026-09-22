@@ -48,6 +48,12 @@ def find_converged_systems():
 
 def rowe_table_attach_multi(ncmultis_dr_df, df):
     """
+    NOTE: no longer called by main() below (or by create_ksdc.py) -- now that
+    both singles and non-converged multis are built directly from Rowe's table,
+    every row already carries its own *_rowe columns, so there's nothing left to
+    attach/match by period. Left defined here for reference / in case something
+    else still needs period-based Rowe matching against a non-Rowe-native df.
+
     Attaches Jason Rowe's table (rowe_table_final.csv) to df: KIC, KOI,
     Kepler, and every *_rowe column, plus 'is_monotransiting'.
 
@@ -170,97 +176,89 @@ def main():
 
     additional_stellar_df = pd.read_csv(additional_stellar_data_filename,engine='pyarrow')
 
+    # keplerstellar.csv stacks five different stellar-catalog deliveries under one
+    # 'kepid' column -- filter to one delivery (q1_q17_dr25_stellar) or the merge
+    # below fans every star's row out 5x. The file also has no 'KIC' column at all
+    # (only 'kepid'), so the merge needs right_on='kepid', not 'KIC'. (This used to
+    # be right_on='KIC', which doesn't exist on additional_stellar_df -- would have
+    # raised KeyError('KIC') the moment this function actually ran.)
+    additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+
     stellar_df = stellar_df.merge(
                                 additional_stellar_df,
                                 left_on='KIC',
-                                right_on='KIC',
-                                how='left'
+                                right_on='kepid',
+                                how='left',
+                                # 'logg' exists (case-sensitive) in BOTH Berger's tsv and keplerstellar.csv --
+                                # without suffixes, that collision silently splits it into logg_x/logg_y and
+                                # neither survives as a plain 'logg' column, which kg_kmdc_col_headers.py's
+                                # final column list needs (it wants keplerstellar.csv's own 'logg', alongside
+                                # Berger's separately-used stellar params). Keep Berger's copy under a distinct
+                                # name (unused elsewhere) and let keplerstellar.csv's own 'logg' stay plain.
+                                suffixes=('_berger', '')
+                            ).drop(columns=['kepid'])  # redundant with 'KIC' (same star) -- left in place, this
+                                                        # collides with 'kepid' in every later kepid-keyed merge onto
+                                                        # stellar_df, silently splitting THAT into kepid_x/kepid_y too.
 
-                            )
-
-    # Read in the expanded stellar df, which has CDPP values
-    rowe_stellar_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # this is the stellar data from Rowe et al 2015.
-    # rowe_stellar_df = rowe_stellar_df[rowe_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
-
-    rowe_stellar_df['multiplicity'] = rowe_stellar_df['KIC'].map(rowe_stellar_df['KIC'].value_counts())
-
-    rowe_multis = rowe_stellar_df[rowe_stellar_df['multiplicity']>1]
-
-    rowe_multis['koi_prad'] = rowe_multis['Rp_rowe']
-
-    rowe_multis['koi_prad_err1'] = rowe_multis['e_Rp_rowe']
-
-    rowe_multis['koi_prad_err2'] = rowe_multis['E_Rp_rowe']
-
-    rowe_multis['koi_prad_err2'] = rowe_multis['E_Rp_rowe']
-
-    rowe_multis['koi_period'] = rowe_multis['Period_days_rowe']
-
-    rowe_multis['koi_period_err1'] = rowe_multis['e_Period_rowe']
-
-    rowe_multis['koi_period_err2'] = rowe_multis['e_Period_rowe']
-
-    rowe_multis['koi_impact'] = rowe_multis['b_rowe']
-
-    rowe_multis['koi_impact_err1'] = rowe_multis['b_rowe_e']
-
-    rowe_multis['koi_impact_err2'] = rowe_multis['b_rowe_E']
-
-    rowe_multis['koi_duration'] = rowe_multis['TDur_rowe']
-
-    rowe_multis['koi_duration_err1'] = rowe_multis['e_TDur_rowe']
-
-    rowe_multis['koi_duration_err2'] = rowe_multis['e_TDur_rowe']
-
-
-
-
-
-    # This used to merge Jason Rowe's table (rowe_table_final.csv) onto
-    # stellar_df here, keyed on 'KIC' alone. That table has up to 8 rows per
-    # KIC (one per Kepler candidate planet, not one per star), so a plain
-    # merge('KIC') duplicated stellar_df's rows for every multi-planet star --
-    # and that duplication would have cascaded into df below, via
-    # processed_ncmultis_dr_df.merge(stellar_df, ...). Jason Rowe's columns
-    # are attached properly, per PLANET, by rowe_table_attach_multi() further
-    # down instead (see its docstring).
-    dr_df = pd.read_csv(dr_25_data_filename,engine='pyarrow')
-
-    # create a column for the multipliity of each DR25 planet
-    dr_df['multiplicity'] = dr_df['kepid'].map(dr_df['kepid'].value_counts())
+    # ------------------------------------------------------------------------
+    # Planet catalog: Jason Rowe's table (rowe_table_final.csv) is now the SOLE
+    # source of planetary/transit-fit parameters for non-converged multis -- DR25
+    # (q1_q17_dr25.csv) is no longer read at all. See create_ksdc.py's matching
+    # comment for the audit this is based on (every DR25 CONFIRMED/CANDIDATE KOI
+    # already has a row in Rowe's table, none of DR25's own stellar parameters are
+    # used anywhere in this pipeline, and Rowe's stellar columns are essentially
+    # identical to Berger 2020's except stellar density -- so we still use
+    # Berger's density ('rho' in stellar_df) inside process_singles_df, not
+    # Rowe's rho*_rowe/rho*M_rowe).
+    #
+    # We deliberately do NOT filter out rows whose own current disposition
+    # (first letter of Status_rowe) isn't 'P' -- this catalog is meant to be a
+    # superset/successor to Rowe's own table, so every KOI runs through the same
+    # posterior-sampling pipeline as everything else, rather than being dropped
+    # up front.
+    rowe_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # Jason Rowe's expanded catalog: transit-fit + stellar parameters, one row per candidate.
 
     converged_multis_kois = find_converged_systems()
 
-    multis_dr_df = dr_df[dr_df["multiplicity"]!=1] 
+    rowe_df = rowe_df[~rowe_df['KIC'].isin(converged_multis_kois)]
 
-    ncmultis_dr_df = multis_dr_df[~multis_dr_df["kepid"].isin(converged_multis_kois)]
+    rowe_df['multiplicity'] = rowe_df['KIC'].map(rowe_df['KIC'].value_counts())
 
-    rowe_multis = rowe_multis[~rowe_multis["KIC"].isin(converged_multis_kois)]
+    # Every Rowe column except 'KIC' (df already gets 'KIC' from the stellar_df
+    # merge below) and bookkeeping columns -- reused twice further down to carry
+    # KOI/Kepler/every *_rowe column onto df without a second attach/merge step.
+    _rowe_passthrough_cols = [c for c in rowe_df.columns if c not in ('KIC', 'Unnamed: 0', 'multiplicity')]
 
-    print("len of ncmultis_dr_df: ",len(ncmultis_dr_df)) 
+    ncmultis_dr_df = rowe_df[rowe_df['multiplicity']>1].copy()
+    ncmultis_dr_df['kepid'] = ncmultis_dr_df['KIC']
 
-    print("len of rowe_multis: ",len(ncmultis_dr_df)) 
+    ncmultis_dr_df['koi_prad'] = ncmultis_dr_df['Rp_rowe']
+    ncmultis_dr_df['koi_prad_err1'] = ncmultis_dr_df['e_Rp_rowe']
+    ncmultis_dr_df['koi_prad_err2'] = ncmultis_dr_df['E_Rp_rowe']
 
+    ncmultis_dr_df['koi_period'] = ncmultis_dr_df['Period_days_rowe']
+    ncmultis_dr_df['koi_period_err1'] = ncmultis_dr_df['e_Period_rowe']
+    ncmultis_dr_df['koi_period_err2'] = ncmultis_dr_df['e_Period_rowe']
 
-    print("len of multis_dr_df: ",len(multis_dr_df))
+    ncmultis_dr_df['koi_impact'] = ncmultis_dr_df['b_rowe']
+    ncmultis_dr_df['koi_impact_err1'] = ncmultis_dr_df['e_b_rowe']
+    ncmultis_dr_df['koi_impact_err2'] = ncmultis_dr_df['E_b_rowe']
 
-    print("nonconverged multi kois: ", ncmultis_dr_df["kepid"].tolist())
+    ncmultis_dr_df['koi_duration'] = ncmultis_dr_df['TDur_rowe']
+    ncmultis_dr_df['koi_duration_err1'] = ncmultis_dr_df['e_TDur_rowe']
+    ncmultis_dr_df['koi_duration_err2'] = ncmultis_dr_df['e_TDur_rowe']
 
-
+    print("len of ncmultis_dr_df: ",len(ncmultis_dr_df))
 
     print("sum ncmultis_dr_df['kepid'].isin(stellar_df['KIC']) : ", np.sum(ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])))
 
-    ncmultis_dr_df = ncmultis_dr_df[ncmultis_dr_df["kepid"].isin(ncmultis_dr_df['KIC'])]
-    print("sum ncmultis_dr_df : ", np.sum(ncmultis_dr_df["kepid"]))
+    ncmultis_dr_df = ncmultis_dr_df[ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])]
+    print("len ncmultis_dr_df after removing not in berger: ", len(ncmultis_dr_df))
 
-
-
-    print("ncmultis before removal of bad period error: ")
+    print("ncmultis before removal of bad period error: ", len(ncmultis_dr_df))
     # Remove the planets in the nc multis df that have nans in their period errors, since we need these for sampling the posteriors
     ncmultis_dr_df = ncmultis_dr_df[~(ncmultis_dr_df["koi_period_err1"].isna() | ncmultis_dr_df["koi_period_err2"].isna())]
-    print("ncmultis after removal of bad period errors: ")
-
-
+    print("ncmultis after removal of bad period errors: ", len(ncmultis_dr_df))
 
     # Reset the index so we can iterate through nc multis df
     ncmultis_dr_df = ncmultis_dr_df.reset_index(drop=True)
@@ -269,7 +267,7 @@ def main():
 
     ncmultis_dr_df['planet_number'] = (
         ncmultis_dr_df.groupby('kepid').cumcount() + 1
-        )    
+        )
 # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
     processed_ncmultis_dr_df = process_singles_df(ncmultis_dr_df,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
 
@@ -403,7 +401,8 @@ def main():
         # koi_duration. 'planet_number' has to be part of the join key too.
         df = df.merge(
                         ncmultis_dr_df[['kepid', 'planet_number', 'koi_impact', 'koi_impact_err1', 'koi_impact_err2',
-                                        'koi_duration', 'koi_duration_err1', 'koi_duration_err2']],
+                                        'koi_duration', 'koi_duration_err1', 'koi_duration_err2']
+                                        + _rowe_passthrough_cols],
                         on=['kepid', 'planet_number'],
                         how='left'
                     )
@@ -427,7 +426,8 @@ def main():
 
         df['Omega'] = 0
         df['is_hidden_planet'] = 0
-        df['planet'] = 0
+        df['planet'] = df['planet_number'] / 10  ##### however, this should be changed when a system is converged
+                                                 ##### because the phodymm pipeline might have monotransiting/hidden planets
 
         ## orbital angles
         df['true_anomaly'] = (90 - df['omega']) % 360
@@ -476,7 +476,11 @@ def main():
 
         df = occurrence_rate_params(df)
         df = is_in_hsu(df)  # sets 'hsu_flag': whether KIC is in the Hsu et al. stellar catalog
-        df = rowe_table_attach_multi(ncmultis_dr_df, df)  # attaches Jason Rowe's table (KOI, Kepler, *_rowe columns) and sets 'is_monotransiting' -- see the function's docstring for how this differs from kg_subsampler.py's per-system rowe_table_attach()
+
+        # Every row here already IS a Rowe row (ncmultis_dr_df was built directly from
+        # rowe_df above), so its *_rowe columns/KOI/Kepler were already carried onto df
+        # by the merge above -- no separate attach/period-matching step needed anymore.
+        df['is_monotransiting'] = (df['Period_days_rowe'] < 0).astype(int)
 
 
 
@@ -607,7 +611,6 @@ def main():
         df["step_number"] = np.nan
         df["phodymm_index"] = np.nan
         df["phodymm_converged"] = -1
-        df["is_in_DR25"] = np.nan
 
 
 
@@ -687,17 +690,8 @@ def main():
         )
         df['kmdc_index'] = real_kmdc_index
 
-        df[df['Period_days_rowe'] != np.nan]['is_in_rowe'] = 1
-        df[df['Period_days_rowe'] != 1]['is_in_rowe'] = 0
-
-
-        df[df['KOI'].isin(multis_dr_df['kepoi_name'].str.replace('K', '').astype(float))]['is_in_DR25'] = 1
-        df[df['is_in_DR25'] != 1]['is_in_DR25'] = 0
-
-
-
-
         from kg_kmdc_col_headers import col_headers
+        df['multiplicity'] = df.groupby('kepid')['planet_number'].transform('max')
         df = df[col_headers]
 
         table = pa.Table.from_pandas(df)
