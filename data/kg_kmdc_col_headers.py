@@ -103,6 +103,12 @@ col_headers = [
 "is_hidden_planet",
 "is_monotransiting",
 "phodymm_converged",
+"ecc_omega_convergence_failed",  # 1 if this row's e/omega/i are NaN because
+                                 # eccentricity/omega importance sampling failed
+                                 # to converge (process_singles_df, singles and
+                                 # non-converged multis only); 0 otherwise,
+                                 # including for real PhoDyMM-fit posteriors,
+                                 # where the concept doesn't apply.
 "stellar_source",  # 0=Berger et al. 2020 -- real Berger rows, Rowe's own
                    # columns for stars Berger doesn't cover but Rowe's
                    # Source_rowe flags as Berger-derived, and kg_subsampler.py's

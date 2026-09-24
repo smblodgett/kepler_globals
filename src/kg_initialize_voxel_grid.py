@@ -59,6 +59,51 @@ class GridJSONEncoder(json.JSONEncoder):
         return str(obj)
 
 
+def _sigma_with_relative_fallback(central, err1, err2, relative_fraction=0.5):
+    """
+    Returns max(|err1|, |err2|), except where that comes out to exactly zero.
+    Rowe's table reports BOTH error columns as literal 0.0 for a meaningful
+    fraction of singles (2.25% for period, 7.2% for duration, 0.03% for radius --
+    see the conversation this accompanies) -- not a genuinely perfectly-known
+    measurement, just "uncertainty not computed" for KOIs whose fit didn't
+    converge cleanly (mostly F/S-disposition KOIs). Drawing these as a degenerate
+    fixed value would be false precision. Unlike b (whose central value can
+    itself be an untrustworthy placeholder above the grazing limit -- see
+    EccentricityOmegaConvergenceError), period/duration/radius central values are
+    still usually real fit outputs even when their formal errors are missing, so
+    keep the central value and substitute a wide but bounded relative uncertainty
+    around it instead of discarding it: relative_fraction * |central| (default
+    50%). This is a deliberate, conservative placeholder in the same spirit as
+    the 100% relative density uncertainty already used for DR25-only stellar
+    fallback rows in augment_stellar_df_with_fallbacks -- flagged the same way so
+    it's easy to find and revisit later if real per-star errors turn up.
+    """
+    sigma = np.maximum(np.abs(err1), np.abs(err2))
+    if sigma == 0:
+        sigma = relative_fraction * np.abs(central)
+    return sigma
+
+
+class EccentricityOmegaConvergenceError(Exception):
+    """
+    Raised by sample_eccentricity_omega when NONE of its num_samples posterior draws
+    produce a physically valid (inside > 0) transit geometry, so the importance-
+    sampling weights are all exp(-inf) == 0 and can't be normalized (0/0 -> NaN,
+    which used to blow up downstream in rng.choice with "Probabilities contain NaN").
+
+    In practice this happens for KOIs whose reported impact parameter (b_rowe) sits
+    above the grazing limit (b > 1 + Rp/Rstar) while Rowe's table also reports ZERO
+    uncertainty on b (e_b_rowe == E_b_rowe == 0.0) -- a "no uncertainty computed"
+    placeholder (639/9693 rows in rowe_table_final.csv), not a real, perfectly-known
+    impact parameter. With zero scatter, every one of the num_samples draws of b is
+    identical and > 1 + ratio, so inside > 0 is impossible for any of them regardless
+    of the eccentricity/omega/period/duration draw. process_singles_df's per-planet
+    loop catches this, logs the KIC, and skips that planet rather than crashing the
+    whole (MPI-collective) run.
+    """
+    pass
+
+
 def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true, rho_star_uncertainty,KIC_id,num_samples,rng,make_graphs=True):
     """
     Samples eccentricity and omega for a planet based on its radius and period, using the photoeccentric effect.
@@ -87,9 +132,20 @@ def sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star
 
     print("log_likelihood: ",log_likelihood)
 
-    weight = np.exp(log_likelihood) / np.sum(np.exp(log_likelihood))  # Normalize the weights
+    unnormalized_weight = np.exp(log_likelihood)
+    total_weight = np.sum(unnormalized_weight)
 
-    print("weight :",weight)
+    print("weight :", unnormalized_weight / total_weight if total_weight > 0 else unnormalized_weight)
+
+    if not np.isfinite(total_weight) or total_weight <= 0:
+        raise EccentricityOmegaConvergenceError(
+            f"KIC {KIC_id}: none of the {i} posterior draws produced a valid "
+            f"(inside > 0) transit geometry -- importance-sampling weights are "
+            f"all zero, can't be normalized. See EccentricityOmegaConvergenceError's "
+            f"docstring for why this happens."
+        )
+
+    weight = unnormalized_weight / total_weight  # Normalize the weights
 
     indices = rng.choice(range(i), size=i, p=weight)  # Sample indices based on the weights
 
@@ -121,9 +177,28 @@ def _sample_positive_normal(rng, loc, scale, size):
     silently corrupting that fraction of the planet's posterior with a
     negative mass rather than correctly representing its uncertainty.
     """
+    if loc <= 0 and scale == 0:
+        raise ValueError(
+            f"_sample_positive_normal: loc={loc} <= 0 and scale=0 -- this can never "
+            f"produce a positive draw (a zero-scale Normal is a point mass at loc, so "
+            f"every 'resample' would just return loc again and loop forever). This "
+            f"usually means the underlying catalog value is itself a 'no real "
+            f"measurement' placeholder (e.g. Rp_rowe==0 with zero reported "
+            f"uncertainty) that should be filtered out before reaching this function, "
+            f"not something to draw a posterior from."
+        )
+
     values = rng.normal(loc, scale, size=size)
     bad = values <= 0
+    n_tries = 0
     while np.any(bad):
+        n_tries += 1
+        if n_tries > 10_000:
+            raise ValueError(
+                f"_sample_positive_normal: still {np.sum(bad)}/{size} non-positive "
+                f"draws after {n_tries} resampling attempts (loc={loc}, scale={scale}) "
+                f"-- giving up rather than looping forever."
+            )
         values[bad] = rng.normal(loc, scale, size=np.sum(bad))
         bad = values <= 0
     return values
@@ -341,21 +416,71 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
 
     partial_rows = []
 
+    n_failed_to_converge = 0
+
     for index in my_chunk:
         row = singles_dr_df.iloc[index]
         row_rng = np.random.default_rng(child_seeds[index])
+        # Flag column: 1 when eccentricity/omega/inclination for this planet are
+        # NaN placeholders rather than real sampled values, 0 otherwise. Set to 1
+        # either when no real transit duration exists at all (koi_duration==0,
+        # below) or when a real duration exists but eccentricity/omega importance
+        # sampling still couldn't converge (EccentricityOmegaConvergenceError,
+        # caught right at that call site below). Either way radius/period/mass/
+        # stellar radius/stellar mass are still real sampled values -- only
+        # e/omega/i are placeholders.
+        ecc_omega_convergence_failed = 0
 
-        radius = _sample_positive_normal(row_rng, row["koi_prad"], np.maximum(np.abs(row["koi_prad_err1"]), np.abs(row["koi_prad_err2"])), num_sampling_draws)
+        # A handful of multi-planet-system KOIs (10/9693 total, all currently
+        # flagged as false positives in Rowe's own disposition -- Status_rowe
+        # starting with 'F' -- and absent from DR25 entirely, so there's no
+        # fallback to recover a real value from) have Rp_rowe and BOTH its
+        # reported uncertainties exactly 0.0: no real transit-fit radius was
+        # ever measured, not a genuinely perfectly-known radius of zero.
+        # _sample_positive_normal can't draw anything from a Normal(0, 0) --
+        # it's a point mass at zero, and repeatedly resampling a non-positive
+        # value would loop forever, so it raises instead of hanging. Radius
+        # feeds into nearly everything else below (mass via
+        # mass_given_density_radius, planet_star_radius_ratio, and from there
+        # eccentricity/omega/inclination), so unlike the koi_duration==0 case
+        # below, there's no way to keep most of the row real here -- only
+        # period and stellar radius/mass are actually independent of planet
+        # radius.
+        radius_missing = (row["koi_prad"] == 0) and (row["koi_prad_err1"] == 0) and (row["koi_prad_err2"] == 0)
+        if radius_missing:
+            print(f"[rank {rank}] WARNING: kepid={row['kepid']} (singles index {index}) has "
+                  f"koi_prad==0 with zero reported uncertainty on both sides and no DR25 "
+                  f"fallback -- no real transit-fit radius is available. Leaving radius, "
+                  f"mass, eccentricity, omega, and inclination as NaN for this planet; "
+                  f"period and stellar radius/mass are still real sampled values.")
+            radius = np.full(num_sampling_draws, np.nan)
+        else:
+            radius = _sample_positive_normal(row_rng, row["koi_prad"], _sigma_with_relative_fallback(row["koi_prad"], row["koi_prad_err1"], row["koi_prad_err2"]), num_sampling_draws)
 
         if row["koi_period"] < 0:
             period = row_rng.uniform(0.2,500,size=num_sampling_draws)
         else:
-            period = row_rng.normal(row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])),size=num_sampling_draws)
+            period_sigma = _sigma_with_relative_fallback(row["koi_period"], row["koi_period_err1"], row["koi_period_err2"])
+            period = row_rng.normal(row["koi_period"], period_sigma, size=num_sampling_draws)
 
         print(f"[rank {rank}] period with max abs error:", row["koi_period"], np.maximum(np.abs(row["koi_period_err1"]), np.abs(row["koi_period_err2"])))
 
-        b = row_rng.normal(row["koi_impact"], np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"])),size=num_sampling_draws)
-        T_14 = row_rng.normal(row["koi_duration"], np.maximum(np.abs(row["koi_duration_err1"]), np.abs(row["koi_duration_err2"])),size=num_sampling_draws)
+        sigma_b = np.maximum(np.abs(row["koi_impact_err1"]), np.abs(row["koi_impact_err2"]))
+        if sigma_b == 0:
+            # Rowe's table reports e_b_rowe == E_b_rowe == 0.0 for 639/9693 rows
+            # (mostly F/S-disposition KOIs) -- not a genuinely perfectly-known
+            # impact parameter, just "uncertainty not computed". A literal zero
+            # collapses b to one fixed value on every draw: harmless if that
+            # value happens to be a normal, sub-grazing b, but for a few KOIs
+            # that fixed value is itself above the grazing limit (b > 1+ratio),
+            # which makes EVERY draw non-transiting and used to crash the whole
+            # run (see EccentricityOmegaConvergenceError). Since b isn't actually
+            # known for these, use an uninformative uniform prior over its
+            # physically sensible range instead of trusting the placeholder.
+            b = row_rng.uniform(0, 1, size=num_sampling_draws)
+        else:
+            b = row_rng.normal(row["koi_impact"], sigma_b, size=num_sampling_draws)
+        T_14 = row_rng.normal(row["koi_duration"], _sigma_with_relative_fallback(row["koi_duration"], row["koi_duration_err1"], row["koi_duration_err2"]),size=num_sampling_draws)
 
         print(f"[rank {rank}] radius: ",radius)
         print(f"[rank {rank}] number of NaN in radius: ",np.sum(np.isnan(radius)))
@@ -402,7 +527,48 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         print(f"[rank {rank}] number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
         print(f"[rank {rank}] number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
 
-        eccentricity, omega, rho_star_sample = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
+        duration_missing = (row["koi_duration"] == 0) and (row["koi_duration_err1"] == 0)
+        if duration_missing or radius_missing:
+            # Two distinct placeholder conditions both land here -- neither leaves a
+            # trustworthy input to build an eccentricity/omega posterior from: no real
+            # transit duration at all (duration_missing -- koi_duration==0 with its own
+            # uncertainty also 0; would otherwise feed straight into a sin(0)==0
+            # division-by-zero in this function's "inside" formula), or no real planet
+            # radius at all (radius_missing, detected above -- planet_star_radius_ratio
+            # is already NaN by this point, which would make every one of the
+            # importance-sampling draws below invalid the same way a non-convergent
+            # EccentricityOmegaConvergenceError would, just for an unrelated reason).
+            # radius_missing already printed its own WARNING above; only print one here
+            # for duration_missing, and skip straight to NaN either way instead of
+            # calling sample_eccentricity_omega and routing this through the
+            # convergence-failure flag below, which would mislabel the reason.
+            if duration_missing:
+                print(f"[rank {rank}] WARNING: kepid={row['kepid']} (singles index {index}) has "
+                      f"koi_duration==0 with zero reported uncertainty and no DR25 fallback -- "
+                      f"no real transit duration is available. Leaving eccentricity, omega, and "
+                      f"inclination as NaN for this planet.")
+            eccentricity = np.full(num_sampling_draws, np.nan)
+            omega = np.full(num_sampling_draws, np.nan)
+        else:
+            try:
+                eccentricity, omega, rho_star_sample = sample_eccentricity_omega(planet_star_radius_ratio, period, b, T_14,rho_star_true,rho_star_uncertainty,row["kepid"],num_sampling_draws,row_rng,make_graphs=make_graphs)
+            except EccentricityOmegaConvergenceError as e:
+                # A handful of KOIs have a reported impact parameter above the
+                # grazing limit with zero reported uncertainty on b (see that
+                # exception's docstring) -- no valid eccentricity/omega posterior
+                # can be built for them. Caught here, right at the call site (same
+                # place as the koi_duration==0 case above), instead of further out,
+                # so this one planet's already-sampled radius/period/mass/stellar
+                # values are kept rather than the whole row being discarded (which
+                # is what catching this around the entire per-planet block used to do).
+                n_failed_to_converge += 1
+                ecc_omega_convergence_failed = 1
+                print(f"[rank {rank}] WARNING: kepid={row['kepid']} (singles index {index}) "
+                      f"-- eccentricity/omega sampling did not converge: {e}. Leaving "
+                      f"eccentricity, omega, and inclination as NaN for this planet; radius, "
+                      f"period, mass, and stellar radius/mass are still real sampled values.")
+                eccentricity = np.full(num_sampling_draws, np.nan)
+                omega = np.full(num_sampling_draws, np.nan)
 
 
 
@@ -425,8 +591,10 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         radius_star = radius_star[sampled_indices]
         mass_star = mass_star[sampled_indices]
 
-        row_result = np.array([radius, period, mass, eccentricity, omega, i,radius_star,mass_star,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"])]).T
+        row_result = np.array([radius, period, mass, eccentricity, omega, i,radius_star,mass_star,np.full(shape=num_posteriors_per_planet,fill_value=row["kepid"]),np.full(shape=num_posteriors_per_planet,fill_value=ecc_omega_convergence_failed)]).T
         partial_rows.append((index, row_result))
+    if n_failed_to_converge:
+        print(f"[rank {rank}] {n_failed_to_converge} planet(s) had eccentricity/omega sampling fail to converge -- kept with e/omega/i as NaN and ecc_omega_convergence_failed=1, not dropped")
 
     all_results = comm.gather(partial_rows, root=0)
 
@@ -437,10 +605,10 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         # before stitching the per-planet chunks into one array.
         flat.sort(key=lambda item: item[0])
         if n_planets == 0:
-            final_singles_array = np.zeros((0,6))
+            final_singles_array = np.zeros((0,10))
         else:
             final_singles_array = np.concatenate([row_result for _, row_result in flat], axis=0)
-        df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","i","R_s","M_s","kepid"])
+        df = pd.DataFrame(final_singles_array, columns=["R_pE","Period_days","M_pE","e","omega","i","R_s","M_s","kepid","ecc_omega_convergence_failed"])
     else:
         df = None
 

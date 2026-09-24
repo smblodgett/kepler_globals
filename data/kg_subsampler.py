@@ -37,6 +37,7 @@ from sorcha.ephemeris.orbit_conversion_utilities import universal_cartesian
 import os
 import re
 import sys
+import traceback
 from tqdm import tqdm
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
@@ -44,6 +45,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 from kg_constants import *  # Import constants from kg_constants.py
 from kg_kmdc_col_headers import col_headers
 from kg_utilities import repair_rowe_df_numeric_columns
+from kg_find_completeness import find_completeness
 
 RAW_PATH = '/hdd2/backup/danielkj/PhoDyMM_results_final/completed_systems/'   # pathway to directory with raw PhoDyMM output posterior data
 SUBSAMPLED_PATH = '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/' # pathway to directory containing lists of subsampled rows for each different KOI output by PhoDyMM
@@ -180,7 +182,14 @@ def process_dataframe(df,koi):
         # this point (scrambled by the merge/groupby/concat calls earlier in
         # the pipeline) and has no relationship to PhoDyMM's own row order.
         final_system_df = final_system_df.reset_index(drop=True) # remove the internal bookkeeping index and set to default range
-        final_system_df = final_system_df[col_headers] # Rearrange columns to be more legible
+        # NOTE: col_headers reordering used to happen right here, but col_headers
+        # includes ~44 stellar columns (tm_designation, ra, dec, teff, ...,
+        # cdppslpshrt) that only exist after add_additional_stellar_info's merge --
+        # which single_df_write doesn't call until AFTER this function returns.
+        # Selecting col_headers before that merge raised a KeyError on every koi
+        # processed (not just ones with a hidden planet -- that was a red herring
+        # from console print timing). The reorder now happens in single_df_write,
+        # right after add_additional_stellar_info runs.
         return final_system_df
 
 
@@ -265,6 +274,10 @@ def calculate_params(df):
     df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
 
     df['phodymm_converged'] = 1 # flag for whether the PhoDyMM run converged (1) or not (0).
+    # Not applicable here -- these rows are real PhoDyMM-fit posteriors, so e/omega
+    # were never sampled (and never NaN'd out for non-convergence) the way
+    # process_singles_df does for singles/non-converged multis.
+    df['ecc_omega_convergence_failed'] = 0
 
     df = occurrence_rate_params(df) # The Hsu et al occurrence rate parameters.
 
@@ -856,7 +869,8 @@ def read_in_rows_write(breakpoints=False):
     """Tries to read in an output file from PhoDyMM; if anything errors for processing that file, this logs it."""
     for file in tqdm(os.listdir(SUBSAMPLED_PATH)):
         koi = find_koi(file)
-
+        if not koi:
+            continue
         try:
             read_in_one_koi(koi)
             if breakpoints :
@@ -864,7 +878,7 @@ def read_in_rows_write(breakpoints=False):
 
         except Exception as e:
             print("koi ",koi," failed")
-            err_string = str(e.with_traceback)
+            err_string = traceback.format_exc()
             print(err_string)
             with open("subsampler_error_log.txt", "a") as file:
                 file.write(err_string+'\n')
@@ -884,6 +898,12 @@ def single_df_write(subsampled_rows,koi):
     df = make_df_from_subsample(subsampled_rows,koi)
     df = process_dataframe(df,koi)
     df = add_additional_stellar_info(df)
+    df['completeness'] = find_completeness(df["R_pE"].to_numpy(),df["Period_days"].to_numpy(),df["M_pE"].to_numpy(),df["e"].to_numpy(),df["omega"].to_numpy())
+
+    # Reorder to col_headers here -- not inside process_dataframe -- since this is
+    # the first point where every column col_headers expects (including the ~44
+    # stellar columns add_additional_stellar_info just merged in) actually exists.
+    df = df[col_headers] # Rearrange columns to be more legible
     write_header = not os.path.exists('thinned/KMDC.csv')
     df.to_csv('thinned/KMDC.csv', mode='a', header=write_header, index=False) # need to verify that index false works for the pipeline...
 

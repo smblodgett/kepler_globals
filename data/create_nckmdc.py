@@ -166,133 +166,159 @@ def rowe_table_attach_multi(ncmultis_dr_df, df):
 
 
 def main():
-    stellar_df = pd.read_csv(stellar_data_filename,engine='pyarrow',delimiter='\t') # used to be from ../data/keplerstellar.csv, now is from Berger et al 2020
 
-    print("len(stellar_df) before cuts: ",len(stellar_df))
+    stellar_df = None
+    ncmultis_dr_df = None
+    if rank == 0:
+        stellar_df = pd.read_csv(stellar_data_filename,engine='pyarrow',delimiter='\t') # used to be from ../data/keplerstellar.csv, now is from Berger et al 2020
 
-    # Make the cuts to stellar catalog based off of temperature, logg
-    # stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
-    # stellar_df = stellar_df[(stellar_df["logg"]>4)]
+        print("len(stellar_df) before cuts: ",len(stellar_df))
 
-    additional_stellar_df = pd.read_csv(additional_stellar_data_filename,engine='pyarrow')
+        # Make the cuts to stellar catalog based off of temperature, logg
+        # stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
+        # stellar_df = stellar_df[(stellar_df["logg"]>4)]
 
-    # keplerstellar.csv stacks five different stellar-catalog deliveries under one
-    # 'kepid' column -- filter to one delivery (q1_q17_dr25_stellar) or the merge
-    # below fans every star's row out 5x. The file also has no 'KIC' column at all
-    # (only 'kepid'), so the merge needs right_on='kepid', not 'KIC'. (This used to
-    # be right_on='KIC', which doesn't exist on additional_stellar_df -- would have
-    # raised KeyError('KIC') the moment this function actually ran.)
-    additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+        additional_stellar_df = pd.read_csv(additional_stellar_data_filename,engine='pyarrow')
 
-    stellar_df = stellar_df.merge(
-                                additional_stellar_df,
-                                left_on='KIC',
-                                right_on='kepid',
-                                how='left',
-                                # 'logg' exists (case-sensitive) in BOTH Berger's tsv and keplerstellar.csv --
-                                # without suffixes, that collision silently splits it into logg_x/logg_y and
-                                # neither survives as a plain 'logg' column, which kg_kmdc_col_headers.py's
-                                # final column list needs (it wants keplerstellar.csv's own 'logg', alongside
-                                # Berger's separately-used stellar params). Keep Berger's copy under a distinct
-                                # name (unused elsewhere) and let keplerstellar.csv's own 'logg' stay plain.
-                                suffixes=('_berger', '')
-                            ).drop(columns=['kepid'])  # redundant with 'KIC' (same star) -- left in place, this
-                                                        # collides with 'kepid' in every later kepid-keyed merge onto
-                                                        # stellar_df, silently splitting THAT into kepid_x/kepid_y too.
+        # keplerstellar.csv stacks five different stellar-catalog deliveries under one
+        # 'kepid' column -- filter to one delivery (q1_q17_dr25_stellar) or the merge
+        # below fans every star's row out 5x. The file also has no 'KIC' column at all
+        # (only 'kepid'), so the merge needs right_on='kepid', not 'KIC'. (This used to
+        # be right_on='KIC', which doesn't exist on additional_stellar_df -- would have
+        # raised KeyError('KIC') the moment this function actually ran.)
+        additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
 
-    # ------------------------------------------------------------------------
-    # Planet catalog: Jason Rowe's table (rowe_table_final.csv) is now the SOLE
-    # source of planetary/transit-fit parameters for non-converged multis -- DR25
-    # (q1_q17_dr25.csv) is no longer read at all. See create_ksdc.py's matching
-    # comment for the audit this is based on (every DR25 CONFIRMED/CANDIDATE KOI
-    # already has a row in Rowe's table, none of DR25's own stellar parameters are
-    # used anywhere in this pipeline, and Rowe's stellar columns are essentially
-    # identical to Berger 2020's except stellar density -- so we still use
-    # Berger's density ('rho' in stellar_df) inside process_singles_df, not
-    # Rowe's rho*_rowe/rho*M_rowe).
-    #
-    # We deliberately do NOT filter out rows whose own current disposition
-    # (first letter of Status_rowe) isn't 'P' -- this catalog is meant to be a
-    # superset/successor to Rowe's own table, so every KOI runs through the same
-    # posterior-sampling pipeline as everything else, rather than being dropped
-    # up front.
-    rowe_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # Jason Rowe's expanded catalog: transit-fit + stellar parameters, one row per candidate.
-    rowe_df = repair_rowe_df_numeric_columns(rowe_df)  # fix the rho*_rowe/E_Rp_rowe fixed-width-overflow rows
+        stellar_df = stellar_df.merge(
+                                    additional_stellar_df,
+                                    left_on='KIC',
+                                    right_on='kepid',
+                                    how='left',
+                                    # 'logg' exists (case-sensitive) in BOTH Berger's tsv and keplerstellar.csv --
+                                    # without suffixes, that collision silently splits it into logg_x/logg_y and
+                                    # neither survives as a plain 'logg' column, which kg_kmdc_col_headers.py's
+                                    # final column list needs (it wants keplerstellar.csv's own 'logg', alongside
+                                    # Berger's separately-used stellar params). Keep Berger's copy under a distinct
+                                    # name (unused elsewhere) and let keplerstellar.csv's own 'logg' stay plain.
+                                    suffixes=('_berger', '')
+                                ).drop(columns=['kepid'])  # redundant with 'KIC' (same star) -- left in place, this
+                                                            # collides with 'kepid' in every later kepid-keyed merge onto
+                                                            # stellar_df, silently splitting THAT into kepid_x/kepid_y too.
 
-    converged_multis_kois = find_converged_systems()
+        # ------------------------------------------------------------------------
+        # Planet catalog: Jason Rowe's table (rowe_table_final.csv) is now the SOLE
+        # source of planetary/transit-fit parameters for non-converged multis -- DR25
+        # (q1_q17_dr25.csv) is no longer read at all. See create_ksdc.py's matching
+        # comment for the audit this is based on (every DR25 CONFIRMED/CANDIDATE KOI
+        # already has a row in Rowe's table, none of DR25's own stellar parameters are
+        # used anywhere in this pipeline, and Rowe's stellar columns are essentially
+        # identical to Berger 2020's except stellar density -- so we still use
+        # Berger's density ('rho' in stellar_df) inside process_singles_df, not
+        # Rowe's rho*_rowe/rho*M_rowe).
+        #
+        # We deliberately do NOT filter out rows whose own current disposition
+        # (first letter of Status_rowe) isn't 'P' -- this catalog is meant to be a
+        # superset/successor to Rowe's own table, so every KOI runs through the same
+        # posterior-sampling pipeline as everything else, rather than being dropped
+        # up front.
+        rowe_df = pd.read_csv(rowe_stellar_data_filename,engine='pyarrow') # Jason Rowe's expanded catalog: transit-fit + stellar parameters, one row per candidate.
+        rowe_df = repair_rowe_df_numeric_columns(rowe_df)  # fix the rho*_rowe/E_Rp_rowe fixed-width-overflow rows
 
-    rowe_df = rowe_df[~rowe_df['KIC'].isin(converged_multis_kois)]
+        converged_multis_kois = find_converged_systems()
 
-    # Berger doesn't cover every KOI host star -- give every star Rowe lists a
-    # usable stellar_df row (Rowe's own params for Source_rowe in {2,3}, DR25/
-    # keplerstellar.csv for Source_rowe==0's "assume solar" placeholders) rather
-    # than silently losing every planet around a star Berger's catalog missed.
-    # Same fix as create_ksdc.py -- see augment_stellar_df_with_fallbacks's own
-    # docstring for the full reasoning.
-    stellar_df = augment_stellar_df_with_fallbacks(stellar_df, additional_stellar_df, rowe_df)
+        rowe_df = rowe_df[~rowe_df['KIC'].isin(converged_multis_kois)]
 
-    rowe_df['multiplicity'] = rowe_df['KIC'].map(rowe_df['KIC'].value_counts())
+        # Berger doesn't cover every KOI host star -- give every star Rowe lists a
+        # usable stellar_df row (Rowe's own params for Source_rowe in {2,3}, DR25/
+        # keplerstellar.csv for Source_rowe==0's "assume solar" placeholders) rather
+        # than silently losing every planet around a star Berger's catalog missed.
+        # Same fix as create_ksdc.py -- see augment_stellar_df_with_fallbacks's own
+        # docstring for the full reasoning.
+        stellar_df = augment_stellar_df_with_fallbacks(stellar_df, additional_stellar_df, rowe_df)
 
-    # Every Rowe column except 'KIC' (df already gets 'KIC' from the stellar_df
-    # merge below) and bookkeeping columns -- reused twice further down to carry
-    # KOI/Kepler/every *_rowe column onto df without a second attach/merge step.
-    _rowe_passthrough_cols = [c for c in rowe_df.columns if c not in ('KIC', 'Unnamed: 0', 'multiplicity')]
+        rowe_df['multiplicity'] = rowe_df['KIC'].map(rowe_df['KIC'].value_counts())
 
-    ncmultis_dr_df = rowe_df[rowe_df['multiplicity']>1].copy()
-    ncmultis_dr_df['kepid'] = ncmultis_dr_df['KIC']
+        # Every Rowe column except 'KIC' (df already gets 'KIC' from the stellar_df
+        # merge below) and bookkeeping columns -- reused twice further down to carry
+        # KOI/Kepler/every *_rowe column onto df without a second attach/merge step.
+        _rowe_passthrough_cols = [c for c in rowe_df.columns if c not in ('KIC', 'Unnamed: 0', 'multiplicity')]
 
-    ncmultis_dr_df['koi_prad'] = ncmultis_dr_df['Rp_rowe']
-    ncmultis_dr_df['koi_prad_err1'] = ncmultis_dr_df['e_Rp_rowe']
-    ncmultis_dr_df['koi_prad_err2'] = ncmultis_dr_df['E_Rp_rowe']
+        ncmultis_dr_df = rowe_df[rowe_df['multiplicity']>1].copy()
+        ncmultis_dr_df['kepid'] = ncmultis_dr_df['KIC']
 
-    ncmultis_dr_df['koi_period'] = ncmultis_dr_df['Period_days_rowe']
-    ncmultis_dr_df['koi_period_err1'] = ncmultis_dr_df['e_Period_rowe']
-    ncmultis_dr_df['koi_period_err2'] = ncmultis_dr_df['e_Period_rowe']
+        ncmultis_dr_df['koi_prad'] = ncmultis_dr_df['Rp_rowe']
+        ncmultis_dr_df['koi_prad_err1'] = ncmultis_dr_df['e_Rp_rowe']
+        ncmultis_dr_df['koi_prad_err2'] = ncmultis_dr_df['E_Rp_rowe']
 
-    ncmultis_dr_df['koi_impact'] = ncmultis_dr_df['b_rowe']
-    ncmultis_dr_df['koi_impact_err1'] = ncmultis_dr_df['e_b_rowe']
-    ncmultis_dr_df['koi_impact_err2'] = ncmultis_dr_df['E_b_rowe']
+        ncmultis_dr_df['koi_period'] = ncmultis_dr_df['Period_days_rowe']
+        ncmultis_dr_df['koi_period_err1'] = ncmultis_dr_df['e_Period_rowe']
+        ncmultis_dr_df['koi_period_err2'] = ncmultis_dr_df['e_Period_rowe']
 
-    ncmultis_dr_df['koi_duration'] = ncmultis_dr_df['TDur_rowe']
-    ncmultis_dr_df['koi_duration_err1'] = ncmultis_dr_df['e_TDur_rowe']
-    ncmultis_dr_df['koi_duration_err2'] = ncmultis_dr_df['e_TDur_rowe']
+        ncmultis_dr_df['koi_impact'] = ncmultis_dr_df['b_rowe']
+        ncmultis_dr_df['koi_impact_err1'] = ncmultis_dr_df['e_b_rowe']
+        ncmultis_dr_df['koi_impact_err2'] = ncmultis_dr_df['E_b_rowe']
 
-    print("len of ncmultis_dr_df: ",len(ncmultis_dr_df))
+        ncmultis_dr_df['koi_duration'] = ncmultis_dr_df['TDur_rowe']
+        ncmultis_dr_df['koi_duration_err1'] = ncmultis_dr_df['e_TDur_rowe']
+        ncmultis_dr_df['koi_duration_err2'] = ncmultis_dr_df['e_TDur_rowe']
 
-    print("sum ncmultis_dr_df['kepid'].isin(stellar_df['KIC']) : ", np.sum(ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])))
+        print("len of ncmultis_dr_df: ",len(ncmultis_dr_df))
 
-    # augment_stellar_df_with_fallbacks (above) already gave every Source_rowe
-    # in {0,2,3} KIC a stellar_df row, so this should now only drop a KIC in
-    # the rare case Source_rowe==0 *and* keplerstellar.csv also has no row for
-    # it (logged loudly by that function if it happens) -- not a silent "no
-    # Berger data" cut anymore.
-    ncmultis_dr_df = ncmultis_dr_df[ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])]
-    print("len ncmultis_dr_df after stellar_df-coverage filter: ", len(ncmultis_dr_df))
+        print("sum ncmultis_dr_df['kepid'].isin(stellar_df['KIC']) : ", np.sum(ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])))
 
-    print("ncmultis before removal of bad period error: ", len(ncmultis_dr_df))
-    # Remove the planets in the nc multis df that have nans in their period errors, since we need these for sampling the posteriors
-    ncmultis_dr_df = ncmultis_dr_df[~(ncmultis_dr_df["koi_period_err1"].isna() | ncmultis_dr_df["koi_period_err2"].isna())]
-    print("ncmultis after removal of bad period errors: ", len(ncmultis_dr_df))
+        # augment_stellar_df_with_fallbacks (above) already gave every Source_rowe
+        # in {0,2,3} KIC a stellar_df row, so this should now only drop a KIC in
+        # the rare case Source_rowe==0 *and* keplerstellar.csv also has no row for
+        # it (logged loudly by that function if it happens) -- not a silent "no
+        # Berger data" cut anymore.
+        ncmultis_dr_df = ncmultis_dr_df[ncmultis_dr_df["kepid"].isin(stellar_df['KIC'])]
+        print("len ncmultis_dr_df after stellar_df-coverage filter: ", len(ncmultis_dr_df))
 
-    # Reset the index so we can iterate through nc multis df
-    ncmultis_dr_df = ncmultis_dr_df.reset_index(drop=True)
+        print("ncmultis before removal of bad period error: ", len(ncmultis_dr_df))
+        # Remove the planets in the nc multis df that have nans in their period errors, since we need these for sampling the posteriors
+        ncmultis_dr_df = ncmultis_dr_df[~(ncmultis_dr_df["koi_period_err1"].isna() | ncmultis_dr_df["koi_period_err2"].isna())]
+        print("ncmultis after removal of bad period errors: ", len(ncmultis_dr_df))
 
-    ncmultis_dr_df = ncmultis_dr_df.sort_values(['kepid', 'koi_period'])
+        # Reset the index so we can iterate through nc multis df
+        ncmultis_dr_df = ncmultis_dr_df.reset_index(drop=True)
 
-    ncmultis_dr_df['planet_number'] = (
-        ncmultis_dr_df.groupby('kepid').cumcount() + 1
-        )
-# Give the singles df the same cols as the multis df, sample ecc and omega for the singles
+        ncmultis_dr_df = ncmultis_dr_df.sort_values(['kepid', 'koi_period'])
+
+        ncmultis_dr_df['planet_number'] = (
+            ncmultis_dr_df.groupby('kepid').cumcount() + 1
+            )
+
+    comm.Barrier()
+    # comm.bcast's return value has to be captured (it doesn't mutate its argument
+    # in place) -- only rank 0 built a real ncmultis_dr_df/stellar_df above; every
+    # other rank still holds the None it started with otherwise. Same bug, same
+    # fix, as create_ksdc.py's bcast calls.
+    ncmultis_dr_df = comm.bcast(ncmultis_dr_df, root=0)
+    stellar_df = comm.bcast(stellar_df, root=0)
+
+    # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
     processed_ncmultis_dr_df = process_singles_df(ncmultis_dr_df,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
 
-    # process_singles_df() draws num_posteriors_per_planet=1000 rows per input
-    # planet, in the same order as ncmultis_dr_df's own rows -- but its output
-    # columns are only ["R_pE","Period_days","M_pE","e","omega","i","R_s","M_s","kepid"];
-    # 'planet_number' doesn't come back. Restore it here: output block i (rows
-    # i*1000 .. i*1000+999) belongs to ncmultis_dr_df's i-th row, so repeating
-    # each planet_number 1000 times lines it back up. find_crossing_planets()
-    # right below already assumes this column exists on its input.
-    processed_ncmultis_dr_df['planet_number'] = np.repeat(ncmultis_dr_df['planet_number'].values, 1000)
+    # process_singles_df() is collective (every rank in `comm` must call it
+    # together), but only rank 0's return value is a real DataFrame -- every
+    # other rank gets None back (see its own docstring). Everything below that
+    # touches processed_ncmultis_dr_df/ncmultis_dr_df_copy/reprocessed as a real
+    # DataFrame therefore stays behind an `if rank == 0:` guard. The one
+    # exception is process_singles_df() itself, called again inside the
+    # reprocessing loop below: since it's collective, every rank must reach that
+    # second call together too, in lockstep with rank 0's decision to keep
+    # looping (broadcast at the top of every iteration) -- otherwise a non-root
+    # rank would move on while rank 0 is still blocked inside that call's own
+    # scatter/gather, deadlocking the whole job.
+
+    if rank == 0:
+        # process_singles_df() draws num_posteriors_per_planet=1000 rows per input
+        # planet, in the same order as ncmultis_dr_df's own rows -- but its output
+        # columns are only ["R_pE","Period_days","M_pE","e","omega","i","R_s","M_s","kepid"];
+        # 'planet_number' doesn't come back. Restore it here: output block i (rows
+        # i*1000 .. i*1000+999) belongs to ncmultis_dr_df's i-th row, so repeating
+        # each planet_number 1000 times lines it back up. find_crossing_planets()
+        # right below already assumes this column exists on its input.
+        processed_ncmultis_dr_df['planet_number'] = np.repeat(ncmultis_dr_df['planet_number'].values, 1000)
 
 
     def find_crossing_planets(processed_ncmultis_dr_df):
@@ -325,58 +351,136 @@ def main():
 
         return crossing_planets.to_dict()
 
-    crossing_planets = find_crossing_planets(processed_ncmultis_dr_df)
-    
+    if rank == 0:
+        crossing_planets = find_crossing_planets(processed_ncmultis_dr_df)
+        ncmultis_dr_df_copy = ncmultis_dr_df.copy()
+        reprocessed = pd.DataFrame(columns=processed_ncmultis_dr_df.columns)
+        # The full set of (kepid, planet_number) pairs that will ever pass
+        # through the reprocessing loop below, captured now while
+        # crossing_planets still holds the untouched initial crossing set --
+        # the loop narrows ncmultis_dr_df_copy round by round as individual
+        # planets stop crossing, so this is the only point where the full set
+        # is available. drop_duplicates() matters here: crossing_planets lists
+        # a planet_number once per crossing DRAW (a planet crossing in 500 of
+        # its 1000 draws appears 500 times), and every one of these planets'
+        # rows in processed_ncmultis_dr_df is superseded by its (possibly
+        # several rounds later) entry in `reprocessed` -- none of them belong
+        # in the final concat below alongside it (see the end of this loop).
+        initial_crossing_pairs = (
+            pd.Series(crossing_planets)
+            .explode()
+            .rename_axis('kepid')
+            .rename('planet_number')
+            .reset_index()[['kepid', 'planet_number']]
+            .drop_duplicates()
+        )
 
-    i = 0
-    ncmultis_dr_df_copy = ncmultis_dr_df.copy()
-    reprocessed = pd.DataFrame(columns=processed_ncmultis_dr_df.columns)
     # crossing_planets is a plain dict (find_crossing_planets returns
     # .to_dict()) -- dict has no .empty() method (that's a DataFrame/Series
     # thing), so this raised AttributeError before the loop ever ran. An empty
     # dict is already falsy, so a plain truthiness check is both correct and
-    # simpler.
-    while crossing_planets:
-        crossing_pairs = (
-                        pd.Series(crossing_planets)
-                        .explode()
-                        .rename_axis('kepid')
-                        .rename('planet_number')
-                        .reset_index()
-                    )
+    # simpler. Only rank 0 has a real crossing_planets to check, so it decides
+    # whether to keep looping and broadcasts that decision to every rank --
+    # every rank must agree on whether another collective process_singles_df()
+    # call is coming, or a rank that "loops" one fewer time than the others
+    # would deadlock waiting on a call the others already moved past.
+    i = 0
+    while True:
+        print("doing loop again ")
+        keep_going = bool(crossing_planets) if rank == 0 else None
+        keep_going = comm.bcast(keep_going, root=0)
+        if not keep_going:
+            break
 
-        ncmultis_dr_df_copy = ncmultis_dr_df_copy.merge(
-            crossing_pairs,
-            on=['kepid', 'planet_number'],
-            how='inner'
-        )
+        if rank == 0:
+            # drop_duplicates(): crossing_planets lists a planet_number once per
+            # crossing draw (see the comment on initial_crossing_pairs above) --
+            # without it, the inner merge right below duplicates ncmultis_dr_df_copy's
+            # row for that planet once per crossing draw instead of keeping it once,
+            # multiplying that planet's `process_singles_df` workload every round.
+            crossing_pairs = (
+                            pd.Series(crossing_planets)
+                            .explode()
+                            .rename_axis('kepid')
+                            .rename('planet_number')
+                            .reset_index()[['kepid', 'planet_number']]
+                            .drop_duplicates()
+                        )
+
+            ncmultis_dr_df_copy = ncmultis_dr_df_copy.merge(
+                crossing_pairs,
+                on=['kepid', 'planet_number'],
+                how='inner'
+            )
+        else:
+            ncmultis_dr_df_copy = None
+        # Broadcast the rank-0-only merged subset so every rank enters the next
+        # process_singles_df() call (collective, right below) with the same input.
+        ncmultis_dr_df_copy = comm.bcast(ncmultis_dr_df_copy, root=0)
 
         reprocessed_0 = process_singles_df(ncmultis_dr_df_copy,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
-        # Same fix as above: process_singles_df() drops 'planet_number', and
-        # find_crossing_planets(reprocessed_0) below needs it.
-        reprocessed_0['planet_number'] = np.repeat(ncmultis_dr_df_copy['planet_number'].values, 1000)
-        crossing_planets = find_crossing_planets(reprocessed_0)
-        reprocessed = pd.concat([reprocessed,reprocessed_0])
 
+        if rank == 0:
+            # Same fix as above: process_singles_df() drops 'planet_number', and
+            # find_crossing_planets(reprocessed_0) below needs it.
+            reprocessed_0['planet_number'] = np.repeat(ncmultis_dr_df_copy['planet_number'].values, 1000)
+            crossing_planets = find_crossing_planets(reprocessed_0)
+            # Replace, don't accumulate: reprocessed_0 is a fresh, complete resample
+            # for every planet in ncmultis_dr_df_copy (this round's input) -- any of
+            # those planets may already have an EARLIER round's attempt sitting in
+            # `reprocessed` from a previous iteration. Left unhandled, a planet that
+            # takes 3 rounds to stop crossing keeps its round-1 AND round-2 attempts
+            # in the final output alongside its actual (round-3) one -- duplicate
+            # rows per planet per draw, which corrupts the planet_number
+            # reassignment at the end of this loop. Drop this round's planets' stale
+            # rows from `reprocessed` first, so each planet ends up represented by
+            # exactly one (its latest) attempt.
+            this_round_pairs = ncmultis_dr_df_copy[['kepid', 'planet_number']].drop_duplicates()
+            if not reprocessed.empty:
+                reprocessed = reprocessed.merge(
+                    this_round_pairs.assign(_superseded=True),
+                    on=['kepid', 'planet_number'],
+                    how='left'
+                )
+                reprocessed = reprocessed[reprocessed['_superseded'].isna()].drop(columns='_superseded')
+            reprocessed = pd.concat([reprocessed, reprocessed_0])
 
         if i > 20:
-            print("Warning: more than 20 iterations of orbit crossing removal. Stopping.")
+            if rank == 0:
+                print("Warning: more than 20 iterations of orbit crossing removal. Stopping.")
             break
         i+=1
 
 
-    processed_ncmultis_dr_df = pd.concat([processed_ncmultis_dr_df,reprocessed])
-
-    # Re-derive planet_number per DRAW, not once per kepid: sort by draw
-    # BEFORE Period_days, and group the cumcount() by ['kepid', 'draw'] so it
-    # restarts at 1 for every draw. ('period' isn't a column on this df --
-    # process_singles_df's output column is 'Period_days'; sorting by
-    # ['kepid', 'period', 'draw'] would also have raised a KeyError.)
-    processed_ncmultis_dr_df = processed_ncmultis_dr_df.sort_values(['kepid', 'draw', 'Period_days'])
-
-    processed_ncmultis_dr_df['planet_number'] = (
-        processed_ncmultis_dr_df.groupby(['kepid', 'draw']).cumcount() + 1
+    if rank == 0:
+        # Every planet in initial_crossing_pairs is superseded by its entry in
+        # `reprocessed` (built up above, one round's worth per planet after
+        # Edit 3's dedup) -- drop its stale, still-orbit-crossing row from the
+        # ORIGINAL processing's output first, or it would sit alongside the
+        # corrected one from `reprocessed` and duplicate that planet in every
+        # draw, which the planet_number reassignment just below would then
+        # miscount.
+        processed_ncmultis_dr_df = processed_ncmultis_dr_df.merge(
+            initial_crossing_pairs.assign(_was_reprocessed=True),
+            on=['kepid', 'planet_number'],
+            how='left'
         )
+        processed_ncmultis_dr_df = processed_ncmultis_dr_df[
+            processed_ncmultis_dr_df['_was_reprocessed'].isna()
+        ].drop(columns='_was_reprocessed')
+
+        processed_ncmultis_dr_df = pd.concat([processed_ncmultis_dr_df,reprocessed])
+
+        # Re-derive planet_number per DRAW, not once per kepid: sort by draw
+        # BEFORE Period_days, and group the cumcount() by ['kepid', 'draw'] so it
+        # restarts at 1 for every draw. ('period' isn't a column on this df --
+        # process_singles_df's output column is 'Period_days'; sorting by
+        # ['kepid', 'period', 'draw'] would also have raised a KeyError.)
+        processed_ncmultis_dr_df = processed_ncmultis_dr_df.sort_values(['kepid', 'draw', 'Period_days'])
+
+        processed_ncmultis_dr_df['planet_number'] = (
+            processed_ncmultis_dr_df.groupby(['kepid', 'draw']).cumcount() + 1
+            )
 
     # Every row is now already uniquely identified by (kepid, draw,
     # planet_number) -- there's nothing left to group here. (What this
@@ -708,6 +812,8 @@ def main():
             + id_number_identifier.astype(str).str.zfill(4)    # Z padded
         )
         df['kmdc_index'] = real_kmdc_index
+        from kg_find_completeness import find_completeness
+        df['completeness'] = find_completeness(df["R_pE"].to_numpy(),df["Period_days"].to_numpy(),df["M_pE"].to_numpy(),df["e"].to_numpy(),df["omega"].to_numpy())
 
         from kg_kmdc_col_headers import col_headers
         df['multiplicity'] = df.groupby('kepid')['planet_number'].transform('max')
@@ -716,7 +822,7 @@ def main():
         table = pa.Table.from_pandas(df)
         ar_csv.write_csv(table, f"thinned/nckmdc.csv")
 
-        print(f"Saved ksdc")
+        print(f"Saved nckmdc")
 
 
 if __name__ == "__main__":

@@ -15,3 +15,247 @@
 
 [Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
 
+<built-in method with_traceback of KeyError object at 0x70216c8b5120>
+2449
+<built-in method with_traceback of KeyError object at 0x70216c6dbc40>
+1779
+<built-in method with_traceback of KeyError object at 0x70216c6892a0>
+0298
+<built-in method with_traceback of KeyError object at 0x70216ca5e8c0>
+0115
+<built-in method with_traceback of KeyError object at 0x70216c6d9060>
+1916
+<built-in method with_traceback of KeyError object at 0x70216c857ac0>
+2333
+<built-in method with_traceback of KeyError object at 0x70216c921840>
+2232
+<built-in method with_traceback of KeyError object at 0x70216c83eda0>
+4103
+<built-in method with_traceback of KeyError object at 0x70216c6f0b20>
+2525
+<built-in method with_traceback of KeyError object at 0x70216c638400>
+0481
+<built-in method with_traceback of KeyError object at 0x70216c6263e0>
+3209
+<built-in method with_traceback of KeyError object at 0x70216c898e20>
+2838
+<built-in method with_traceback of KeyError object at 0x70216cbd95a0>
+2236
+<built-in method with_traceback of KeyError object at 0x70216c6f78e0>
+0153
+<built-in method with_traceback of KeyError object at 0x70216ccb26e0>
+3470
+<built-in method with_traceback of KeyError object at 0x70216cd41000>
+1279
+<built-in method with_traceback of KeyError object at 0x70216cfdc760>
+1276
+<built-in method with_traceback of KeyError object at 0x70216ca5eda0>
+0612
+<built-in method with_traceback of KeyError object at 0x70216ce84400>
+1336
+<built-in method with_traceback of KeyError object at 0x70216ccfcb80>
+1175
+<built-in method with_traceback of KeyError object at 0x70216ce956c0>
+0899
+<built-in method with_traceback of KeyError object at 0x70216cbd80a0>
+0474
+<built-in method with_traceback of KeyError object at 0x702192401fc0>
+0172
+<built-in method with_traceback of KeyError object at 0x702192421420>
+2094
+<built-in method with_traceback of KeyError object at 0x702192decb80>
+1083
+<built-in method with_traceback of KeyError object at 0x70216c854d00>
+0627
+<built-in method with_traceback of KeyError object at 0x70216c922740>
+3410
+<built-in method with_traceback of KeyError object at 0x70216c6f2020>
+2420
+<built-in method with_traceback of KeyError object at 0x70216c8b4b80>
+0775
+<built-in method with_traceback of KeyError object at 0x70216c83d0c0>
+0835
+<built-in method with_traceback of KeyError object at 0x70216c83e320>
+3370
+<built-in method with_traceback of KeyError object at 0x70216c83d6c0>
+0678
+<built-in method with_traceback of KeyError object at 0x70216c83c6a0>
+2034
+<built-in method with_traceback of KeyError object at 0x70216c6da800>
+0548
+<built-in method with_traceback of KeyError object at 0x70216cd428c0>
+0370
+<built-in method with_traceback of KeyError object at 0x70216caa0820>
+0518
+<built-in method with_traceback of KeyError object at 0x70216ccb2380>
+0295
+<built-in method with_traceback of KeyError object at 0x70216caa2740>
+0191
+<built-in method with_traceback of KeyError object at 0x70216ccfebc0>
+1358
+<built-in method with_traceback of KeyError object at 0x70216c63a620>
+1151
+<built-in method with_traceback of KeyError object at 0x70216cfdf460>
+4524
+<built-in method with_traceback of KeyError object at 0x702192421420>
+3138
+<built-in method with_traceback of KeyError object at 0x70216ca5fca0>
+1589
+<built-in method with_traceback of KeyError object at 0x70216ca5e380>
+0733
+<built-in method with_traceback of KeyError object at 0x70216cbd87c0>
+0510
+<built-in method with_traceback of KeyError object at 0x70216c8b4a60>
+2523
+<built-in method with_traceback of KeyError object at 0x70216cd42f20>
+0829
+<built-in method with_traceback of KeyError object at 0x70216c626440>
+2623
+<built-in method with_traceback of KeyError object at 0x70216cbdb0a0>
+3398
+<built-in method with_traceback of KeyError object at 0x70216c856020>
+2977
+<built-in method with_traceback of KeyError object at 0x70216c83cb20>
+2264
+<built-in method with_traceback of KeyError object at 0x70216c89b580>
+1832
+<built-in method with_traceback of KeyError object at 0x70216c89a680>
+2163
+<built-in method with_traceback of KeyError object at 0x70216c8540a0>
+2458
+<built-in method with_traceback of KeyError object at 0x70216c6f26e0>
+2173
+<built-in method with_traceback of KeyError object at 0x70216ccb0a60>
+0316
+<built-in method with_traceback of KeyError object at 0x702192ded180>
+1332
+<built-in method with_traceback of KeyError object at 0x70216c81bc40>
+0283
+<built-in method with_traceback of KeyError object at 0x70216cc1d180>
+3401
+<built-in method with_traceback of KeyError object at 0x70216ce87e20>
+1815
+<built-in method with_traceback of KeyError object at 0x70216c819ba0>
+1305
+<built-in method with_traceback of KeyError object at 0x70216caa2620>
+1891
+<built-in method with_traceback of KeyError object at 0x70216ccffb20>
+0972
+<built-in method with_traceback of KeyError object at 0x70216c6f7c40>
+2220
+<built-in method with_traceback of KeyError object at 0x70216c8b53c0>
+2859
+<built-in method with_traceback of KeyError object at 0x70216cbdae60>
+2924
+<built-in method with_traceback of KeyError object at 0x70216c80ae00>
+0952
+<built-in method with_traceback of KeyError object at 0x70216c83d6c0>
+0711
+<built-in method with_traceback of KeyError object at 0x70216c6261a0>
+0664
+<built-in method with_traceback of KeyError object at 0x70216cd41600>
+2851
+<built-in method with_traceback of KeyError object at 0x70216c826f80>
+2135
+<built-in method with_traceback of KeyError object at 0x70216c8549a0>
+0123
+<built-in method with_traceback of KeyError object at 0x70216c8985e0>
+6191
+<built-in method with_traceback of KeyError object at 0x70216cc1cfa0>
+0282
+Traceback (most recent call last):
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 869, in read_in_rows_write
+    read_in_one_koi(koi)
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 885, in read_in_one_koi
+    subsampled_rows = pd.read_csv(SUBSAMPLED_PATH+koi+'_subsamples.csv')
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
+
+
+Traceback (most recent call last):
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 869, in read_in_rows_write
+    read_in_one_koi(koi)
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 885, in read_in_one_koi
+    subsampled_rows = pd.read_csv(SUBSAMPLED_PATH+koi+'_subsamples.csv')
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
+
+
+Traceback (most recent call last):
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 873, in read_in_rows_write
+    read_in_one_koi(koi)
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 889, in read_in_one_koi
+    subsampled_rows = pd.read_csv(SUBSAMPLED_PATH+koi+'_subsamples.csv')
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
+
+
+Traceback (most recent call last):
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 873, in read_in_rows_write
+    read_in_one_koi(koi)
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 889, in read_in_one_koi
+    subsampled_rows = pd.read_csv(SUBSAMPLED_PATH+koi+'_subsamples.csv')
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/io/common.py", line 873, in get_handle
+    handle = open(
+             ^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
+
+

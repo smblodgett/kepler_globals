@@ -158,15 +158,79 @@ def main():
         singles_dr_df = singles_dr_df[~(singles_dr_df["koi_period_err1"].isna() | singles_dr_df["koi_period_err2"].isna())]
         print("len singles df after removing period error: ", len(singles_dr_df))
 
+        # A handful of KOIs have TDur_rowe (transit duration) AND its own reported
+        # uncertainty both exactly 0.0 -- not a real "instantaneous transit"
+        # measurement (nonphysical) but the same "fit never really ran" placeholder
+        # pattern already found in Rowe's table elsewhere (Source_rowe==3's solar
+        # defaults, e_b_rowe==E_b_rowe==0's impact-parameter placeholder). Unlike
+        # those, there's no trustworthy central value here to build any kind of
+        # prior around -- koi_duration==0 would otherwise feed straight into a
+        # sin(0)==0 division-by-zero in sample_eccentricity_omega's "inside"
+        # formula. Before dropping these outright, check DR25's own snapshot
+        # (q1_q17_dr25.csv, not otherwise read here -- see the big comment above
+        # rowe_df's own read for why the *planet* catalog no longer comes from
+        # DR25) for a real duration measurement for these specific KOIs. Rowe's
+        # table is a superset of DR25 that recovers marginal/non-candidate KOIs
+        # DR25 never had, so a KOI missing from DR25 entirely still gets no
+        # fallback here either and is dropped as before.
+        print("len singles df before removing zero-duration placeholders: ", len(singles_dr_df))
+        zero_duration_placeholder = (singles_dr_df["koi_duration"] == 0) & (singles_dr_df["koi_duration_err1"] == 0)
+        if zero_duration_placeholder.any():
+            dr25_planet_df = pd.read_csv("q1_q17_dr25.csv", engine="pyarrow")
+            dr25_planet_df["koi_num"] = dr25_planet_df["kepoi_name"].str[1:].astype(float)
+            dr25_duration_lookup = dr25_planet_df.drop_duplicates("koi_num").set_index("koi_num")
+
+            placeholder_kois = singles_dr_df.loc[zero_duration_placeholder, "KOI"]
+            in_dr25 = placeholder_kois.isin(dr25_duration_lookup.index)
+            dr25_matched = dr25_duration_lookup.reindex(placeholder_kois[in_dr25])
+            usable = in_dr25.copy()
+            usable[in_dr25] = dr25_matched["koi_duration"].notna().values & (dr25_matched["koi_duration"].values > 0)
+
+            recoverable_idx = placeholder_kois.index[usable]
+            if len(recoverable_idx):
+                recovered = dr25_duration_lookup.reindex(placeholder_kois.loc[recoverable_idx])
+                singles_dr_df.loc[recoverable_idx, "koi_duration"] = recovered["koi_duration"].values
+                singles_dr_df.loc[recoverable_idx, "koi_duration_err1"] = recovered["koi_duration_err1"].values
+                singles_dr_df.loc[recoverable_idx, "koi_duration_err2"] = recovered["koi_duration_err2"].values
+                print(
+                    f"recovered a real koi_duration from DR25 for {len(recoverable_idx)} "
+                    f"single(s) that Rowe's table had as a zero-duration placeholder: "
+                    f"{singles_dr_df.loc[recoverable_idx, 'kepid'].tolist()}"
+                )
+
+        # Any KOI still left with koi_duration==0 and zero reported uncertainty at
+        # this point has no usable duration anywhere (not in Rowe's table, not in
+        # DR25 either). Rather than dropping these singles entirely, keep them in
+        # the table -- process_singles_df detects this same condition and emits a
+        # NaN-filled row (real kepid, NaN everywhere else) for each of them instead
+        # of running the eccentricity/omega physics on a placeholder duration.
+        still_placeholder = (singles_dr_df["koi_duration"] == 0) & (singles_dr_df["koi_duration_err1"] == 0)
+        if still_placeholder.any():
+            print(
+                f"[info] {still_placeholder.sum()} single(s) still have "
+                f"koi_duration==0 and zero reported uncertainty, with no usable DR25 "
+                f"fallback either (no real transit-fit duration available anywhere). "
+                f"Keeping them in the table -- process_singles_df will fill these "
+                f"with NaN rather than dropping them: "
+                f"{singles_dr_df.loc[still_placeholder, 'kepid'].tolist()}"
+            )
+        print("len singles df after handling zero-duration placeholders (none dropped): ", len(singles_dr_df))
+
 
 
         # Reset the index so we can iterate through singles df
         singles_dr_df = singles_dr_df.reset_index(drop=True)
 
-        comm.bcast(stellar_df,root=0)
-        comm.bcast(singles_dr_df,root=0)
+    # comm.bcast is a collective call -- every rank must reach it, not just rank 0,
+    # and its return value has to be captured (bcast doesn't mutate its argument in
+    # place). Only rank 0 built a real stellar_df/singles_dr_df above; every other
+    # rank still holds the None it started with. Broadcasting inside the rank==0
+    # guard -- and never capturing the result even there -- meant non-root ranks
+    # entered process_singles_df with singles_dr_df=None and immediately crashed
+    # on len(None) (TypeError: object of type 'NoneType' has no len()).
+    stellar_df = comm.bcast(stellar_df, root=0)
+    singles_dr_df = comm.bcast(singles_dr_df, root=0)
 
-        
     # Give the singles df the same cols as the multis df, sample ecc and omega for the singles
     processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,0.01,10,seed=333,validation_graph=False,make_graphs=False)
 
@@ -362,6 +426,8 @@ def main():
             + id_number_identifier.astype(str).str.zfill(4)    # Z padded
         )
         df['kmdc_index'] = real_kmdc_index
+        from kg_find_completeness import find_completeness
+        df['completeness'] = find_completeness(df["R_pE"].to_numpy(),df["Period_days"].to_numpy(),df["M_pE"].to_numpy(),df["e"].to_numpy(),df["omega"].to_numpy())
 
 
         from kg_kmdc_col_headers import col_headers
