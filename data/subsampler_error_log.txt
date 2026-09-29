@@ -259,3 +259,23 @@ Traceback (most recent call last):
 FileNotFoundError: [Errno 2] No such file or directory: '/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/subsampled_rows/_subsamples.csv'
 
 
+Traceback (most recent call last):
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 875, in read_in_rows_write
+    read_in_one_koi(koi)
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 892, in read_in_one_koi
+    single_df_write(subsampled_rows,koi)
+  File "/home/byu.local/smb9564/research/hierarchal_modeling/kepler_globals/data/kg_subsampler.py", line 901, in single_df_write
+    df['completeness'] = find_completeness(df["R_pE"].to_numpy(),df["Period_days"].to_numpy(),df["M_pE"].to_numpy(),df["e"].to_numpy(),df["omega"].to_numpy())
+    ~~^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/core/frame.py", line 4316, in __setitem__
+    self._set_item(key, value)
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/core/frame.py", line 4529, in _set_item
+    value, refs = self._sanitize_column(value)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/core/frame.py", line 5273, in _sanitize_column
+    com.require_length_match(value, self.index)
+  File "/home/byu.local/smb9564/.local/lib/python3.12/site-packages/pandas/core/common.py", line 573, in require_length_match
+    raise ValueError(
+ValueError: Length of values (5) does not match length of index (10000)
+
+2449

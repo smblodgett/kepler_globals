@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import pyarrow as pa
 import pyarrow.csv as ar_csv
 from mpi4py import MPI
@@ -22,7 +21,7 @@ rank = comm.Get_rank()
 
 stellar_data_filename = "../data/berger_2020_keplerstellar.tsv"
 rowe_stellar_data_filename ="../data/rowe_table_final.csv"
-additional_stellar_data_filename = 'keplerstellar.csv'
+additional_stellar_data_filename = 'dr25_full.csv'
 
 
 def main():
@@ -50,13 +49,42 @@ def main():
 
         additional_stellar_df = pd.read_csv(additional_stellar_data_filename,engine='pyarrow')
 
-        # keplerstellar.csv stacks five different stellar-catalog deliveries under one
-        # 'kepid' column (q1_q17_dr25_stellar, q1_q17_dr24_stellar, q1_q16_stellar,
-        # q1_q17_dr25_supp_stellar, q1_q12_stellar -- confirmed against this file: 990,244
-        # rows for 200,038 distinct stars). Without filtering to one delivery, the merge
-        # below fans every star's row out 5x. The file also has no 'KIC' column at all
+        # st_quarters is a 17-char per-quarter observed/not-observed bitmask string
+        # (e.g. "01111111111111111"). pandas' engine='pyarrow' infers this column as
+        # an integer at CSV-parse time -- even when dtype={'st_quarters': str} is
+        # requested -- silently dropping the leading zero on 22% of stars
+        # (43,913/200,038 in dr25_full.csv) before the dtype override ever sees it.
+        # (Verified directly: kepid 10001013's true st_quarters is
+        # "00000000010000000", but the dtype-override read above returns "10000000".)
+        # Re-read just this column with pyarrow's own CSV reader, forcing the string
+        # type before any inference happens, and patch it in by kepid (kepid is
+        # unique in dr25_full.csv -- one row per star).
+        _st_quarters_fix = ar_csv.read_csv(
+            additional_stellar_data_filename,
+            convert_options=ar_csv.ConvertOptions(
+                include_columns=['kepid', 'st_quarters'],
+                column_types={'kepid': pa.int64(), 'st_quarters': pa.string()},
+            ),
+        ).to_pandas().set_index('kepid')['st_quarters']
+        additional_stellar_df['st_quarters'] = additional_stellar_df['kepid'].map(_st_quarters_fix)
+
+        # dr25_full.csv is a fresh, single-vintage pull straight from the NASA Exoplanet
+        # Archive (200,038 rows, one row per star; st_delivname is 100% "q1_q17_dr25_stellar"
+        # already) -- it replaces the old keplerstellar.csv extract, which stacked five
+        # different stellar-catalog deliveries under one 'kepid' column (q1_q17_dr25_stellar,
+        # q1_q17_dr24_stellar, q1_q16_stellar, q1_q17_dr25_supp_stellar, q1_q12_stellar;
+        # 990,244 rows for the same 200,038 stars) and required this filter to avoid a 5x
+        # merge fan-out. The filter is kept below as a no-op safety net in case a future
+        # archive pull ever stacks vintages again. The file also has no 'KIC' column at all
         # (only 'kepid'), so the merge needs right_on='kepid', not 'KIC'.
         additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+
+        # dr25_full.csv's archive delivery renamed one column relative to the old
+        # keplerstellar.csv extract: 'st_vet_date' -> 'st_vet_date_str' (same underlying
+        # data). kg_kmdc_col_headers.py's col_headers list and kdc_to_parquet.py's STRING
+        # type-set both still expect the old name 'st_vet_date' by exact string match, so
+        # rename it back immediately after reading.
+        additional_stellar_df = additional_stellar_df.rename(columns={"st_vet_date_str": "st_vet_date"})
 
         stellar_df = stellar_df.merge(
                                     additional_stellar_df,
@@ -237,206 +265,234 @@ def main():
     if rank == 0:
         print("finished processing!")
 
-        df = processed_singles_dr_df.merge(
-                                        stellar_df,
-                                        left_on='kepid',
-                                        right_on='KIC',
-                                        how='left'
-                                )
-
-        # process_singles_df() only returns ["R_pE","Period_days","M_pE","e","omega","kepid"] --
-        # it consumes koi_impact/koi_duration (and their error columns) internally but never
-        # carries them through. Bring them back, along with KOI/Kepler and every *_rowe
-        # column -- every row here already IS a Rowe row (singles_dr_df was built directly
-        # from rowe_df above), so there's no separate attach/period-matching step needed
-        # anymore, just carrying columns through on a plain merge on 'kepid' (singles_dr_df
-        # has exactly one row per kepid, since it was already filtered to multiplicity == 1).
-        _rowe_passthrough_cols = [c for c in rowe_df.columns if c not in ('KIC', 'Unnamed: 0', 'multiplicity')]
-        df = df.merge(
-                        singles_dr_df[['kepid', 'koi_impact', 'koi_impact_err1', 'koi_impact_err2',
-                                        'koi_duration', 'koi_duration_err1', 'koi_duration_err2']
-                                        + _rowe_passthrough_cols],
-                        on='kepid',
-                        how='left'
-                    )
-
-        print("finished merging!")
-
-        df['M_s'] = df['Mass']
-        df['R_s'] = df['Rad']
-        df['c_1'] = np.nan
-        df['c_2'] = np.nan
-        df['R_p/R_s'] = df['R_pE'] * RETORS / df['R_s']
-        df['R_pJ'] = df['R_pE'] / RJTORE
-        df['rho_p'] = df['M_pE'] * MEG / (4/3 * np.pi * (df['R_pE'] * RECM)**3)
-        df['rho_s'] = 10**(df['rho']) * RHOS / 1000
-        df['M_p/M_s'] = df['M_pE'] * MEKG / (df['M_s'] * MSKG)
-        df['M_pJ'] = df['M_pE'] * METOMJ
-        df['sqrt(e)_cos(omega)'] = np.sqrt(df['e']) * np.cos(df['omega'] * np.pi / 180)
-        df['sqrt(e)_sin(omega)'] = np.sqrt(df['e']) * np.sin(df['omega'] * np.pi / 180)
-
-        df['b_trans'] = np.random.normal(df['koi_impact'], np.max(np.abs([df['koi_impact_err1'], df['koi_impact_err2']]), axis=0), size=len(df))
-
-        df['Omega'] = 0
-        df['is_hidden_planet'] = 0
-        df['is_monotransiting'] = (df['Period_days_rowe'] < 0).astype(int)
-        df['planet'] = 0
-        df['multiplicity'] = 1
-
-        ## orbital angles
-        df['true_anomaly'] = (90 - df['omega']) % 360
-        df['eccentric_anomaly'] = ((180 / np.pi) * np.arctan2((np.sqrt(1-df['e']**2)*np.sin(df['true_anomaly']*np.pi/180)),(df['e']+np.cos(df['true_anomaly']*np.pi/180)))) % 360
-        df['mean_anomaly'] = ((180 / np.pi) * ((np.pi / 180 ) * df['eccentric_anomaly']) - (df['e']*np.sin(df['eccentric_anomaly']*np.pi/180))) % 360 # M, the mean anomaly (19 degrees for KOI 500.01)
-        df['mean_longitude'] = (df['Omega'] + df['omega'] + df['mean_anomaly']) % 360 # mean longitude of planet at epoch ::: longitude of ascending node (always 0 for our system) + argument of periapse (little omega) + mean anomaly (always close to 90 degrees)
-
-
-        ## orbital distances
-        df['a_AU'] = ((df['Period_days']*DTOS)**2 * G * ((df['M_s']*MSKG) + (df['M_pE']*MEKG))/(4*np.pi**2))**(1/3) * MTOAU # semimajor axis in AU
-        df['a_R_s'] = (df['a_AU']/RSAU) / df['R_s'] # semimajor axis in stellar radii
-        df['peri_AU'] = df['a_AU'] * (1 - df['e']) # periastron in AU
-        df['peri_R_s'] = (df['peri_AU']/RSAU) / df['R_s'] # periastron in stellar radii
-        df['apo_AU'] = df['a_AU'] * (1 + df['e']) # apoastron in AU
-        df['apo_R_s'] = (df['apo_AU']/RSAU) / df['R_s'] # apoastron in stellar radii
-        df['d_AU'] = df['a_AU']*(1 - df['e']**2) / (1 + (df['e']*np.cos(df['true_anomaly']*np.pi/180))) # star-planet separation at transit in AU
-        df['d_R_s'] = (df['d_AU']/RSAU) / df['R_s'] # star-planet separation at transit in stellar radii
-
-        ## impact, probability, and duration parameters
-        # Inverting kg_subsampler.py's forward relation
-        # (b_trans = a_R_s * cos(i) * (1-e**2)/(1+e*sin(omega))) for cos(i), using the full
-        # eccentricity/omega-corrected formula rather than the circular-orbit shortcut
-        # (b_trans/a_R_s) -- this used to also carry a spurious extra R_s factor, fixed here.
-        # b_trans is an independent normal draw (line above) and a_R_s is derived separately
-        # from Period/M_s/M_pE/R_s, so cos(i) isn't guaranteed to land in [-1, 1] -- an unlucky
-        # sample can push it just outside, which makes arccos silently return NaN (with a
-        # RuntimeWarning) instead of raising. Clip into the valid domain, but log how many rows
-        # needed it and by how much: a few hits at ~1e-10 are just floating-point noise, while
-        # many rows or a large excess means b_trans and a_R_s are systematically inconsistent
-        # for those planets and is worth investigating separately.
-        cos_i = (df['b_trans'] * (1 + df['e'] * np.sin(df['omega'] * np.pi / 180))
-                / (df['a_R_s'] * (1 - df['e']**2)))
-        n_invalid = int((cos_i.abs() > 1).sum())
-        if n_invalid:
-            max_excess = float((cos_i.abs() - 1).clip(lower=0).max())
-            print(f"[warn] {n_invalid}/{len(df)} rows have |cos(i)| > 1 "
-                f"(max excess {max_excess:.3g}); clipping to the arccos domain [-1, 1]")
-        df['i'] = np.arccos(cos_i.clip(-1, 1)) * 180 / np.pi
-
-        df['b_occ'] = (df['a_R_s'] * np.cos(df['i']*np.pi/180)) * ((1-df['e']**2)/(1-df['e']*np.sin(df['omega']*np.pi/180))) # occultation impact parameter
-        df['p_trans'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1+df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # transit probability
-        df['p_occ'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1-df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # occultation probability
-
-        # df['T_total_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt((1+ df['R_p/R_s'])**2 - df['b_trans']**2)/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # total duration of transit (t4 - t1)
-        df['T_total_hr'] = np.random.normal(df['koi_duration'] * 24, np.max(np.abs([df['koi_duration_err1'], df['koi_duration_err2']]), axis=0), size=len(df)) # total duration of transit (t4 - t1) from DR25
-
-        df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt(np.maximum(0,(1-df['R_p/R_s'])**2 - df['b_trans']**2))/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
-        df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
-
-        from kg_subsampler import occurrence_rate_params, is_in_hsu
-
-        df = occurrence_rate_params(df)
-        df = is_in_hsu(df)  # sets 'hsu_flag': whether KIC is in the Hsu et al. stellar catalog
-
-        df["P/Pin"] = -1
-        df["P/Pout"] = -1
-        df["Tdur/Tdurin"] = -1
-        df["Tdur/Tdurout"] = -1
-        df["R/Rin"] = -1
-        df["R/Rout"] = -1
-        df["M/Min"] = -1
-        df["M/Mout"] = -1
-        df["rho/rhoin"] = -1
-        df["rho/rhoout"] = -1
-        df["i-iin"] = -1
-        df["iout-i"] = -1
-        df["xiin"] = -1
-        df["xiout"] = -1
-        df["distin_hillrad"] = -1
-        df["distout_hillrad"] = -1
-        df["distin_hillrad_e"] = -1
-        df["distout_hillrad_e"] = -1
-        df["e/ein"] = -1
-        df["eout/e"] = -1
-        df["omega-omegain"] = -1
-        df["omegaout-omega"] = -1
-        df["dilute"] = -1
-        df["chisq"] = -1
-        df["Chain#"] = np.nan
-        df["chisq_rank"] = np.nan
-        df["step_number"] = np.nan
-        df["phodymm_index"] = np.nan
-        df["phodymm_converged"] = np.nan
-
-        ## add other cdpp columns and stuff from DR25 
-        ## run a completeness rate calculation on all planets, add that column to all stuff
-
-
-
-        df["omega_rad"] = df["omega"] * np.pi / 180
-        df['falsetrueanomaly'] = ((np.pi/2) - df['omega_rad']) % (2*np.pi)
-
-        # find the true anomaly
-        df['f'] = ((np.pi/2)
-                    - df['omega_rad']
-                    - (df['e'] * np.cos(df['omega_rad']) * np.cos(df['i']*np.pi/180)**2 / (1+df['e']*np.sin(df['omega_rad'])))) % (2*np.pi)
-
-        # find eccentric anomaly
-        df['eccentric_anomaly_hamann'] = (np.arctan2(np.sqrt(1-df['e']**2)*np.sin(df['f']),df['e']+np.cos(df['f']))) % (2*np.pi)
-        df['false_eccentric_anomaly'] = (np.arctan2(np.sqrt(1-df['e']**2)*np.sin(df['falsetrueanomaly']),df['e']+np.cos(df['falsetrueanomaly']))) % (2*np.pi)
-
-        # find mean anomaly
-        df['mean_anomaly_hamann'] = (df['eccentric_anomaly_hamann'] - (df['e']*np.sin(df['eccentric_anomaly_hamann']))) % (2*np.pi)
-        df['false_mean_anomaly'] = (df['false_eccentric_anomaly'] - (df['e']*np.sin(df['false_eccentric_anomaly']))) % (2*np.pi)
-
-        df['mean_angular_motion'] = 2*np.pi/ df['Period_days']
-        df["mean_anomaly_hamann_800"] = np.nan
-        df["mean_anomaly_hamann_850"] = np.nan
-        df["corrected_mean_anomaly_800"] = np.nan
-        df["eccentric_anomaly_hamann_800"] = np.nan
-        df["eccentric_anomaly_hamann_850"] = np.nan
-        df["true_anomaly_hamann_800"] = np.nan
-        df["true_anomaly_hamann_850"] = np.nan
-        df["corrected_eccentric_anomaly_800"] = np.nan
-        df["corrected_true_anomaly_800"] = np.nan
-
-        df["interior_mass_pJ"] = 0
-        df["mu"] = (
-                GAU * (
-                    df['M_s']
-                + df['M_pJ']    / MSTOMJ
-                + df['interior_mass_pJ'] / MSTOMJ
-                )
-            )
-        df['q'] = df['a_AU'] * (1 - df['e'])
-        df["Tp"] = np.nan
-        df["x"] = np.nan
-        df["y"] = np.nan
-        df["z"] = np.nan
-        df["vx"] = np.nan
-        df["vy"] = np.nan
-        df["vz"] = np.nan
-        df["T_0"] = np.nan
-
-
-
-        id_number_identifier = df["M_pE"].rank(method='min', ascending=True) 
-        koi_parts = df["KOI"].astype(str).str.split(".", n=1, expand=True).reindex(columns=[0, 1])
-        real_kmdc_index = (
-            koi_parts[0].str.zfill(4)                          # XXXX padded
-            + koi_parts[1]                                     # YY
-            + id_number_identifier.astype(str).str.zfill(4)    # Z padded
-        )
-        df['kmdc_index'] = real_kmdc_index
-        from kg_find_completeness import find_completeness
-        df['completeness'] = find_completeness(df["R_pE"].to_numpy(),df["Period_days"].to_numpy(),df["M_pE"].to_numpy(),df["e"].to_numpy(),df["omega"].to_numpy())
-
-
+        # --- streamed, per-planet chunked write (replaces one giant in-memory merge) ---
+        # The old version merged the ENTIRE processed_singles_dr_df (one row per posterior
+        # draw -- 7,366 single-planet KOIs x 1,000 draws = 7,366,000 rows) against the full
+        # stellar_df (~100+ columns) and Rowe passthrough columns (~80 columns) in one shot,
+        # producing a single in-memory DataFrame with millions of rows and (at points) 300+
+        # columns before ever narrowing down to col_headers. That table is genuinely tens of
+        # GB and is what was reliably OOM-killing this job, independent of MPI rank count --
+        # it's a rank-0-only, one-time, un-partitioned step. Every per-row computation below
+        # (all of it copied verbatim from the original single-shot version) only ever depends
+        # on that row's own kepid's data, never on any other planet's rows, so it's safe to
+        # run one planet's 1,000-draw chunk at a time instead: same merges, same formulas,
+        # same output columns and values, just built and written 1,000 rows at a time rather
+        # than all 7,366,000 at once. See kdc_to_parquet.py's final_type() for the canonical
+        # per-column Arrow type used here, so KSDC.csv's written types stay consistent with
+        # the rest of the pipeline (e.g. st_quarters stays a string, not an inferred int).
         from kg_kmdc_col_headers import col_headers
-        df = df[col_headers]
+        from kdc_to_parquet import final_type
+        _ksdc_schema = pa.schema([(c, final_type(c)) for c in col_headers])
 
-        table = pa.Table.from_pandas(df)
-        ar_csv.write_csv(table, f"thinned/KSDC.csv")
+        n_planets_written = 0
+        n_rows_written = 0
+        _ksdc_writer = ar_csv.CSVWriter(f"thinned/KSDC.csv", _ksdc_schema)
+        try:
+            for kepid, chunk in processed_singles_dr_df.groupby('kepid', sort=False):
+                df = chunk.merge(
+                                                stellar_df,
+                                                left_on='kepid',
+                                                right_on='KIC',
+                                                how='left'
+                                        )
 
-        print(f"Saved ksdc")
+                # process_singles_df() only returns ["R_pE","Period_days","M_pE","e","omega","kepid"] --
+                # it consumes koi_impact/koi_duration (and their error columns) internally but never
+                # carries them through. Bring them back, along with KOI/Kepler and every *_rowe
+                # column -- every row here already IS a Rowe row (singles_dr_df was built directly
+                # from rowe_df above), so there's no separate attach/period-matching step needed
+                # anymore, just carrying columns through on a plain merge on 'kepid' (singles_dr_df
+                # has exactly one row per kepid, since it was already filtered to multiplicity == 1).
+                _rowe_passthrough_cols = [c for c in rowe_df.columns if c not in ('KIC', 'Unnamed: 0', 'multiplicity')]
+                df = df.merge(
+                                singles_dr_df[['kepid', 'koi_impact', 'koi_impact_err1', 'koi_impact_err2',
+                                                'koi_duration', 'koi_duration_err1', 'koi_duration_err2']
+                                                + _rowe_passthrough_cols],
+                                on='kepid',
+                                how='left'
+                            )
+
+                print("finished merging!")
+
+                df['M_s'] = df['Mass']
+                df['R_s'] = df['Rad']
+                df['c_1'] = np.nan
+                df['c_2'] = np.nan
+                df['R_p/R_s'] = df['R_pE'] * RETORS / df['R_s']
+                df['R_pJ'] = df['R_pE'] / RJTORE
+                df['rho_p'] = df['M_pE'] * MEG / (4/3 * np.pi * (df['R_pE'] * RECM)**3)
+                df['rho_s'] = 10**(df['rho']) * RHOS / 1000
+                df['M_p/M_s'] = df['M_pE'] * MEKG / (df['M_s'] * MSKG)
+                df['M_pJ'] = df['M_pE'] * METOMJ
+                df['sqrt(e)_cos(omega)'] = np.sqrt(df['e']) * np.cos(df['omega'] * np.pi / 180)
+                df['sqrt(e)_sin(omega)'] = np.sqrt(df['e']) * np.sin(df['omega'] * np.pi / 180)
+
+                df['b_trans'] = np.random.normal(df['koi_impact'], np.max(np.abs([df['koi_impact_err1'], df['koi_impact_err2']]), axis=0), size=len(df))
+
+                df['Omega'] = 0
+                df['is_hidden_planet'] = 0
+                df['is_monotransiting'] = (df['Period_days_rowe'] < 0).astype(int)
+                df['planet'] = 0
+                df['multiplicity'] = 1
+
+                ## orbital angles
+                df['true_anomaly'] = (90 - df['omega']) % 360
+                df['eccentric_anomaly'] = ((180 / np.pi) * np.arctan2((np.sqrt(1-df['e']**2)*np.sin(df['true_anomaly']*np.pi/180)),(df['e']+np.cos(df['true_anomaly']*np.pi/180)))) % 360
+                df['mean_anomaly'] = ((180 / np.pi) * ((np.pi / 180 ) * df['eccentric_anomaly']) - (df['e']*np.sin(df['eccentric_anomaly']*np.pi/180))) % 360 # M, the mean anomaly (19 degrees for KOI 500.01)
+                df['mean_longitude'] = (df['Omega'] + df['omega'] + df['mean_anomaly']) % 360 # mean longitude of planet at epoch ::: longitude of ascending node (always 0 for our system) + argument of periapse (little omega) + mean anomaly (always close to 90 degrees)
+
+
+                ## orbital distances
+                df['a_AU'] = ((df['Period_days']*DTOS)**2 * G * ((df['M_s']*MSKG) + (df['M_pE']*MEKG))/(4*np.pi**2))**(1/3) * MTOAU # semimajor axis in AU
+                df['a_R_s'] = (df['a_AU']/RSAU) / df['R_s'] # semimajor axis in stellar radii
+                df['peri_AU'] = df['a_AU'] * (1 - df['e']) # periastron in AU
+                df['peri_R_s'] = (df['peri_AU']/RSAU) / df['R_s'] # periastron in stellar radii
+                df['apo_AU'] = df['a_AU'] * (1 + df['e']) # apoastron in AU
+                df['apo_R_s'] = (df['apo_AU']/RSAU) / df['R_s'] # apoastron in stellar radii
+                df['d_AU'] = df['a_AU']*(1 - df['e']**2) / (1 + (df['e']*np.cos(df['true_anomaly']*np.pi/180))) # star-planet separation at transit in AU
+                df['d_R_s'] = (df['d_AU']/RSAU) / df['R_s'] # star-planet separation at transit in stellar radii
+
+                ## impact, probability, and duration parameters
+                # Inverting kg_subsampler.py's forward relation
+                # (b_trans = a_R_s * cos(i) * (1-e**2)/(1+e*sin(omega))) for cos(i), using the full
+                # eccentricity/omega-corrected formula rather than the circular-orbit shortcut
+                # (b_trans/a_R_s) -- this used to also carry a spurious extra R_s factor, fixed here.
+                # b_trans is an independent normal draw (line above) and a_R_s is derived separately
+                # from Period/M_s/M_pE/R_s, so cos(i) isn't guaranteed to land in [-1, 1] -- an unlucky
+                # sample can push it just outside, which makes arccos silently return NaN (with a
+                # RuntimeWarning) instead of raising. Clip into the valid domain, but log how many rows
+                # needed it and by how much: a few hits at ~1e-10 are just floating-point noise, while
+                # many rows or a large excess means b_trans and a_R_s are systematically inconsistent
+                # for those planets and is worth investigating separately.
+                cos_i = (df['b_trans'] * (1 + df['e'] * np.sin(df['omega'] * np.pi / 180))
+                        / (df['a_R_s'] * (1 - df['e']**2)))
+                n_invalid = int((cos_i.abs() > 1).sum())
+                if n_invalid:
+                    max_excess = float((cos_i.abs() - 1).clip(lower=0).max())
+                    print(f"[warn] {n_invalid}/{len(df)} rows have |cos(i)| > 1 "
+                        f"(max excess {max_excess:.3g}); clipping to the arccos domain [-1, 1]")
+                df['i'] = np.arccos(cos_i.clip(-1, 1)) * 180 / np.pi
+
+                df['b_occ'] = (df['a_R_s'] * np.cos(df['i']*np.pi/180)) * ((1-df['e']**2)/(1-df['e']*np.sin(df['omega']*np.pi/180))) # occultation impact parameter
+                df['p_trans'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1+df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # transit probability
+                df['p_occ'] = ((df['R_s'] * RSAU + df['R_pJ']*RJAU) / df['a_AU']) * ((1-df['e']*np.sin(df['omega']*np.pi/180)) / (1-df['e']**2)) # occultation probability
+
+                # df['T_total_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt((1+ df['R_p/R_s'])**2 - df['b_trans']**2)/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # total duration of transit (t4 - t1)
+                df['T_total_hr'] = np.random.normal(df['koi_duration'] * 24, np.max(np.abs([df['koi_duration_err1'], df['koi_duration_err2']]), axis=0), size=len(df)) # total duration of transit (t4 - t1) from DR25
+
+                df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt(np.maximum(0,(1-df['R_p/R_s'])**2 - df['b_trans']**2))/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
+                df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
+
+                from kg_subsampler import occurrence_rate_params, is_in_hsu
+
+                df = occurrence_rate_params(df)
+                df = is_in_hsu(df)  # sets 'hsu_flag': whether KIC is in the Hsu et al. stellar catalog
+
+                df["P/Pin"] = -1
+                df["P/Pout"] = -1
+                df["Tdur/Tdurin"] = -1
+                df["Tdur/Tdurout"] = -1
+                df["R/Rin"] = -1
+                df["R/Rout"] = -1
+                df["M/Min"] = -1
+                df["M/Mout"] = -1
+                df["rho/rhoin"] = -1
+                df["rho/rhoout"] = -1
+                df["i-iin"] = -1
+                df["iout-i"] = -1
+                df["xiin"] = -1
+                df["xiout"] = -1
+                df["distin_hillrad"] = -1
+                df["distout_hillrad"] = -1
+                df["distin_hillrad_e"] = -1
+                df["distout_hillrad_e"] = -1
+                df["e/ein"] = -1
+                df["eout/e"] = -1
+                df["omega-omegain"] = -1
+                df["omegaout-omega"] = -1
+                df["dilute"] = -1
+                df["chisq"] = -1
+                df["Chain#"] = np.nan
+                df["chisq_rank"] = np.nan
+                df["step_number"] = np.nan
+                df["phodymm_index"] = np.nan
+                df["phodymm_converged"] = np.nan
+
+                ## add other cdpp columns and stuff from DR25 
+                ## run a completeness rate calculation on all planets, add that column to all stuff
+
+
+
+                df["omega_rad"] = df["omega"] * np.pi / 180
+                df['falsetrueanomaly'] = ((np.pi/2) - df['omega_rad']) % (2*np.pi)
+
+                # find the true anomaly
+                df['f'] = ((np.pi/2)
+                            - df['omega_rad']
+                            - (df['e'] * np.cos(df['omega_rad']) * np.cos(df['i']*np.pi/180)**2 / (1+df['e']*np.sin(df['omega_rad'])))) % (2*np.pi)
+
+                # find eccentric anomaly
+                df['eccentric_anomaly_hamann'] = (np.arctan2(np.sqrt(1-df['e']**2)*np.sin(df['f']),df['e']+np.cos(df['f']))) % (2*np.pi)
+                df['false_eccentric_anomaly'] = (np.arctan2(np.sqrt(1-df['e']**2)*np.sin(df['falsetrueanomaly']),df['e']+np.cos(df['falsetrueanomaly']))) % (2*np.pi)
+
+                # find mean anomaly
+                df['mean_anomaly_hamann'] = (df['eccentric_anomaly_hamann'] - (df['e']*np.sin(df['eccentric_anomaly_hamann']))) % (2*np.pi)
+                df['false_mean_anomaly'] = (df['false_eccentric_anomaly'] - (df['e']*np.sin(df['false_eccentric_anomaly']))) % (2*np.pi)
+
+                df['mean_angular_motion'] = 2*np.pi/ df['Period_days']
+                df["mean_anomaly_hamann_800"] = np.nan
+                df["mean_anomaly_hamann_850"] = np.nan
+                df["corrected_mean_anomaly_800"] = np.nan
+                df["eccentric_anomaly_hamann_800"] = np.nan
+                df["eccentric_anomaly_hamann_850"] = np.nan
+                df["true_anomaly_hamann_800"] = np.nan
+                df["true_anomaly_hamann_850"] = np.nan
+                df["corrected_eccentric_anomaly_800"] = np.nan
+                df["corrected_true_anomaly_800"] = np.nan
+
+                df["interior_mass_pJ"] = 0
+                df["mu"] = (
+                        GAU * (
+                            df['M_s']
+                        + df['M_pJ']    / MSTOMJ
+                        + df['interior_mass_pJ'] / MSTOMJ
+                        )
+                    )
+                df['q'] = df['a_AU'] * (1 - df['e'])
+                df["Tp"] = np.nan
+                df["x"] = np.nan
+                df["y"] = np.nan
+                df["z"] = np.nan
+                df["vx"] = np.nan
+                df["vy"] = np.nan
+                df["vz"] = np.nan
+                df["T_0"] = np.nan
+
+
+
+                id_number_identifier = df.groupby('kepid')['M_pE'].rank(method='min', ascending=True) - 1
+                koi_parts = df["KOI"].astype(str).str.split(".", n=1, expand=True).reindex(columns=[0, 1])
+                real_kmdc_index = (
+                    koi_parts[0].str.zfill(4)                          # XXXX padded
+                    + koi_parts[1]                                     # YY
+                    + id_number_identifier.astype(str).str.zfill(3)    # Z padded
+                )
+                df['kmdc_index'] = real_kmdc_index
+                from kg_find_completeness import find_completeness
+                df['completeness'] = find_completeness(df["R_pE"].to_numpy(),df["Period_days"].to_numpy(),df["M_pE"].to_numpy(),df["e"].to_numpy(),df["omega"].to_numpy())
+
+
+                from kg_kmdc_col_headers import col_headers
+                df = df[col_headers]
+
+                chunk_table = pa.Table.from_pandas(df, preserve_index=False).cast(_ksdc_schema)
+                _ksdc_writer.write_table(chunk_table)
+                n_planets_written += 1
+                n_rows_written += len(df)
+        finally:
+            _ksdc_writer.close()
+
+        print(f"Saved ksdc ({n_rows_written} rows across {n_planets_written} planets, streamed)")
 
 if __name__ == "__main__":
     main()

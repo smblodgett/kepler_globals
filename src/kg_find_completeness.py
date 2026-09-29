@@ -11,6 +11,6 @@ with open('../data/voxel_grid.json', "r") as f:
 
 
 def find_completeness(r,p,m,e,o):
-    completeness = voxel_grid.interpolate_completeness(np.array([r,p,m,e,o]))
+    completeness = voxel_grid.interpolate_completeness(np.array([r,p,m,e,o]).T)
     return completeness
     

@@ -24,7 +24,7 @@ rank = comm.Get_rank()
 
 stellar_data_filename = "../data/berger_2020_keplerstellar.tsv"
 rowe_stellar_data_filename ="../data/rowe_table_final.csv"
-additional_stellar_data_filename = "keplerstellar.csv"
+additional_stellar_data_filename = 'dr25_full.csv'
 
 dr_25_data_filename = "../data/q1_q17_dr25.csv"
 
@@ -180,13 +180,40 @@ def main():
 
         additional_stellar_df = pd.read_csv(additional_stellar_data_filename,engine='pyarrow')
 
-        # keplerstellar.csv stacks five different stellar-catalog deliveries under one
-        # 'kepid' column -- filter to one delivery (q1_q17_dr25_stellar) or the merge
-        # below fans every star's row out 5x. The file also has no 'KIC' column at all
-        # (only 'kepid'), so the merge needs right_on='kepid', not 'KIC'. (This used to
-        # be right_on='KIC', which doesn't exist on additional_stellar_df -- would have
-        # raised KeyError('KIC') the moment this function actually ran.)
+        # st_quarters is a 17-char per-quarter observed/not-observed bitmask string
+        # (e.g. "01111111111111111"). pandas' engine='pyarrow' infers this column as
+        # an integer at CSV-parse time -- even when dtype={'st_quarters': str} is
+        # requested -- silently dropping the leading zero on 22% of stars
+        # (43,913/200,038 in dr25_full.csv) before the dtype override ever sees it.
+        # (Verified directly: kepid 10001013's true st_quarters is
+        # "00000000010000000", but the dtype-override read above returns "10000000".)
+        # Re-read just this column with pyarrow's own CSV reader, forcing the string
+        # type before any inference happens, and patch it in by kepid (kepid is
+        # unique in dr25_full.csv -- one row per star).
+        _st_quarters_fix = ar_csv.read_csv(
+            additional_stellar_data_filename,
+            convert_options=ar_csv.ConvertOptions(
+                include_columns=['kepid', 'st_quarters'],
+                column_types={'kepid': pa.int64(), 'st_quarters': pa.string()},
+            ),
+        ).to_pandas().set_index('kepid')['st_quarters']
+        additional_stellar_df['st_quarters'] = additional_stellar_df['kepid'].map(_st_quarters_fix)
+
+        # dr25_full.csv is a fresh, single-vintage pull straight from the NASA Exoplanet
+        # Archive (200,038 rows, one row per star; st_delivname is 100% "q1_q17_dr25_stellar"
+        # already) -- it replaces the old keplerstellar.csv extract, which stacked five
+        # different stellar-catalog deliveries under one 'kepid' column and required this
+        # filter to avoid a 5x merge fan-out. The filter is kept below as a no-op safety net
+        # in case a future archive pull ever stacks vintages again. The file also has no
+        # 'KIC' column at all (only 'kepid'), so the merge needs right_on='kepid', not 'KIC'.
         additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
+
+        # dr25_full.csv's archive delivery renamed one column relative to the old
+        # keplerstellar.csv extract: 'st_vet_date' -> 'st_vet_date_str' (same underlying
+        # data). kg_kmdc_col_headers.py's col_headers list and kdc_to_parquet.py's STRING
+        # type-set both still expect the old name 'st_vet_date' by exact string match, so
+        # rename it back immediately after reading.
+        additional_stellar_df = additional_stellar_df.rename(columns={"st_vet_date_str": "st_vet_date"})
 
         stellar_df = stellar_df.merge(
                                     additional_stellar_df,
@@ -733,7 +760,7 @@ def main():
         df["chisq_rank"] = np.nan
         df["step_number"] = np.nan
         df["phodymm_index"] = np.nan
-        df["phodymm_converged"] = -1
+        df["phodymm_converged"] = 0
 
 
 
@@ -804,12 +831,12 @@ def main():
         # role (a per-row-within-planet id), and 1000 still zfills to exactly 4
         # digits, unlike the previous df-wide M_pE rank, which could run past
         # 4 digits and overflow the fixed-width id.
-        id_number_identifier = df["draw"] + 1
+        id_number_identifier = df.groupby(['kepid', 'planet_number'])['M_pE'].rank(method='min', ascending=True) - 1        
         koi_parts = df["KOI"].astype(str).str.split(".", n=1, expand=True).reindex(columns=[0, 1])
         real_kmdc_index = (
             koi_parts[0].str.zfill(4)                          # XXXX padded
             + koi_parts[1]                                     # YY
-            + id_number_identifier.astype(str).str.zfill(4)    # Z padded
+            + id_number_identifier.astype(str).str.zfill(3)    # Z padded
         )
         df['kmdc_index'] = real_kmdc_index
         from kg_find_completeness import find_completeness
@@ -820,7 +847,7 @@ def main():
         df = df[col_headers]
 
         table = pa.Table.from_pandas(df)
-        ar_csv.write_csv(table, f"thinned/nckmdc.csv")
+        ar_csv.write_csv(table, f"thinned/NCKMDC.csv")
 
         print(f"Saved nckmdc")
 

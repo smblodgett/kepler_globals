@@ -32,6 +32,8 @@ Created on: 2024-11-11
 
 import pandas as pd
 import numpy as np
+import pyarrow as pa
+import pyarrow.csv as ar_csv
 from math import fmod
 from sorcha.ephemeris.orbit_conversion_utilities import universal_cartesian
 import os
@@ -115,7 +117,7 @@ def process_dataframe(df,koi):
         constant_columns = df.iloc[:, -7:]
         chunk_df = pd.concat([chunk_columns, constant_columns], axis=1)
         chunk_df = column_rename(chunk_df)
-        chunk_df['chisq_rank'] = chunk_df['chisq'].rank(method='min', ascending=True) # chisq ranking
+        chunk_df['chisq_rank'] = chunk_df['chisq'].rank(method='min', ascending=True) - 1 # chisq ranking zero indexed
         chunk_df['step_number'] = step_number_col # PhoDyMM step number (per-chain, resets/repeats across chains)
         chunk_df['phodymm_index'] = phodymm_index_col # PhoDyMM's raw file row position (global, not per-chain)
         chunk_df = calculate_params(chunk_df) # Add all calculated parameters.
@@ -155,7 +157,7 @@ def process_dataframe(df,koi):
         real_kmdc_index = (
             koi_parts[0].str.zfill(4)                          # XXXX padded
             + koi_parts[1]                                     # YY
-            + id_number_identifier.astype(str).str.zfill(4)    # Z padded
+            + id_number_identifier.astype(str).str.zfill(3)    # Z padded
         )
 
         # A hidden planet (no Rowe-table match) has no real KOI, so "KOI" is
@@ -852,8 +854,40 @@ def make_df_from_subsample(subsampled_rows,koi):
 
 
 def add_additional_stellar_info(df):
-    additional_stellar_info_path = 'keplerstellar.csv'
+    additional_stellar_info_path = 'dr25_full.csv'
     additional_stellar_df = pd.read_csv(additional_stellar_info_path,engine='pyarrow')
+
+    # st_quarters is a 17-char per-quarter observed/not-observed bitmask string
+    # (e.g. "01111111111111111"). pandas' engine='pyarrow' infers this column as
+    # an integer at CSV-parse time -- even when dtype={'st_quarters': str} is
+    # requested -- silently dropping the leading zero on 22% of stars
+    # (43,913/200,038 in dr25_full.csv) before the dtype override ever sees it.
+    # (Verified directly: kepid 10001013's true st_quarters is
+    # "00000000010000000", but the dtype-override read above returns "10000000".)
+    # Re-read just this column with pyarrow's own CSV reader, forcing the string
+    # type before any inference happens, and patch it in by kepid (kepid is
+    # unique in dr25_full.csv -- one row per star).
+    _st_quarters_fix = ar_csv.read_csv(
+        additional_stellar_info_path,
+        convert_options=ar_csv.ConvertOptions(
+            include_columns=['kepid', 'st_quarters'],
+            column_types={'kepid': pa.int64(), 'st_quarters': pa.string()},
+        ),
+    ).to_pandas().set_index('kepid')['st_quarters']
+    additional_stellar_df['st_quarters'] = additional_stellar_df['kepid'].map(_st_quarters_fix)
+    # dr25_full.csv is a single-vintage pull (st_delivname is 100% "q1_q17_dr25_stellar",
+    # zero duplicate kepids). Filtered here anyway as a no-op safety net, matching the
+    # convention already used in create_ksdc.py/create_nckmdc.py. This also fixes a latent
+    # bug: this function used to merge straight onto the old keplerstellar.csv WITHOUT this
+    # filter (unlike the other two call sites) -- that file stacked five delivery vintages
+    # per KIC (990,244 rows for 200,038 stars), so every row of df would have been fanned
+    # out up to 5x by this merge. dr25_full.csv has none of that, so the bug can't recur
+    # even without the filter, but it's kept here for defense in depth.
+    additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"] == "q1_q17_dr25_stellar"]
+    # dr25_full.csv's archive delivery renamed one column relative to the old
+    # keplerstellar.csv extract: 'st_vet_date' -> 'st_vet_date_str' (same underlying data).
+    # kg_kmdc_col_headers.py's col_headers list expects the old name by exact string match.
+    additional_stellar_df = additional_stellar_df.rename(columns={"st_vet_date_str": "st_vet_date"})
     df = df.merge(
                 additional_stellar_df,
                 left_on='KIC',
