@@ -622,7 +622,8 @@ def main():
         df['T_full_hr'] = 24 * (df['Period_days'] / np.pi) * np.arcsin((df['R_s']*RSAU/df['a_AU'])*(np.sqrt(np.maximum(0,(1-df['R_p/R_s'])**2 - df['b_trans']**2))/np.sin(df['i']*np.pi/180))) * ((np.sqrt(1-df['e']**2))/(1+df['e']*np.sin(df['omega']*np.pi/180))) # full duration of transit (t3 - t2)
         df['K_RV'] = (2*np.pi*G/(df['Period_days']*24*60*60))**(1/3) * ((MSKG*df['M_pJ']*np.sin(df['i']*np.pi/180)/MSTOMJ)/((df['M_s']*MSKG)+(MSKG*df['M_pJ']/MSTOMJ))**(2/3)) * (1/(1-df['e']**2)**(1/2))  # amplitude of radial velocity variations    ## make sure units are right here. should be m/s
 
-        from kg_subsampler import occurrence_rate_params, is_in_hsu
+        from kg_subsampler import occurrence_rate_params, is_in_hsu, eccentric_anomaly_from_mean, true_anomaly_from_eccentric
+        from sorcha.ephemeris.orbit_conversion_utilities import universal_cartesian
 
         df = occurrence_rate_params(df)
         df = is_in_hsu(df)  # sets 'hsu_flag': whether KIC is in the Hsu et al. stellar catalog
@@ -781,15 +782,30 @@ def main():
         df['false_mean_anomaly'] = (df['false_eccentric_anomaly'] - (df['e']*np.sin(df['false_eccentric_anomaly']))) % (2*np.pi)
 
         df['mean_angular_motion'] = 2*np.pi/ df['Period_days']
-        df["mean_anomaly_hamann_800"] = np.nan
-        df["mean_anomaly_hamann_850"] = np.nan
-        df["corrected_mean_anomaly_800"] = np.nan
-        df["eccentric_anomaly_hamann_800"] = np.nan
-        df["eccentric_anomaly_hamann_850"] = np.nan
-        df["true_anomaly_hamann_800"] = np.nan
-        df["true_anomaly_hamann_850"] = np.nan
-        df["corrected_eccentric_anomaly_800"] = np.nan
-        df["corrected_true_anomaly_800"] = np.nan
+
+        # T_0: real transit epoch (BKJD days). Non-converged multis have no PhoDyMM
+        # fit of their own to supply one, but every row here originates directly from
+        # rowe_df (ncmultis_dr_df is filtered straight from it, and this file has no
+        # hidden-planet concept -- is_hidden_planet is always 0 here), so Jason Rowe's
+        # own fitted epoch (T0_rowe) and its uncertainty (e_T0_rowe) are available for
+        # every row (verified against rowe_table_final.csv: 0 nulls in either column,
+        # across all 2327 multis). Sampled per draw from N(T0_rowe, e_T0_rowe) -- the
+        # same per-draw-Gaussian pattern create_ksdc.py/kg_subsampler.py use for other
+        # observationally-uncertain quantities -- so epoch uncertainty propagates into
+        # Tp/x/y/z/vx/vy/vz the same way, instead of leaving this whole downstream
+        # chain NaN.
+        df['T_0'] = np.random.normal(df['T0_rowe'], df['e_T0_rowe'], size=len(df))
+
+        df["mean_anomaly_hamann_800"] = (df['mean_anomaly_hamann'] + df['mean_angular_motion'] * (800 - df['T_0'])) % (2*np.pi)
+        df["mean_anomaly_hamann_850"] = (df['mean_anomaly_hamann'] + df['mean_angular_motion'] * (850 - df['T_0'])) % (2*np.pi)
+        df["corrected_mean_anomaly_800"] = (df['false_mean_anomaly'] + ((800 - df['T_0']) / df['Period_days']) * 2*np.pi) % (2*np.pi)
+
+        df["eccentric_anomaly_hamann_800"] = np.vectorize(eccentric_anomaly_from_mean)(df['e'].values, df['mean_anomaly_hamann_800'].values)
+        df["eccentric_anomaly_hamann_850"] = np.vectorize(eccentric_anomaly_from_mean)(df['e'].values, df['mean_anomaly_hamann_850'].values)
+        df["true_anomaly_hamann_800"] = np.vectorize(true_anomaly_from_eccentric)(df['e'].values, df['eccentric_anomaly_hamann_800'].values)
+        df["true_anomaly_hamann_850"] = np.vectorize(true_anomaly_from_eccentric)(df['e'].values, df['eccentric_anomaly_hamann_850'].values)
+        df["corrected_eccentric_anomaly_800"] = np.vectorize(eccentric_anomaly_from_mean)(df['e'].values, df['corrected_mean_anomaly_800'].values)
+        df["corrected_true_anomaly_800"] = np.vectorize(true_anomaly_from_eccentric)(df['e'].values, df['corrected_eccentric_anomaly_800'].values)
 
         df["interior_mass_pJ"] = 0
 
@@ -813,14 +829,29 @@ def main():
                 )
             )
         df['q'] = df['a_AU'] * (1 - df['e'])
-        df["Tp"] = np.nan
-        df["x"] = np.nan
-        df["y"] = np.nan
-        df["z"] = np.nan
-        df["vx"] = np.nan
-        df["vy"] = np.nan
-        df["vz"] = np.nan
-        df["T_0"] = np.nan
+
+        df["Tp"] = 800 - df['corrected_mean_anomaly_800'] * ((df['a_AU'])**3 / df['mu'])**0.5
+
+        # universal_cartesian gives the NEGATIVE of the correct cartesian Jacobi
+        # coords (same sign flip kg_subsampler.py's add_interior_mass_and_positions
+        # applies, for the same reason -- see its comment).
+        _positions = np.vectorize(universal_cartesian, otypes=[float,float,float,float,float,float])
+        _x, _y, _z, _vx, _vy, _vz = _positions(
+            df['mu'].values,
+            df['q'].values,
+            df['e'].values,
+            df['i'].values * np.pi/180,
+            df['Omega'].values * np.pi/180,
+            df['omega'].values * np.pi/180,
+            df['Tp'].values,
+            800
+        )
+        df["x"]  = -_x
+        df["y"]  = -_y
+        df["z"]  = -_z
+        df["vx"] = -_vx
+        df["vy"] = -_vy
+        df["vz"] = -_vz
 
 
 
@@ -836,7 +867,13 @@ def main():
         real_kmdc_index = (
             koi_parts[0].str.zfill(4)                          # XXXX padded
             + koi_parts[1]                                     # YY
-            + id_number_identifier.astype(str).str.zfill(3)    # Z padded
+            + id_number_identifier.astype('int64').astype(str).str.zfill(3)    # Z padded
+            # id_number_identifier comes from .rank(), which returns float64 (e.g. 497.0)
+            # even though rank(method='min') on a non-empty, non-NaN group is always a
+            # whole number. astype(str) on that float gives "497.0", not "497" -- the
+            # decimal point then breaks kdc_to_parquet.py's/pyarrow's int64 cast of
+            # kmdc_index downstream (same bug found and fixed in create_ksdc.py). Cast
+            # to int64 first so it stringifies cleanly.
         )
         df['kmdc_index'] = real_kmdc_index
         from kg_find_completeness import find_completeness
