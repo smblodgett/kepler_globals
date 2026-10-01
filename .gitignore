@@ -25,3 +25,4 @@ ksdc_7_30.csv
 *report.csv
 src/_*
 dr25_full.csv
+*.parquet

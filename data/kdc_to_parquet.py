@@ -513,7 +513,25 @@ def build_dedup_table(name, csv_paths, group_key, tier_cols):
                 if len(common) and present:
                     a, b = accum.loc[common, present], batch_first.loc[common, present]
                     both_known = a.notna().values & b.notna().values
-                    differ = both_known & (a.values != b.values)
+                    # a/b come from t.to_pandas(types_mapper=NULLABLE.get), so
+                    # their columns are pandas nullable extension dtypes
+                    # (Int64/Float64/boolean/string); .values on a DataFrame
+                    # with those dtypes falls back to an object ndarray whose
+                    # missing cells are the pd.NA singleton, not np.nan.
+                    # pd.NA's __ne__ follows three-valued (Kleene) logic and
+                    # returns pd.NA itself rather than True/False, so
+                    # `a.values != b.values` is an object array that can
+                    # contain actual pd.NA entries, not just True/False.
+                    # `both_known & (...)` then needs numpy to evaluate
+                    # bool(pd.NA) for EVERY cell (object-dtype `&` isn't
+                    # lazy/short-circuited on the left operand), which raises
+                    # "boolean value of NA is ambiguous" even for cells where
+                    # both_known is False and the NA result would've been
+                    # discarded anyway. np.not_equal's `where=` makes the
+                    # comparison itself skip any cell both_known already
+                    # marks False, so pd.NA is never compared there at all.
+                    differ = np.zeros_like(both_known, dtype=bool)
+                    np.not_equal(a.values, b.values, where=both_known, out=differ)
                     for j, c in enumerate(present):
                         note(c, common[differ[:, j]].tolist())
                 accum = accum.combine_first(batch_first)

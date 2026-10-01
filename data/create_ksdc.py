@@ -471,12 +471,36 @@ def main():
                 df["mean_anomaly_hamann_850"] = (df['mean_anomaly_hamann'] + df['mean_angular_motion'] * (850 - df['T_0'])) % (2*np.pi)
                 df["corrected_mean_anomaly_800"] = (df['false_mean_anomaly'] + ((800 - df['T_0']) / df['Period_days']) * 2*np.pi) % (2*np.pi)
 
-                df["eccentric_anomaly_hamann_800"] = np.vectorize(eccentric_anomaly_from_mean)(df['e'].values, df['mean_anomaly_hamann_800'].values)
-                df["eccentric_anomaly_hamann_850"] = np.vectorize(eccentric_anomaly_from_mean)(df['e'].values, df['mean_anomaly_hamann_850'].values)
+                # eccentric_anomaly_from_mean's Newton/Halley-style iteration (Murison's
+                # method) is tuned for low-to-moderate eccentricity and can fail to converge
+                # within its 100-iteration cap for a high-e draw (observed on real Haumea
+                # data: e~0.98) landing near the periapse wrap of M -- it raises RuntimeError
+                # in that case rather than returning a value. kg_subsampler.py's own real-fit
+                # pipeline already tolerates this per KOI (read_in_rows_write wraps each koi in
+                # a try/except and logs+continues); this file processes every planet's full
+                # draw set in one batch via np.vectorize, so one such row would otherwise take
+                # down the whole MPI job. Catch it per-row instead and leave that row's
+                # eccentric/true anomaly NaN -- Tp/x/y/z/vx/vy/vz are unaffected either way,
+                # since they depend on corrected_mean_anomaly_800 (a closed-form value, no
+                # iteration) and not on corrected_eccentric_anomaly_800/corrected_true_anomaly_800.
+                _n_ecc_nonconvergent = 0
+                def _safe_eccentric_anomaly_from_mean(e, M):
+                    nonlocal _n_ecc_nonconvergent
+                    try:
+                        return eccentric_anomaly_from_mean(e, M)
+                    except RuntimeError:
+                        _n_ecc_nonconvergent += 1
+                        return np.nan
+                
+                df["eccentric_anomaly_hamann_800"] = np.vectorize(_safe_eccentric_anomaly_from_mean)(df['e'].values, df['mean_anomaly_hamann_800'].values)
+                df["eccentric_anomaly_hamann_850"] = np.vectorize(_safe_eccentric_anomaly_from_mean)(df['e'].values, df['mean_anomaly_hamann_850'].values)
                 df["true_anomaly_hamann_800"] = np.vectorize(true_anomaly_from_eccentric)(df['e'].values, df['eccentric_anomaly_hamann_800'].values)
                 df["true_anomaly_hamann_850"] = np.vectorize(true_anomaly_from_eccentric)(df['e'].values, df['eccentric_anomaly_hamann_850'].values)
-                df["corrected_eccentric_anomaly_800"] = np.vectorize(eccentric_anomaly_from_mean)(df['e'].values, df['corrected_mean_anomaly_800'].values)
+                df["corrected_eccentric_anomaly_800"] = np.vectorize(_safe_eccentric_anomaly_from_mean)(df['e'].values, df['corrected_mean_anomaly_800'].values)
                 df["corrected_true_anomaly_800"] = np.vectorize(true_anomaly_from_eccentric)(df['e'].values, df['corrected_eccentric_anomaly_800'].values)
+                if _n_ecc_nonconvergent:
+                    print(f"[warn] {_n_ecc_nonconvergent} eccentric_anomaly_from_mean call(s) (out of {3*len(df)} across the 3 columns that use it) did not converge within 100 iterations "
+                        f"(typically a high-eccentricity draw); left NaN for those specific (row, column) cells rather than crashing.")
 
                 df["interior_mass_pJ"] = 0
                 df["mu"] = (
@@ -493,17 +517,58 @@ def main():
                 # universal_cartesian gives the NEGATIVE of the correct cartesian Jacobi
                 # coords (same sign flip kg_subsampler.py's add_interior_mass_and_positions
                 # applies, for the same reason -- see its comment).
-                _positions = np.vectorize(universal_cartesian, otypes=[float,float,float,float,float,float])
-                _x, _y, _z, _vx, _vy, _vz = _positions(
-                    df['mu'].values,
-                    df['q'].values,
-                    df['e'].values,
-                    df['i'].values * np.pi/180,
-                    df['Omega'].values * np.pi/180,
-                    df['omega'].values * np.pi/180,
-                    df['Tp'].values,
-                    800
+                #
+                # Only call it on rows with finite, physically valid inputs. A row whose
+                # eccentricity/omega importance sampling failed to converge
+                # (ecc_omega_convergence_failed==1) has NaN e/omega/i by design (see
+                # process_singles_df) -- and universal_cartesian is a numba
+                # fastmath=True-compiled function, where fastmath's "assume no NaN/Inf"
+                # optimization turns a NaN input into undefined behavior rather than a
+                # clean NaN-propagating result. Confirmed directly (sorcha 1.2.1): a NaN
+                # e, or a degenerate q<=0/mu<=0 (e.g. a_AU==0), each make the function
+                # raise ZeroDivisionError ("float modulo") instead of returning NaN --
+                # which is what actually crashed the real run on Haumea. Masking these
+                # rows out here keeps x/y/z/vx/vy/vz NaN for them, exactly like their
+                # e/omega/i already are, instead of taking down the whole MPI job.
+                _valid_for_cartesian = (
+                    np.isfinite(df['mu'].values) &
+                    np.isfinite(df['q'].values) &
+                    np.isfinite(df['e'].values) &
+                    np.isfinite(df['i'].values) &
+                    np.isfinite(df['Omega'].values) &
+                    np.isfinite(df['omega'].values) &
+                    np.isfinite(df['Tp'].values) &
+                    (df['mu'].values > 0) &
+                    (df['q'].values > 0)
                 )
+                n_invalid_cartesian = int((~_valid_for_cartesian).sum())
+                if n_invalid_cartesian:
+                    print(f"[warn] {n_invalid_cartesian}/{len(df)} rows skipped in universal_cartesian "
+                        f"(NaN e/omega/i from a failed eccentricity/omega convergence, or a "
+                        f"degenerate mu<=0/q<=0); x/y/z/vx/vy/vz left NaN for these rows.")
+
+                _x = np.full(len(df), np.nan)
+                _y = np.full(len(df), np.nan)
+                _z = np.full(len(df), np.nan)
+                _vx = np.full(len(df), np.nan)
+                _vy = np.full(len(df), np.nan)
+                _vz = np.full(len(df), np.nan)
+
+                if _valid_for_cartesian.any():
+                    _positions = np.vectorize(universal_cartesian, otypes=[float,float,float,float,float,float])
+                    (
+                        _x[_valid_for_cartesian], _y[_valid_for_cartesian], _z[_valid_for_cartesian],
+                        _vx[_valid_for_cartesian], _vy[_valid_for_cartesian], _vz[_valid_for_cartesian],
+                    ) = _positions(
+                        df['mu'].values[_valid_for_cartesian],
+                        df['q'].values[_valid_for_cartesian],
+                        df['e'].values[_valid_for_cartesian],
+                        df['i'].values[_valid_for_cartesian] * np.pi/180,
+                        df['Omega'].values[_valid_for_cartesian] * np.pi/180,
+                        df['omega'].values[_valid_for_cartesian] * np.pi/180,
+                        df['Tp'].values[_valid_for_cartesian],
+                        800
+                    )
                 df["x"]  = -_x
                 df["y"]  = -_y
                 df["z"]  = -_z
@@ -513,17 +578,32 @@ def main():
 
 
 
-                id_number_identifier = df.groupby('kepid')['M_pE'].rank(method='min', ascending=True) - 1
+                # User wants kmdc_index's row-suffix to depend on mass (M_pE)
+                # again, not on row position. The original crash was .rank()'s
+                # default NaN handling: df.groupby('kepid')['M_pE'].rank(...)
+                # returns NaN for any row whose M_pE is itself NaN, and
+                # .astype('int64') on a NaN raises IntCastingNaNError.
+                # na_option='bottom' fixes that directly -- a NaN M_pE row
+                # still gets a real, non-NaN rank (placed after every valid
+                # mass in the group) instead of NaN, so this can never crash
+                # here, while every row with a real M_pE keeps the same mass
+                # ordering as before (verified empirically: na_option='bottom'
+                # never leaves a NaN behind, even for an all-NaN group).
+                # groupby('kepid') is a no-op post-streaming-rewrite (each
+                # `df` here is already exactly one kepid's chunk), kept only
+                # so this matches kg_subsampler.py's real-fit convention this
+                # was modeled on.
+                id_number_identifier = df.groupby('kepid')['M_pE'].rank(method='min', ascending=True, na_option='bottom') - 1
                 koi_parts = df["KOI"].astype(str).str.split(".", n=1, expand=True).reindex(columns=[0, 1])
                 real_kmdc_index = (
                     koi_parts[0].str.zfill(4)                          # XXXX padded
                     + koi_parts[1]                                     # YY
                     + id_number_identifier.astype('int64').astype(str).str.zfill(3)    # Z padded
-                    # id_number_identifier comes from .rank(), which returns float64 (e.g. 497.0)
-                    # even though rank(method='min') on a non-empty, non-NaN group is always a
-                    # whole number. astype(str) on that float gives "497.0", not "497" -- the
-                    # decimal point then breaks kdc_to_parquet.py's/pyarrow's int64 cast of
-                    # kmdc_index downstream. Cast to int64 first so it stringifies cleanly.
+                    # .rank() returns float64 (e.g. 497.0) even though
+                    # rank(method='min') on a group is always a whole number;
+                    # astype(str) on that float gives "497.0" not "497", which
+                    # breaks kdc_to_parquet.py's int64 cast of kmdc_index
+                    # downstream. Cast to int64 first so it stringifies cleanly.
                 )
                 df['kmdc_index'] = real_kmdc_index
                 from kg_find_completeness import find_completeness
