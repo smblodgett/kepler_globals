@@ -232,16 +232,37 @@ def augment_stellar_df_with_fallbacks(stellar_df, additional_stellar_df, rowe_df
         measured data with natural scatter, it's the same placeholder
         repeated, indistinguishable from what Source_rowe==0 ("solar
         parameters") actually is. Treat both the same way: fall back to
-        keplerstellar.csv's DR25 stellar delivery (teff/radius/mass/dens) --
-        real, if noisier-than-Gaia, independent measurements with full
-        coverage for every one of these stars.
+        dr25_full.csv's DR25 stellar delivery (teff/radius/mass/dens, plus
+        dens_err1/dens_err2) first -- real, if noisier-than-Gaia,
+        independent measurements, pulled straight from the archive rather
+        than the old stripped-down local keplerstellar.csv extract. A
+        remainder isn't in dr25_full.csv either (no complete
+        teff/logg/radius/mass/dens/dens_err1/dens_err2 row there): rather
+        than drop these real,
+        Rowe-endorsed planet candidates outright, assign them the same
+        solar reference values Note 13 already uses for this flag (Teff=
+        5780, Mass=1.0, Rad=1.0, logg=4.5 -- density follows automatically,
+        since solar density is exactly 0 in this function's own
+        log10(rho/RHOS_GCM3) convention), with a deliberately wide
+        uncertainty on density -- the only field this schema actually
+        carries a propagated uncertainty for downstream -- taken from the
+        real star-to-star scatter of Berger 2020's own ~186k-star
+        population (computed at call time directly from stellar_df,
+        before any fallback rows are appended), rather than reaching for a
+        different external survey with its own separate selection
+        function. These are stars that Rowe's own table, Berger 2020, AND
+        DR25 all three separately failed to characterize, so there's a
+        real chance they aren't ordinary FGK dwarfs at all -- this is a
+        deliberately weak, wide prior for a genuinely unknown star, not a
+        measurement.
 
     Adds a 'stellar_source' column to every row (0=Berger, including
     Source_rowe==2's Rowe-carried-forward Berger values; 1=DR25/
-    keplerstellar.csv fallback) so provenance stays traceable downstream.
-    Any KIC that needs a fallback but isn't covered by keplerstellar.csv
-    either (not currently expected, given the data on hand) is left out
-    entirely and logged, rather than guessed at.
+    dr25_full.csv fallback, with real per-star density uncertainties;
+    2=solar reference values with Berger-population density scatter, for a
+    KIC no real source covers) so provenance -- and which rows rest on an
+    assumed prior rather than an actual measurement -- stays traceable
+    downstream.
     """
     stellar_df = stellar_df.copy()
     stellar_df["stellar_source"] = 0  # every real Berger row
@@ -295,33 +316,90 @@ def augment_stellar_df_with_fallbacks(stellar_df, additional_stellar_df, rowe_df
 
     # -- Source_rowe in {0, 3} ("solar parameters", including the disguised-
     # as-Fulton-&-Petigura placeholder -- see docstring): fall back to
-    # keplerstellar.csv's DR25 stellar delivery instead.
+    # dr25_full.csv's DR25 stellar delivery instead.
     dr25_ok = missing[missing["Source_rowe"].isin([0, 3])].copy()
     if len(dr25_ok):
         additional_stellar_df = additional_stellar_df.copy()
-        for c in ["teff", "logg", "radius", "mass", "dens"]:
+        for c in ["teff", "logg", "radius", "mass", "dens", "dens_err1", "dens_err2"]:
             additional_stellar_df[c] = pd.to_numeric(additional_stellar_df[c], errors="coerce")
         dr25_lookup = additional_stellar_df.drop_duplicates("kepid").set_index("kepid")
-        # A KIC can be present in keplerstellar.csv but still have a NaN in
-        # one of the fields we need (mass is the common one -- ~3k of its
-        # 200,038 rows have no mass at all) -- .isin(index) alone wouldn't
-        # catch that, and a NaN Mass/rho would silently propagate as "this
-        # star's density is unknown" into process_singles_df. Require a
-        # complete row, not just a matching KIC.
-        complete_kics = dr25_lookup.dropna(subset=["teff", "logg", "radius", "mass", "dens"]).index
+        # A KIC can be present in dr25_full.csv but still have a NaN in one of
+        # the fields we need (mass is the common one -- ~3k of its 200,038
+        # rows have no mass at all; dens_err1/dens_err2 are separately absent
+        # on ~244 rows that do have dens) -- .isin(index) alone wouldn't catch
+        # that, and a NaN Mass/rho would silently propagate as "this star's
+        # density is unknown" into process_singles_df. Require a complete
+        # row, not just a matching KIC -- now including the per-star density
+        # error columns, since those feed E_rho/e_rho directly below.
+        complete_kics = dr25_lookup.dropna(subset=["teff", "logg", "radius", "mass", "dens", "dens_err1", "dens_err2"]).index
         have_dr25 = dr25_ok["KIC"].isin(complete_kics)
-        if (~have_dr25).any():
+        still_missing = dr25_ok[~have_dr25].copy()
+        if len(still_missing):
+            # Neither Rowe's table, Berger 2020, nor DR25 has anything for
+            # these KICs. Rather than drop them (their planet candidates
+            # would otherwise vanish from the population inference
+            # entirely -- a real selection effect, not a random loss),
+            # assign the same solar reference values Note 13 already uses
+            # for Source_rowe==0 ("solar parameters"), with a deliberately
+            # wide density uncertainty taken from the real star-to-star
+            # scatter of Berger 2020's own population (computed here, from
+            # stellar_df itself, before any fallback rows are appended) --
+            # not a different external survey's numbers, and not Berger's
+            # own much tighter per-star fit precision. This is a weak,
+            # honest prior for a genuinely unknown star, not a
+            # measurement, and it's tagged stellar_source==2 (distinct
+            # from stellar_source==1's real DR25 point estimates just
+            # below) so it's trivial to exclude or test sensitivity to
+            # downstream.
             print(
-                f"[warn] {(~have_dr25).sum()} Source_rowe in {{0,3}} KIC(s) have no "
-                f"complete keplerstellar.csv row either (missing or absent "
-                f"teff/logg/radius/mass/dens) -- no fallback available, still "
-                f"dropped: {dr25_ok.loc[~have_dr25, 'KIC'].tolist()}"
+                f"[warn] {len(still_missing)} Source_rowe in {{0,3}} KIC(s) have no "
+                f"complete dr25_full.csv row either (missing or absent "
+                f"teff/logg/radius/mass/dens/dens_err1/dens_err2) -- assigned "
+                f"solar reference values with Berger-population density "
+                f"scatter instead of being dropped (stellar_source==2): "
+                f"{still_missing['KIC'].tolist()}"
             )
+            SOLAR_TEFF, SOLAR_MASS, SOLAR_RAD, SOLAR_LOGG = 5780.0, 1.0, 1.0, 4.5
+            # Berger's own real population, already in this function's
+            # log10(rho/RHOS_GCM3) convention -- solar itself is exactly 0
+            # in that convention, so no unit conversion is needed here.
+            rho_sd = stellar_df["rho"].std()
+            n_fp = len(still_missing)
+            fb3 = pd.DataFrame({
+                "KIC": still_missing["KIC"].values,
+                "Mass": np.full(n_fp, SOLAR_MASS),
+                "Rad": np.full(n_fp, SOLAR_RAD),
+                "Teff": np.full(n_fp, SOLAR_TEFF),
+                "logg": np.full(n_fp, SOLAR_LOGG),
+                "rho": np.full(n_fp, 0.0),
+                "E_rho": np.full(n_fp, rho_sd),
+                "e_rho": np.full(n_fp, -rho_sd),
+                "stellar_source": 2,
+            })
+            fallback_frames.append(fb3)
         dr25_ok = dr25_ok[have_dr25]
         if len(dr25_ok):
             matched = dr25_lookup.loc[dr25_ok["KIC"]]
             dens = matched["dens"].values
             rho_log = np.log10(dens / RHOS_GCM3)
+            # dr25_full.csv (the archive's own DR25 stellar table, pulled
+            # directly rather than the old stripped-down local
+            # keplerstellar.csv extract) carries real per-star density
+            # uncertainties: dens_err1 (always >=0, the upper delta) and
+            # dens_err2 (always <=0, the lower delta -- so dens + dens_err2
+            # is already the lower bound, not dens - dens_err2). Confirmed
+            # against the actual column data (dens_err1 in [4.65e-8, 23.49],
+            # dens_err2 in [-99.91, -9.67e-9], never the wrong sign) before
+            # relying on this convention. Use these directly instead of the
+            # order-unity placeholder this branch used to fall back on;
+            # complete_kics above already required both to be present
+            # (non-NaN), so no NaN reaches here. The 1e-6 g/cm^3 floor on the
+            # lower bound is kept as a safety clamp for log10 (dens +
+            # dens_err2 never actually goes non-positive in this file, but a
+            # small fraction of rows come within ~1e-6 of it), matching the
+            # same floor used in the Source_rowe==2 branch above.
+            E_lin = matched["dens_err1"].values
+            e_lin = matched["dens_err2"].values
             fb2 = pd.DataFrame({
                 "KIC": dr25_ok["KIC"].values,
                 "Mass": matched["mass"].values,
@@ -329,16 +407,8 @@ def augment_stellar_df_with_fallbacks(stellar_df, additional_stellar_df, rowe_df
                 "Teff": matched["teff"].values,
                 "logg": matched["logg"].values,
                 "rho": rho_log,
-                # keplerstellar.csv carries no per-star density uncertainty at
-                # all (point estimates only). Rather than fabricate false
-                # precision, assume an order-unity (100%) relative
-                # uncertainty -- i.e. the upper/lower bound sits the same
-                # distance from solar density as the central value itself.
-                # This is a deliberate, conservative placeholder, not a
-                # measurement -- flagged via stellar_source==1 so it can be
-                # revisited (e.g. if per-star DR25 errors turn up elsewhere).
-                "E_rho": rho_log,
-                "e_rho": rho_log,
+                "E_rho": np.log10((dens + E_lin) / RHOS_GCM3),
+                "e_rho": np.log10(np.clip(dens + e_lin, 1e-6, None) / RHOS_GCM3),
                 "stellar_source": 1,
             })
             fallback_frames.append(fb2)
@@ -359,7 +429,8 @@ def augment_stellar_df_with_fallbacks(stellar_df, additional_stellar_df, rowe_df
     print(
         f"augment_stellar_df_with_fallbacks: added {len(fallback_df)} fallback "
         f"stellar rows ({(fallback_df['stellar_source']==0).sum()} Berger-via-Rowe, "
-        f"{(fallback_df['stellar_source']==1).sum()} DR25/keplerstellar.csv) -- "
+        f"{(fallback_df['stellar_source']==1).sum()} DR25/dr25_full.csv, "
+        f"{(fallback_df['stellar_source']==2).sum()} solar-with-Berger-scatter) -- "
         f"stellar_df grew from {n_before} to {len(stellar_df)} rows"
     )
     return stellar_df
@@ -431,31 +502,7 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         # e/omega/i are placeholders.
         ecc_omega_convergence_failed = 0
 
-        # A handful of multi-planet-system KOIs (10/9693 total, all currently
-        # flagged as false positives in Rowe's own disposition -- Status_rowe
-        # starting with 'F' -- and absent from DR25 entirely, so there's no
-        # fallback to recover a real value from) have Rp_rowe and BOTH its
-        # reported uncertainties exactly 0.0: no real transit-fit radius was
-        # ever measured, not a genuinely perfectly-known radius of zero.
-        # _sample_positive_normal can't draw anything from a Normal(0, 0) --
-        # it's a point mass at zero, and repeatedly resampling a non-positive
-        # value would loop forever, so it raises instead of hanging. Radius
-        # feeds into nearly everything else below (mass via
-        # mass_given_density_radius, planet_star_radius_ratio, and from there
-        # eccentricity/omega/inclination), so unlike the koi_duration==0 case
-        # below, there's no way to keep most of the row real here -- only
-        # period and stellar radius/mass are actually independent of planet
-        # radius.
-        radius_missing = (row["koi_prad"] == 0) and (row["koi_prad_err1"] == 0) and (row["koi_prad_err2"] == 0)
-        if radius_missing:
-            print(f"[rank {rank}] WARNING: kepid={row['kepid']} (singles index {index}) has "
-                  f"koi_prad==0 with zero reported uncertainty on both sides and no DR25 "
-                  f"fallback -- no real transit-fit radius is available. Leaving radius, "
-                  f"mass, eccentricity, omega, and inclination as NaN for this planet; "
-                  f"period and stellar radius/mass are still real sampled values.")
-            radius = np.full(num_sampling_draws, np.nan)
-        else:
-            radius = _sample_positive_normal(row_rng, row["koi_prad"], _sigma_with_relative_fallback(row["koi_prad"], row["koi_prad_err1"], row["koi_prad_err2"]), num_sampling_draws)
+        radius = _sample_positive_normal(row_rng, row["koi_prad"], _sigma_with_relative_fallback(row["koi_prad"], row["koi_prad_err1"], row["koi_prad_err2"]), num_sampling_draws)
 
         if row["koi_period"] < 0:
             period = row_rng.uniform(0.2,500,size=num_sampling_draws)
@@ -519,6 +566,8 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         radius_star_uncertainty = np.maximum(np.abs(radius_star_upper_uncertainty), np.abs(radius_star_lower_uncertainty))
         radius_star = _sample_positive_normal(row_rng, radius_star_val, radius_star_uncertainty, num_sampling_draws)
 
+        # T0_planet = stellar_df[stellar_df["KIC"]==row["kepid"]][]
+
 
         planet_star_radius_ratio = radius * RECM / (radius_star * RSCM)
 
@@ -527,26 +576,23 @@ def process_singles_df(singles_dr_df,stellar_df,lower_rho,upper_rho,seed=2222,va
         print(f"[rank {rank}] number of NaN in rho_star_true: ",np.sum(np.isnan(rho_star_true)))
         print(f"[rank {rank}] number of NaN in rho_star_uncertainty: ",np.sum(np.isnan(rho_star_uncertainty)))
 
-        duration_missing = (row["koi_duration"] == 0) and (row["koi_duration_err1"] == 0)
-        if duration_missing or radius_missing:
-            # Two distinct placeholder conditions both land here -- neither leaves a
-            # trustworthy input to build an eccentricity/omega posterior from: no real
-            # transit duration at all (duration_missing -- koi_duration==0 with its own
-            # uncertainty also 0; would otherwise feed straight into a sin(0)==0
-            # division-by-zero in this function's "inside" formula), or no real planet
-            # radius at all (radius_missing, detected above -- planet_star_radius_ratio
-            # is already NaN by this point, which would make every one of the
-            # importance-sampling draws below invalid the same way a non-convergent
-            # EccentricityOmegaConvergenceError would, just for an unrelated reason).
-            # radius_missing already printed its own WARNING above; only print one here
-            # for duration_missing, and skip straight to NaN either way instead of
-            # calling sample_eccentricity_omega and routing this through the
-            # convergence-failure flag below, which would mislabel the reason.
-            if duration_missing:
-                print(f"[rank {rank}] WARNING: kepid={row['kepid']} (singles index {index}) has "
-                      f"koi_duration==0 with zero reported uncertainty and no DR25 fallback -- "
-                      f"no real transit duration is available. Leaving eccentricity, omega, and "
-                      f"inclination as NaN for this planet.")
+        if row["koi_duration"] == 0 and row["koi_duration_err1"] == 0:
+            # A handful of singles have koi_duration and its own reported
+            # uncertainty both exactly 0.0 -- Rowe's table never fit a real
+            # transit duration for these, and DR25 (checked in create_ksdc.py)
+            # doesn't have them either. koi_duration==0 would otherwise feed
+            # straight into a sin(0)==0 division-by-zero in this function's
+            # "inside" formula, and there's no trustworthy central value to
+            # build a posterior around anyway. Everything sampled above this
+            # point (radius, period, b, mass, stellar radius/mass) is real
+            # and independent of duration -- only eccentricity, omega, and
+            # (derived below) inclination actually require this fit, so only
+            # those are left as NaN for this planet.
+            print(f"[rank {rank}] WARNING: kepid={row['kepid']} (singles index {index}) has "
+                  f"koi_duration==0 with zero reported uncertainty and no DR25 fallback -- "
+                  f"no real transit duration is available. Leaving eccentricity, omega, and "
+                  f"inclination as NaN for this planet; radius, period, mass, and stellar "
+                  f"radius/mass are still real sampled values.")
             eccentricity = np.full(num_sampling_draws, np.nan)
             omega = np.full(num_sampling_draws, np.nan)
         else:
@@ -629,140 +675,10 @@ def main(runprops):
 
     if comm.Get_rank() == 0:
 
-        if not runprops["suppress_warnings"]: 
-            if not use_cache:
-                print("Warning! use_cache is",use_cache,"meaning that this run will take a long time!")
-                print("Only run this way if your voxel data hasn't yet been cached.")
-        
-        # If the voxels don't have their data cached, then read in everything.
-        if not use_cache:
-            df = pd.read_csv(runprops["input_data_filename"],index_col=0,engine='pyarrow')
-            if runprops["verbose"]: print("read in the catalog without caching (press enter to continue)")
-            print("now we're caching it!")
-            df = df[["R_pE","Period_days","M_pE","e","omega","KIC","rho_p","i","M_s","R_s","planet"]]#,"p_trans","MES_rowe"]]
-            #df = create_probability_weighted(df)
-            df.to_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv")
-            if runprops["verbose"]: print("data has been cached for future runs!")
-            
-        # Otherwise, you can just read in 1 voxel that has its data cached.    
-        else:
-            df = pd.read_csv(runprops["input_data_folder"]+"/KMDC_RPMeo.csv",index_col=0,engine='pyarrow')
-            if runprops["verbose"]: print("read in cached df")
 
-        print("full data df: ",df)
+        # Remove false positives (and possibly other bad data ones)
 
-        # Get DR25 catalog for the inclusion of singles in the catalog.
-        dr_df = pd.read_csv(runprops['dr_25_data_filename'],engine='pyarrow')
-
-        # create a column for the multipliity of each DR25 planet
-        dr_df['multiplicity'] = dr_df['kepid'].map(dr_df['kepid'].value_counts())
-
-
-        # dr_df = dr_df[dr_df["koi_disposition"]=="CONFIRMED"] #??  - do we hit only the "confirmed" planets? I don't think so
-
-
-        singles_dr_df = dr_df[dr_df["multiplicity"]==1]  #?? this is the cut for singles
-        
-
-        # Setup and load grid with data. If data is not cached, then cache data from whole grid into voxel dataframes.
-        voxel_grid = RPMeoGrid(radius_grid_array, period_grid_array, mass_grid_array, eccentricity_grid_array, omega_grid_array)
-        voxel_grid.setup_dataframes(df.columns)
-
-
-        print("initialized voxel grid!")
-
-        # Possible -- read in gaia data (though I don't think we need this right now)
-        # gaia_df = pd.read_csv(runprops["gaia_data_filename"],delimiter='\t',header=1,engine='pyarrow')
-        # gaia_df = gaia_df[["KIC","Mass","Teff","Rad"]]
-        
-
-        print("starting stellar df")
-        # Read in the stellar df
-        stellar_df = pd.read_csv(runprops["stellar_data_filename"],engine='pyarrow',delimiter='\t') # used to be from ../data/keplerstellar.csv, now is from Berger et al 2020
-
-        # Read in the expanded stellar df, which has CDPP values
-        additional_stellar_df = pd.read_csv(runprops["kepler_additional_stellar_filename"],engine='pyarrow') # where is this from.
-        additional_stellar_df = additional_stellar_df[additional_stellar_df["st_delivname"]=="q1_q17_dr25_stellar"]
-
-        print("len(stellar_df) before cuts: ",len(stellar_df))
-
-        # Make the cuts to stellar catalog based off of temperature, logg
-        stellar_df = stellar_df[(stellar_df["Teff"]>4000) & (stellar_df["Teff"]<7000)]
-        stellar_df = stellar_df[(stellar_df["logg"]>4)]
-
-        print("len(stellar_df) after hsu cuts: ",len(stellar_df))
-
-        # Remove the stellar entries with nans in mass or temperature
-        stellar_df = stellar_df[(~stellar_df["Mass"].isna())  & (~stellar_df["Teff"].isna())] # & (~stellar_df["limbdark_coeff1"].isna())]
-
-        # Merge with the Rowe catalog to get the CDPP and dataspan values for each star
-        stellar_df = stellar_df.merge(
-                                    additional_stellar_df[
-                                        ['kepid', 'dataspan', 'rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
-                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
-                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0']
-                                    ],
-                                    left_on='KIC',
-                                    right_on='kepid',
-                                    how='left'   # keeps all rows from stellar_df
-                                )
-        
-        print("len(stellar_df) after removing nans: ",len(stellar_df))
-
-        print("number of NaNs in rrms columns: ",stellar_df[['rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
-                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
-                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0']].isna().sum().sum())
-
-        stellar_df = stellar_df.dropna(subset=['rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
-                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
-                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0'])
-
-        print("len(stellar_df) after removing NaN in cdpp columns: ",len(stellar_df))
-
-        
-
-        print("number of infs in rrms columns: ",stellar_df[['rrmscdpp01p5', 'rrmscdpp02p0', 'rrmscdpp02p5', 'rrmscdpp03p0',
-                                        'rrmscdpp03p5', 'rrmscdpp04p5', 'rrmscdpp05p0', 'rrmscdpp06p0', 'rrmscdpp07p5',
-                                        'rrmscdpp09p0', 'rrmscdpp10p5', 'rrmscdpp12p0', 'rrmscdpp12p5', 'rrmscdpp15p0']].isin([np.inf, -np.inf]).sum().sum())
-
-        
-        print("stellar df cuts applied")
-
-        # Get the KICs of the stars in the stellar df
-        stellar_df_kics = stellar_df["KIC"]
-        # Only include the planets in the multis df that are in the stellar df
-        df = df[df["KIC"].isin(stellar_df_kics)]
-        # Only include the planets in the singles that are in the stellar df
-        singles_dr_df = singles_dr_df[singles_dr_df["kepid"].isin(stellar_df_kics)]
-
-        print("len(singles_dr_df): ",len(singles_dr_df))
-        print("nan in singles_dr_df periods: ",singles_dr_df["koi_period"].isna().sum())
-        print("nan in singles_dr_df periods err1: ",singles_dr_df["koi_period_err1"].isna().sum())
-        print("nan in singles_dr_df periods err2: ",singles_dr_df["koi_period_err2"].isna().sum())
-
-        print("location of nan in errors: ",singles_dr_df[singles_dr_df["koi_period_err1"].isna() | singles_dr_df["koi_period_err2"].isna()]["kepid"])
-
-        # Remove the planets in the singles df that have nans in their period errors, since we need these for sampling the posteriors
-        singles_dr_df = singles_dr_df[~(singles_dr_df["koi_period_err1"].isna() | singles_dr_df["koi_period_err2"].isna())]
-        # Reset the index so we can iterate through singles df
-        singles_dr_df = singles_dr_df.reset_index(drop=True)
-
-    # Broadcast what process_singles_df needs so every rank can take part in
-    # distributing its per-planet eccentricity/omega sampling loop below -- that loop
-    # is the expensive part of setup (a million draws per KOI), so it shouldn't run on
-    # rank 0 alone.
-    singles_dr_df = comm.bcast(singles_dr_df, root=0)
-    stellar_df = comm.bcast(stellar_df, root=0)
-
-    # Give the singles df the same cols as the multis df, sample ecc and omega for the
-    # singles. All ranks call this together; process_singles_df scatters the planets
-    # across ranks internally and gathers the result back onto rank 0.
-    processed_singles_dr_df = process_singles_df(singles_dr_df,stellar_df,runprops["minimum_density"],runprops["maximum_density"],comm=comm)
-
-    if comm.Get_rank() == 0:
         # Remove the planets with densities above or below a certain threshold, because they are unphysical
-
-
         print("length of df before requiring stability: ",len(df))
         if runprops["exclude_bad_densities"]:
             df = df[(df["rho_p"]<runprops["maximum_density"]) & (df["rho_p"]>runprops["minimum_density"])]
@@ -771,72 +687,58 @@ def main(runprops):
 
         print("length of df after before requiring stability: ",len(df))
         # Exclude any posterior draw that has a periastron less than 2 stellar radii
-        sm_axis = (df["Period_days"] * 24 * 60 * 60)**(2/3) * (G / (4*np.pi**2))**(1/3) * (df["M_pE"] * MEKG + stellar_df.set_index("KIC").loc[df["KIC"],"Mass"].values * MSKG)**(1/3)
-        periapsis = (1 - df["e"]) * sm_axis
-        df = df[periapsis >= 2 * stellar_df.set_index("KIC").loc[df["KIC"],"Rad"].values]
+        # sm_axis = (df["Period_days"] * 24 * 60 * 60)**(2/3) * (G / (4*np.pi**2))**(1/3) * (df["M_pE"] * MEKG + stellar_df.set_index("KIC").loc[df["KIC"],"Mass"].values * MSKG)**(1/3)
+        # periapsis = (1 - df["e"]) * sm_axis
+        df = df[df['peri_R_s'] >= 2 * df['a_R_s']]
         print("length of df after after requiring stability: ",len(df))
 
-        print("length of singles df after before requiring stability: ",len(processed_singles_dr_df))
-        sm_axis = (processed_singles_dr_df["Period_days"] * 24 * 60 * 60)**(2/3) * (G / (4*np.pi**2))**(1/3) * (processed_singles_dr_df["M_pE"] * MEKG + stellar_df.set_index("KIC").loc[processed_singles_dr_df["kepid"],"Mass"].values * MSKG)**(1/3)
-        periapsis = (1 - processed_singles_dr_df["e"]) * sm_axis
-        processed_singles_dr_df = processed_singles_dr_df[periapsis >= 2 * stellar_df.set_index("KIC").loc[processed_singles_dr_df["kepid"],"Rad"].values]
-        print("length of processed_singles_dr_df after requiring stability: ",len(processed_singles_dr_df))
+        df = df[(df["Teff_rowe"] < 7000) & (df['Teff_rowe'] > 3000)]
+
+        df = df[(df["logg_rowe"] > 4)]
+
+        df = df[df["ecc_omega_convergence_failed"]==0]
+
+        df = df[~(df["Status_rowe"][0] == 'F')] 
+
+
+        # print("length of singles df after before requiring stability: ",len(processed_singles_dr_df))
+        # sm_axis = (processed_singles_dr_df["Period_days"] * 24 * 60 * 60)**(2/3) * (G / (4*np.pi**2))**(1/3) * (processed_singles_dr_df["M_pE"] * MEKG + stellar_df.set_index("KIC").loc[processed_singles_dr_df["kepid"],"Mass"].values * MSKG)**(1/3)
+        # periapsis = (1 - processed_singles_dr_df["e"]) * sm_axis
+        # processed_singles_dr_df = processed_singles_dr_df[periapsis >= 2 * stellar_df.set_index("KIC").loc[processed_singles_dr_df["kepid"],"Rad"].values]
+        # print("length of processed_singles_dr_df after requiring stability: ",len(processed_singles_dr_df))
 
 
         # Define the "unique planet" column which is the combo of the KIC and planet number
-        df['unique_planet'] = df['KIC'].astype(str) + "_" + df['planet'].astype(str)
+        # df['unique_planet'] = df['KIC'].astype(str) + "_" + df['planet'].astype(str)
         # Make a dict of how many unique planets there are, with the unique planet as the key and the count as the value
-        kic_dict_multis = df['unique_planet'].value_counts().to_dict()
+        kic_dict = df['kdc_id'].value_counts().to_dict()
 
-        print("kic_dict_multis: ", kic_dict_multis)
+        print("kic_dict: ", kic_dict)
 
         # List of unique planets that have less than 50 samples, which we remove because they will be improperly weighted
-        unique_planet_to_remove = [k for k, v in kic_dict_multis.items() if v < 50]
+        unique_planet_to_remove = [k for k, v in kic_dict.items() if v < 50]
 
         # Actually remove these planets
         for unique_planet in unique_planet_to_remove:
             df = df[df['unique_planet'] != unique_planet]
 
         # Update the kic_dict_multis after removing the planets with less than 50 samples (necessary for reweighting procedure)
-        kic_dict_multis = {k: v for k, v in kic_dict_multis.items() if v >= 50}
-
-        print("kic_dict_multis: ", kic_dict_multis)
-        
-        # Give the singles a unique planet column as well
-        processed_singles_dr_df['unique_planet'] = processed_singles_dr_df['kepid'].astype(int).astype(str) + "_" + "0.1"
-
-        # Make a dict of how many unique planets are in singles
-        kic_dict_singles = processed_singles_dr_df['unique_planet'].value_counts().to_dict()
-
-        # List of unique planets that have less than 50 samples, which we remove because they will be improperly weighted
-        unique_planet_to_remove = [k for k, v in kic_dict_singles.items() if v < 50]
-
-        # Actually remove these planets
-        for unique_planet in unique_planet_to_remove:
-            processed_singles_dr_df = processed_singles_dr_df[processed_singles_dr_df['unique_planet'] != unique_planet]
-
-        # Update the kic_dict_singles after removing the planets with less than 50 samples (necessary for reweighting procedure)
-        kic_dict_singles= {k: v for k, v in kic_dict_singles.items() if v >= 50}
-
-        print("kic_dict_singles: ", kic_dict_singles)
-
-        # Merge the multis and singles count dicts
-        kic_dict = kic_dict_multis | kic_dict_singles
+        kic_dict = {k: v for k, v in kic_dict.items() if v >= 50}
 
         print("kic_dict: ", kic_dict)
-
+        
         # Give the RPMeoGrid the kic_dict so that it can reweight the planets
         voxel_grid.set_kic_dict(kic_dict)
 
         # Concatenate the multis and processed singles dfs together to get the KDC - Kepler Dynamical Catalog
-        final_kdc_df = pd.concat([df, processed_singles_dr_df.rename(columns={"kepid":"KIC"})], ignore_index=True)
+        final_kg_kdc_df = df
         ######## ADD A FLAG TO SEE IF ITS A SINGLE OR A MULTI (FOR PLOTTING PURPOSES)
 
         # Where there doesn't exist a PhoDyMM value, fill with the best guess from the stellar catalog.
-        final_kdc_df["M_s"] = final_kdc_df['M_s'].fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Mass"]))
-        final_kdc_df["R_s"] = final_kdc_df['R_s'].fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Rad"]))
+        # final_kdc_df["M_s"] = final_kdc_df['M_s'].fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Mass"]))
+        # final_kdc_df["R_s"] = final_kdc_df['R_s'].fillna(final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Rad"]))
 
-        final_kdc_df["Teff"] = final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Teff"])
+        # final_kdc_df["Teff"] = final_kdc_df["KIC"].map(stellar_df.set_index("KIC")["Teff"])
 
 
         print("final_kdc_df: ",final_kdc_df)
@@ -849,14 +751,15 @@ def main(runprops):
         voxel_grid.add_data(final_kdc_df)
 
         # Create a small stellar df with 1000 random stars, to set up the completeness grid. (could be expanded to entire stellar catalog)
-        stellar_df_reduced=stellar_df.sample(n=250,random_state=44)
+        stellar_df_reduced=stellar_df.sample(n=500,random_state=44)
 
 
     voxel_grid = comm.bcast(voxel_grid,root=0)
     stellar_df_reduced = comm.bcast(stellar_df_reduced,root=0)
 
     print("broadcasted voxel grid and stellar df")
-        
+
+    ## need to update setup completeness grid so that it has the right stellar column names (and uses berger stellar)
     voxel_grid.setup_completeness_grid(stellar_df_reduced,comm) # this is the kepler stellar catalog, which has the stellar radii and masses
     print("set up completeness grid")
     voxel_grid.setup_likelihood_grid()
@@ -881,14 +784,14 @@ def main(runprops):
 
         # stellar_df.to_csv("../data/keplerstellar_with_cuts.csv")
 
-        final_kdc_table = pa.Table.from_pandas(final_kdc_df)
-        csv.write_csv(final_kdc_table, "../data/final_kdc.csv")
+        final_kg_kdc_table = pa.Table.from_pandas(final_kg_kdc_df)
+        csv.write_csv(final_kg_kdc_table, "../data/final_kg_kdc.csv")
 
         # final_kdc_df.to_csv("../data/final_kdc.csv")
 
-        final_kdc_df_columns = json.dumps(list(final_kdc_df.columns))
+        final_kg_kdc_df_columns = json.dumps(list(final_kg_kdc_df.columns))
         with open('../data/dataframe_column_names.json', "w") as f:
-            f.write(final_kdc_df_columns)
+            f.write(final_kg_kdc_df_columns)
         
         print("Finished writing to json!")
     

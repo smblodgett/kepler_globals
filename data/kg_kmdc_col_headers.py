@@ -1,5 +1,5 @@
 col_headers = [
-"kmdc_index",
+"kdc_index",
 "M_s",
 "R_s",
 "c_1",

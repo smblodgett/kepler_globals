@@ -54,7 +54,7 @@ from pathlib import Path
 # ----------------------------------------------------------------------
 
 IDENTIFIER_COLS = [
-    # kmdc_index/catalog are the manifest's own key_columns and are always
+    # kdc_index/catalog are the manifest's own key_columns and are always
     # included by read_columns/iter_draws_chunks regardless of what you ask
     # for, so they're left out of this list on purpose -- listing them here
     # too would just make every column count reported by --list-groups /
@@ -127,12 +127,12 @@ PERTURBATION_RATIO_COLS = [
     "e/ein", "eout/e", "omega-omegain", "omegaout-omega",
 ]
 
-OCCURRENCE_RATE_COLS = ["occurrence_rate_hsu", "E_or_hsu", "e_or_hsu"]
+OCCURRENCE_RATE_COLS = ["occurrence_rate_hsu", "E_or_hsu", "e_or_hsu","completeness"]
 
 FLAG_COLS = [
     "hsu_flag", "is_hidden_planet", "is_monotransiting",
     "phodymm_converged", "ecc_omega_convergence_failed",
-    "completeness", "chisq_rank",
+    , "chisq_rank",
 ]
 
 DRAWS_GROUPS = {

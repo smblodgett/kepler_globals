@@ -920,7 +920,7 @@ def main():
 
 
 
-        # User wants kmdc_index's row-suffix to depend on mass (M_pE) again,
+        # User wants kdc_index's row-suffix to depend on mass (M_pE) again,
         # not on draw number. The original crash was .rank()'s default NaN
         # handling: df.groupby(['kepid','planet_number'])['M_pE'].rank(...)
         # returns NaN for any row whose M_pE is itself NaN, and
@@ -936,18 +936,18 @@ def main():
         # up-to-1000 draws, so it never overflows past 3 digits.
         id_number_identifier = df.groupby(['kepid', 'planet_number'])['M_pE'].rank(method='min', ascending=True, na_option='bottom') - 1
         koi_parts = df["KOI"].astype(str).str.split(".", n=1, expand=True).reindex(columns=[0, 1])
-        real_kmdc_index = (
+        real_kdc_index = (
             koi_parts[0].str.zfill(4)                          # XXXX padded
             + koi_parts[1]                                     # YY
             + id_number_identifier.astype('int64').astype(str).str.zfill(3)    # Z padded
             # .rank() returns float64 (e.g. 497.0) even though
             # rank(method='min') on a group is always a whole number;
             # astype(str) on that float gives "497.0" not "497", which
-            # breaks kdc_to_parquet.py's int64 cast of kmdc_index downstream
+            # breaks kdc_to_parquet.py's int64 cast of kdc_index downstream
             # (same bug from create_ksdc.py's own history). Cast to int64
             # first so it stringifies cleanly.
         )
-        df['kmdc_index'] = real_kmdc_index
+        df['kdc_index'] = real_kdc_index
         from kg_find_completeness import find_completeness
         df['completeness'] = find_completeness(df["R_pE"].to_numpy(),df["Period_days"].to_numpy(),df["M_pE"].to_numpy(),df["e"].to_numpy(),df["omega"].to_numpy())
 

@@ -64,7 +64,7 @@ def _load_draws_manifest(folder):
 
 def iter_draws_chunks(columns, catalogs=None, folder=DRAWS_DIR):
     """Yield one pandas DataFrame per parquet_draws row-part (manifest
-    "parts" entry), containing the manifest's key columns (kmdc_index,
+    "parts" entry), containing the manifest's key columns (kdc_index,
     catalog) plus `columns`. Never holds more than one part in memory.
 
     catalogs: optional list like ["KMDC", "KSDC"] to keep only those rows;
@@ -142,14 +142,14 @@ def _estimate_csv_bytes_per_row(chunk):
 
 def _ordered_output_columns(draws_columns, stellar_columns, planet_columns,
                             stellar_df, planet_df):
-    # KEY_COLS (kmdc_index, catalog) are the dataset's actual primary key --
+    # KEY_COLS (kdc_index, catalog) are the dataset's actual primary key --
     # iter_draws_chunks always reads them (every parquet_draws column group
     # carries them) but, before this, they were only used internally for
     # chunk alignment/catalogs-filtering and then silently dropped from the
     # written CSV because no preset/group ever lists them (see
     # kdc_csv_presets.py's comment on why IDENTIFIER_COLS leaves them out).
     # That's fine as a reason to skip asking the user to spell them out, but
-    # not a reason to omit them from the output: without kmdc_index a CSV
+    # not a reason to omit them from the output: without kdc_index a CSV
     # row can't be traced back to a specific draw at all. Always lead with
     # them instead, the same way every parquet_draws column group already
     # does internally.

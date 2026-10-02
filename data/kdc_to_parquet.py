@@ -3,7 +3,7 @@ Convert the catalog CSVs (KMDC, NCKMDC, KSDC) into THREE Parquet datasets,
 split by the natural granularity of the data instead of repeating every
 column on every row:
 
-    parquet_draws/     one row per posterior draw (kmdc_index) -- the bulk
+    parquet_draws/     one row per posterior draw (kdc_index) -- the bulk
                         of the data: orbital elements, positions, derived
                         planet/system quantities that genuinely vary per
                         draw (including M_s/R_s/rho_s -- see note below).
@@ -89,7 +89,7 @@ PLANETS_DIR = Path("parquet_planets")
 STELLAR_DIR = Path("parquet_stellar")
 FILE_PREFIX = "kg"
 
-KEY_COLS = ["kmdc_index", "catalog"]   # repeated in every column group of parquet_draws
+KEY_COLS = ["kdc_index", "catalog"]   # repeated in every column group of parquet_draws
 CATALOG_COL = "catalog"                # filled with each CSV's file stem
 N_COLS = 10                            # data columns per group (KEY_COLS not counted)
 
@@ -176,7 +176,7 @@ assert not (set(STELLAR_COLS) & set(PLANET_COLS)), "STELLAR_COLS/PLANET_COLS ove
 # Types
 # ----------------------------------------------------------------------
 
-INT64 = {"kmdc_index"}
+INT64 = {"kdc_index"}
 INT32 = {"KIC", "chisq_rank", "step_number", "phodymm_index"}
 INT16 = {"Chain#", "nTTobs_rowe", "nTT_rowe", "nconfp", "nkoi", "ntce"}
 INT8 = {"multiplicity", "Source_rowe", "stellar_source"}

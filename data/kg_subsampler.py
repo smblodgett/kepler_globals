@@ -151,29 +151,29 @@ def process_dataframe(df,koi):
         # this system matched Rowe's table (KOI all-NaN) -- str.split(...,expand=True)
         # then produces only column 0, since there's no "." anywhere to split on, and
         # koi_parts[1] below would raise KeyError. Reindexing adds column 1 back as
-        # NaN in that case, which flows into real_kmdc_index as NaN for every row --
+        # NaN in that case, which flows into real_kdc_index as NaN for every row --
         # the correct outcome, since none of those rows have a real KOI-based index.
         koi_parts = final_system_df["KOI"].astype(str).str.split(".", n=1, expand=True).reindex(columns=[0, 1])
-        real_kmdc_index = (
+        real_kdc_index = (
             koi_parts[0].str.zfill(4)                          # XXXX padded
             + koi_parts[1]                                     # YY
             + id_number_identifier.astype(str).str.zfill(3)    # Z padded
         )
 
         # A hidden planet (no Rowe-table match) has no real KOI, so "KOI" is
-        # NaN for it and real_kmdc_index above is NaN too. Give it a
+        # NaN for it and real_kdc_index above is NaN too. Give it a
         # substitute in the same format as real entries instead -- the
         # system's own koi number (known regardless of whether any given
         # planet in it matched Rowe's table), a placeholder ".0" decimal
         # (zero-padded to "00" to match the same 2-digit suffix width real
         # entries use), and chisq_rank.
         hidden_mask = final_system_df["is_hidden_planet"] == 1
-        hidden_kmdc_index = (
+        hidden_kdc_index = (
             koi.zfill(4)
             + "00"
-            + id_number_identifier.astype(str).str.zfill(4)
+            + id_number_identifier.astype(str).str.zfill(3)
         )
-        final_system_df["kmdc_index"] = real_kmdc_index.where(~hidden_mask, hidden_kmdc_index)
+        final_system_df["kdc_index"] = real_kdc_index.where(~hidden_mask, hidden_kdc_index)
         # phodymm_index is already correctly populated at this point -- it was
         # captured in make_df_from_subsample directly from raw_data_df's own
         # row position in the raw file, and carried through unchanged ever
@@ -835,7 +835,7 @@ def make_df_from_subsample(subsampled_rows,koi):
     # unrelated row, not the one kg_random_row_selector.py actually chose for
     # that chain. That silently corrupts Chain#, chisq, step_number, and
     # everything derived from them downstream (chisq_rank, phodymm_index,
-    # kmdc_index) for every affected row.
+    # kdc_index) for every affected row.
     #
     # The real row identity is the (Chain#, "Unnamed: 0") PAIR -- both of
     # which kg_random_row_selector.py already wrote out precisely so this
