@@ -5,6 +5,7 @@ results/*
 data/thinned/*
 data/plots/*
 data/keplerstellar.csv
+data/csv_exports/*
 data/subsampled_rows/*
 !data/subsampled_rows/.gitkeep
 !data/thinned/.gitkeep
